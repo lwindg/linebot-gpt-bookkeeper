@@ -98,25 +98,6 @@ def message_text(event):
         logger.error(f"Error in message_text handler: {e}")
         # Don't raise exception to prevent webhook failure
 
-
-# Vercel Serverless Function entry point
-# Vercel uses 'app' object as the handler
-# Reference: https://vercel.com/docs/functions/serverless-functions/runtimes/python
-def handler_vercel(request):
-    """
-    Vercel Serverless Function entry point (optional)
-    
-    Used by Vercel Python runtime if needed.
-    """
-    with app.test_request_context(
-        path=request.path,
-        method=request.method,
-        headers=request.headers,
-        data=request.get_data()
-    ):
-        return app.full_dispatch_request()
-
-
 # Local development entry point
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
