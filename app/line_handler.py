@@ -85,18 +85,20 @@ def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
         
         elif entry.intent == "conversation":
             # Conversation: return GPT response
-            reply_text = entry.response_text
-        
+            reply_text = entry.response_text if entry.response_text else "您好！有什麼可以協助您的嗎？"
+            logger.info(f"Conversation response: {reply_text}")
+
         else:
             reply_text = "無法理解您的訊息。"
-        
+
         # Reply to LINE user
+        logger.info(f"Sending reply to LINE: {reply_text[:100]}")
         line_bot_api.reply_message(
             reply_token,
             TextSendMessage(text=reply_text)
         )
-        
-        logger.info(f"Replied to user: {reply_text[:50]}...")
+
+        logger.info(f"Reply sent successfully")
     
     except ValueError as e:
         # Validation error
@@ -108,7 +110,9 @@ def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
     
     except Exception as e:
         # Unexpected error
+        import traceback
         logger.error(f"Error handling message: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         line_bot_api.reply_message(
             reply_token,
             TextSendMessage(text="系統處理訊息時發生錯誤，請重試。")
