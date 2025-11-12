@@ -45,6 +45,7 @@ htmlcov/
 coverage.xml
 *.cover
 *.log
+test_*.json
 
 # IDEs
 .vscode/
