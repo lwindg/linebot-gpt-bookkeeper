@@ -1,9 +1,8 @@
+# -*- coding: utf-8 -*-
 """
-LINE 
-oUh!D
+LINE Message Handler Module
 
-d!D ¬U LINE 
-o‹ö&Ş†(
+This module handles LINE message events and user interactions.
 """
 
 import logging
@@ -18,108 +17,99 @@ logger = logging.getLogger(__name__)
 
 def format_confirmation_message(entry: BookkeepingEntry) -> str:
     """
-    <3º
-o
-
-    o:@	ÍM+—Œ„ÑMğc	
-
+    Format bookkeeping confirmation message
+    
+    Formats the bookkeeping entry data into a user-friendly confirmation message
+    with all important details.
+    
     Args:
-        entry: BookkeepingEntry iö
-
+        entry: BookkeepingEntry object
+    
     Returns:
-        str: <„º
-o
+        str: Formatted confirmation message
     """
-    # —ÑMğc	
-    ÑMğc = entry.ŸcÑM * entry./‡
+    # Calculate TWD amount
+    twd_amount = entry.åŸå¹£é‡‘é¡ * entry.åŒ¯ç‡
+    
+    message = f"""å·²æˆåŠŸè¨˜å¸³ï¼
 
-    message = f""" 3Ÿ
-
-å{entry.å}
-Á{entry.Á}
-ÑMğc	{ÑMğc:.0f} C
-Ø>¹{entry.Ø>¹}
-^{entry.^}
-Å'{entry.Å'}
-¤ID{entry.¤ID}"""
-
-    # ‚œ	0ª 
-
-    if entry.0ª:
-        message += f"\n0ª{entry.0ª}"
-
+æ—¥æœŸï¼š{entry.æ—¥æœŸ}
+å“é …ï¼š{entry.å“é …}
+å°å¹£é‡‘é¡ï¼š{twd_amount:.0f} TWD
+ä»˜æ¬¾æ–¹å¼ï¼š{entry.ä»˜æ¬¾æ–¹å¼}
+åˆ†é¡ï¼š{entry.åˆ†é¡}
+å¿…è¦æ€§ï¼š{entry.å¿…è¦æ€§}
+äº¤æ˜“IDï¼š{entry.äº¤æ˜“ID}"""
+    
+    # Add optional detail note if present
+    if entry.æ˜ç´°èªªæ˜:
+        message += f"\næ˜ç´°èªªæ˜ï¼š{entry.æ˜ç´°èªªæ˜}"
+    
     return message
 
 
 def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
     """
-    U‡W
-o„;A
-
-    A
-    1. Ö—(
-o‡W
-    2. |ë GPT Uh
-    3. åº3 ’ | webhook + Ş†º
-    4. åºq ’ Ş† GPT „ŞÉ
-    5. /¤U ’ Ş†Ë„/¤
-o
-
+    Handle text message main flow
+    
+    Flow:
+    1. Receive user message
+    2. Process via GPT to determine intent
+    3. If bookkeeping -> send to webhook + return confirmation
+    4. If conversation -> return GPT response
+    5. If error -> return error message
+    
     Args:
         event: LINE MessageEvent
-        line_bot_api: LINE Bot API æ‹
+        line_bot_api: LINE Bot API client
     """
     user_message = event.message.text
     reply_token = event.reply_token
-
+    
     logger.info(f"Received message: {user_message}")
-
+    
     try:
-        # |ë GPT U
+        # Process message via GPT
         entry = process_message(user_message)
-
+        
         if entry.intent == "bookkeeping":
-            # | webhook
+            # Send to webhook
             success = send_to_webhook(entry)
-
+            
             if success:
-                # ŸŞ†º
-o
+                # Success: return confirmation message
                 reply_text = format_confirmation_message(entry)
             else:
-                # 1WĞ:(
-                reply_text = "3Ç™U1WËŒÍf"
-
+                # Failed: return error message
+                reply_text = "è¨˜å¸³è³‡æ–™è™•ç†å¤±æ•—ï¼Œè«‹ç¨å¾Œå†è©¦ã€‚"
+        
         elif entry.intent == "conversation":
-            # qŞ† GPT „‡W
+            # Conversation: return GPT response
             reply_text = entry.response_text
-
+        
         else:
-            reply_text = "±I!Õã¨„
-o"
-
-        # Ş† LINE (
+            reply_text = "ç„¡æ³•ç†è§£æ‚¨çš„è¨Šæ¯ã€‚"
+        
+        # Reply to LINE user
         line_bot_api.reply_message(
             reply_token,
             TextSendMessage(text=reply_text)
         )
-
+        
         logger.info(f"Replied to user: {reply_text[:50]}...")
-
+    
     except ValueError as e:
-        # Ç™WI/¤
+        # Validation error
         logger.error(f"Validation error: {e}")
         line_bot_api.reply_message(
             reply_token,
-            TextSendMessage(text="±I
-o<	¤ËºŒf")
+            TextSendMessage(text="ç„¡æ³•è™•ç†æ‚¨çš„è¨Šæ¯æ ¼å¼ï¼Œè«‹é‡è©¦ã€‚")
         )
-
+    
     except Exception as e:
-        # vÖ/¤
+        # Unexpected error
         logger.error(f"Error handling message: {e}")
         line_bot_api.reply_message(
             reply_token,
-            TextSendMessage(text="±IîM!ÕU¨„
-oËŒf")
+            TextSendMessage(text="ç³»çµ±è™•ç†è¨Šæ¯æ™‚ç™¼ç”ŸéŒ¯èª¤ï¼Œè«‹é‡è©¦ã€‚")
         )
