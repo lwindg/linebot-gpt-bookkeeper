@@ -136,6 +136,45 @@ Specifications and internal design documents MUST use Traditional Chinese (正�
 - Use feature flags or branches to isolate incomplete work
 - Every deployment must be a releasable increment
 
+### Git Workflow
+
+**Branch Naming Format**: `$action/$description`
+- Examples:
+  - `feat/integrate-line`
+  - `fix/response-token-too-short`
+  - `refactor/simplify-gpt-prompt`
+  - `docs/update-readme`
+
+**Commit Message Format**: `$action(service/module/component): $message`
+- Examples:
+  - `fix(linebot): error message`
+  - `feat(webhook): add retry logic`
+  - `refactor(gpt): simplify prompt structure`
+  - `docs(readme): add deployment guide`
+
+**Allowed Actions**:
+- `release` — Release new version
+- `feat` — New feature
+- `fix` — Bug fix
+- `refactor` — Code refactoring (no functional change)
+- `docs` — Documentation updates
+- `test` — Test updates or additions
+- `style` — Code style changes (formatting, whitespace)
+- `chore` — Other miscellaneous changes (build, tooling)
+
+**Commit Guidelines**:
+- Keep commit messages concise and descriptive
+- Use imperative mood (e.g., "add" not "added" or "adds")
+- Reference issue numbers when applicable (e.g., `fix(linebot): handle empty messages (#42)`)
+- One logical change per commit
+
+**Branch Strategy**:
+- `main` — Production-ready code
+- `feat/*` — Feature development branches
+- `fix/*` — Bug fix branches
+- Create pull requests for all changes
+- Delete branches after merging
+
 ## Technical Constraints
 
 ### Mandatory Quality Standards
