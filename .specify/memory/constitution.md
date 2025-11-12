@@ -1,13 +1,13 @@
 <!--
 Sync Impact Report:
-Version: 1.1.0 (language requirement addition)
-Modified Principles: N/A
-Added Sections: Communication and Documentation Language (under Development Workflow)
+Version: 2.0.0 (English to Traditional Chinese translation)
+Modified Principles: N/A (translation only, principles remain the same)
+Added Sections: N/A
 Removed Sections: N/A
-Changes from 1.0.0:
-  - Added clear language separation: Traditional Chinese for internal planning, English for code artifacts
-  - Traditional Chinese (正體中文): spec.md, plan.md, tasks.md, team discussions
-  - English: code, comments, PR, commits, diagrams, technical terms, logs, README
+Changes from 1.1.0:
+  - Translated entire constitution from English to Traditional Chinese (正體中文)
+  - Maintained all core principles and structure
+  - Aligned with language requirement: Traditional Chinese for internal planning documents
 Templates Status:
   ✅ plan-template.md - no changes required (language-agnostic structure)
   ✅ spec-template.md - no changes required (language-agnostic structure)
@@ -15,220 +15,220 @@ Templates Status:
 Follow-up TODOs: None
 -->
 
-# LINE Bot GPT Bookkeeper Constitution
+# LINE Bot GPT Bookkeeper 專案憲章
 
-## Core Principles
+## 核心原則
 
-### I. MVP-First Development
+### I. MVP 優先開發
 
-Every feature MUST start as a Minimum Viable Product (MVP) that delivers immediate user value.
+每個功能**必須**以最小可行產品（MVP）開始，提供即時使用者價值。
 
-**Rules**:
-- Implement the simplest solution that solves the core user problem
-- Each user story must be independently testable and deliverable
-- Prioritize P1 features; defer P2/P3 until MVP validates the approach
-- No speculative features—only build what users explicitly need
+**規則**：
+- 實作解決核心使用者問題的最簡單方案
+- 每個使用者故事必須可獨立測試和交付
+- 優先處理 P1 功能；延後 P2/P3 直到 MVP 驗證方法
+- 不做推測性功能——只構建使用者明確需要的功能
 
-**Rationale**: Rapid validation and iteration beat comprehensive planning. MVP-first ensures we learn fast, fail fast, and deliver value continuously without wasting effort on unused features.
+**理念**：快速驗證和迭代勝過全面規劃。MVP 優先確保我們快速學習、快速失敗，並持續交付價值，不浪費精力在未使用的功能上。
 
-### II. Quality Through Testing
+### II. 透過測試確保品質
 
-Code quality is non-negotiable, but testing must be pragmatic and focused on user scenarios.
+程式碼品質不容妥協，但測試必須務實且專注於使用者場景。
 
-**Rules**:
-- Write tests for all user-facing functionality and critical paths
-- Focus on integration tests that validate end-to-end user journeys
-- Unit tests are optional—use only where complexity demands isolation
-- All tests must pass before deployment
-- Test coverage targets behavior, not arbitrary percentage goals
+**規則**：
+- 為所有使用者導向功能和關鍵路徑編寫測試
+- 專注於驗證端到端使用者旅程的整合測試
+- 單元測試為選用——僅在複雜度需要隔離時使用
+- 所有測試必須在部署前通過
+- 測試覆蓋率針對行為，而非任意百分比目標
 
-**Rationale**: Testing ensures reliability and enables confident refactoring. User-journey tests provide maximum value with minimal overhead compared to exhaustive unit testing.
+**理念**：測試確保可靠性並支援自信的重構。使用者旅程測試相較於詳盡的單元測試，以最小開銷提供最大價值。
 
-### III. Simplicity Over Perfection
+### III. 簡單勝過完美
 
-Avoid over-engineering. Choose the simplest solution that works.
+避免過度工程。選擇最簡單可行的方案。
 
-**Rules**:
-- Prefer direct implementations over abstraction layers (e.g., no Repository pattern unless proven necessary)
-- No premature optimization—optimize only when performance problems are measured
-- Avoid adding frameworks, libraries, or patterns "for future flexibility"
-- Every complexity decision MUST be justified with concrete current need
-- Default to fewer files, fewer layers, fewer dependencies
+**規則**：
+- 偏好直接實作而非抽象層（例如：除非被證明必要，否則不使用 Repository 模式）
+- 不過早優化——僅在效能問題被測量時才優化
+- 避免為「未來彈性」添加框架、函式庫或模式
+- 每個複雜度決策**必須**有具體當前需求的理由
+- 預設使用更少檔案、更少層級、更少依賴
 
-**Rationale**: Complexity is debt. Simple code is easier to understand, test, and modify. YAGNI (You Aren't Gonna Need It) principles keep development fast and maintenance low.
+**理念**：複雜度是債務。簡單的程式碼更容易理解、測試和修改。YAGNI（你不會需要它）原則保持開發快速和維護成本低。
 
-### IV. Convenience and Developer Experience
+### IV. 便利性和開發者體驗
 
-Developer efficiency directly impacts delivery speed. Reduce friction everywhere.
+開發者效率直接影響交付速度。減少各處摩擦。
 
-**Rules**:
-- Automate repetitive tasks (linting, formatting, testing, deployment)
-- Clear error messages and logging for rapid debugging
-- Local development must work with minimal setup
-- Documentation is code comments + runnable quickstart—no separate manual unless necessary
-- Use conventions over configuration where possible
+**規則**：
+- 自動化重複性任務（linting、格式化、測試、部署）
+- 清晰的錯誤訊息和日誌以便快速除錯
+- 本地開發必須以最少設定即可運作
+- 文件即程式碼註解 + 可執行快速入門——除非必要否則不另寫手冊
+- 在可能的情況下使用慣例優於配置
 
-**Rationale**: Time spent on tooling setup, debugging cryptic errors, or searching for documentation is time not spent delivering features. Good DX compounds productivity gains.
+**理念**：花在工具設定、除錯神秘錯誤或搜尋文件的時間，就是沒有花在交付功能的時間。良好的開發者體驗帶來複利式的生產力提升。
 
-### V. Usability and User Value
+### V. 可用性和使用者價值
 
-Every decision must optimize for end-user value and usability.
+每個決策必須優化終端使用者價值和可用性。
 
-**Rules**:
-- User experience takes priority over technical elegance
-- Features must solve real user pain points, not theoretical problems
-- Gather user feedback early and iterate based on actual usage
-- Performance goals must be user-centric (response time, reliability)
-- Error handling must be user-friendly, not developer-friendly
+**規則**：
+- 使用者體驗優先於技術優雅
+- 功能必須解決真實的使用者痛點，而非理論問題
+- 及早收集使用者回饋並根據實際使用情況迭代
+- 效能目標必須以使用者為中心（回應時間、可靠性）
+- 錯誤處理必須對使用者友善，而非對開發者友善
 
-**Rationale**: The bot exists to serve users. Technical decisions that don't improve user outcomes are distractions.
+**理念**：機器人的存在是為了服務使用者。不改善使用者結果的技術決策都是分心。
 
-## Development Workflow
+## 開發工作流程
 
-### Communication and Documentation Language
+### 溝通與文件語言
 
-Specifications and internal design documents MUST use Traditional Chinese (正體中文). All code-related artifacts MUST use English.
+規格與內部設計文件**必須**使用正體中文。所有程式碼相關產物**必須**使用英文。
 
-**Traditional Chinese (正體中文) - For Internal Planning**:
-- Specification documents (spec.md)
-- Planning documents (plan.md, research.md, data-model.md)
-- Task descriptions (tasks.md)
-- Team internal discussions and clarifications
-- User stories and acceptance criteria
+**正體中文 - 用於內部規劃**：
+- 規格文件（spec.md）
+- 規劃文件（plan.md、research.md、data-model.md）
+- 任務描述（tasks.md）
+- 團隊內部討論和釐清
+- 使用者故事和驗收標準
 
-**English - For Code and External Artifacts**:
-- All source code (variable names, function names, class names)
-- Code comments and docstrings
-- Commit messages
-- Pull request titles and descriptions
-- Diagrams and flowcharts (use English labels)
-- Technical terms and API references
-- Error messages and log outputs
-- README and external-facing documentation
+**英文 - 用於程式碼和外部產物**：
+- 所有原始碼（變數名稱、函式名稱、類別名稱）
+- 程式碼註解和文件字串
+- 提交訊息
+- Pull request 標題和描述
+- 圖表和流程圖（使用英文標籤）
+- 技術術語和 API 參考
+- 錯誤訊息和日誌輸出
+- README 和對外文件
 
-**Rationale**: Traditional Chinese for internal planning ensures precise requirement capture and fast team understanding. English for all code artifacts ensures international collaboration readiness, tool compatibility, and alignment with global development standards.
+**理念**：正體中文用於內部規劃確保精確的需求捕捉和快速的團隊理解。英文用於所有程式碼產物確保國際協作就緒性、工具相容性，以及與全球開發標準一致。
 
-### Feature Development Process
+### 功能開發流程
 
-1. **Specify**: Define user scenarios and acceptance criteria (spec.md)
-2. **Plan**: Research and design technical approach (plan.md + research artifacts)
-3. **Clarify**: Resolve underspecified areas before implementation
-4. **Task**: Break down into dependency-ordered, independently testable tasks (tasks.md)
-5. **Implement**: Execute tasks in priority order (P1 → P2 → P3)
-6. **Validate**: Test against original acceptance criteria
+1. **制定規格**：定義使用者場景和驗收標準（spec.md）
+2. **規劃**：研究並設計技術方法（plan.md + 研究產物）
+3. **釐清**：在實作前解決規格不足之處
+4. **任務化**：拆解為依賴排序、可獨立測試的任務（tasks.md）
+5. **實作**：依優先順序執行任務（P1 → P2 → P3）
+6. **驗證**：針對原始驗收標準測試
 
-**Checkpoint Gates**:
-- No implementation without user scenarios defined
-- No tasks without technical plan
-- No deployment without passing tests
+**檢查點**：
+- 沒有定義使用者場景就不實作
+- 沒有技術計畫就不產生任務
+- 沒有通過測試就不部署
 
-### Test Strategy
+### 測試策略
 
-- **Integration Tests**: Required for all user journeys (LINE message flow → GPT → response)
-- **Contract Tests**: Required for external API integrations (LINE API, OpenAI API)
-- **Unit Tests**: Optional—use only for complex business logic requiring isolation
-- **Manual Testing**: Required for MVP validation before first release
+- **整合測試**：所有使用者旅程必須（LINE 訊息流程 → GPT → 回應）
+- **契約測試**：外部 API 整合必須（LINE API、OpenAI API）
+- **單元測試**：選用——僅用於需要隔離的複雜業務邏輯
+- **手動測試**：首次發布前的 MVP 驗證必須
 
-### Incremental Delivery
+### 漸進式交付
 
-- Each user story must be independently deployable
-- P1 stories constitute the MVP—deploy and validate before P2/P3
-- Use feature flags or branches to isolate incomplete work
-- Every deployment must be a releasable increment
+- 每個使用者故事必須可獨立部署
+- P1 故事構成 MVP——在 P2/P3 之前部署並驗證
+- 使用功能旗標或分支隔離未完成工作
+- 每次部署必須是可發布的增量
 
-### Git Workflow
+### Git 工作流程
 
-**Branch Naming Format**: `$action/$description`
-- Examples:
+**分支命名格式**：`$action/$description`
+- 範例：
   - `feat/integrate-line`
   - `fix/response-token-too-short`
   - `refactor/simplify-gpt-prompt`
   - `docs/update-readme`
 
-**Commit Message Format**: `$action(service/module/component): $message`
-- Examples:
+**提交訊息格式**：`$action(service/module/component): $message`
+- 範例：
   - `fix(linebot): error message`
   - `feat(webhook): add retry logic`
   - `refactor(gpt): simplify prompt structure`
   - `docs(readme): add deployment guide`
 
-**Allowed Actions**:
-- `release` — Release new version
-- `feat` — New feature
-- `fix` — Bug fix
-- `refactor` — Code refactoring (no functional change)
-- `docs` — Documentation updates
-- `test` — Test updates or additions
-- `style` — Code style changes (formatting, whitespace)
-- `chore` — Other miscellaneous changes (build, tooling)
+**允許的動作**：
+- `release` — 發布新版本
+- `feat` — 新功能
+- `fix` — 錯誤修復
+- `refactor` — 程式碼重構（無功能變更）
+- `docs` — 文件更新
+- `test` — 測試更新或新增
+- `style` — 程式碼風格變更（格式化、空白）
+- `chore` — 其他雜項變更（建置、工具）
 
-**Commit Guidelines**:
-- Keep commit messages concise and descriptive
-- Use imperative mood (e.g., "add" not "added" or "adds")
-- Reference issue numbers when applicable (e.g., `fix(linebot): handle empty messages (#42)`)
-- One logical change per commit
+**提交指南**：
+- 保持提交訊息簡潔且描述性
+- 使用祈使語氣（例如：「add」而非「added」或「adds」）
+- 適當時參考議題編號（例如：`fix(linebot): handle empty messages (#42)`）
+- 每次提交一個邏輯變更
 
-**Branch Strategy**:
-- `main` — Production-ready code
-- `feat/*` — Feature development branches
-- `fix/*` — Bug fix branches
-- Create pull requests for all changes
-- Delete branches after merging
+**分支策略**：
+- `main` — 可用於生產環境的程式碼
+- `feat/*` — 功能開發分支
+- `fix/*` — 錯誤修復分支
+- 所有變更建立 pull request
+- 合併後刪除分支
 
-## Technical Constraints
+## 技術約束
 
-### Mandatory Quality Standards
+### 強制性品質標準
 
-- **Security**: No hardcoded secrets in code (use environment variables)
-- **Error Handling**: All external API calls must handle failures gracefully
-- **Logging**: Log all user interactions and errors for debugging
-- **Performance**: LINE webhook responses must complete within 3 seconds (platform limit)
+- **安全性**：程式碼中不得有硬編碼的秘密（使用環境變數）
+- **錯誤處理**：所有外部 API 呼叫必須妥善處理失敗
+- **日誌**：記錄所有使用者互動和錯誤以便除錯
+- **效能**：LINE webhook 回應必須在 3 秒內完成（平台限制）
 
-### Technology Stack
+### 技術堆疊
 
-- **Language**: Python 3.11+
-- **Framework**: Flask (minimal web framework)
-- **APIs**: LINE Messaging API, OpenAI API
-- **Testing**: pytest for integration/unit tests
-- **Deployment**: Environment-specific (dev/prod) configuration via env vars
+- **語言**：Python 3.11+
+- **框架**：Flask（最小化網頁框架）
+- **API**：LINE Messaging API、OpenAI API
+- **測試**：pytest 用於整合／單元測試
+- **部署**：透過環境變數進行環境特定（dev/prod）配置
 
-### Avoid Unless Justified
+### 除非有理由否則避免
 
-- ORM frameworks (use direct database queries if database needed)
-- Complex state management (keep bot stateless or use simple session storage)
-- Microservices architecture (monolith until proven bottleneck)
-- Frontend frameworks (bot interface is LINE app)
+- ORM 框架（如需資料庫則使用直接資料庫查詢）
+- 複雜的狀態管理（保持機器人無狀態或使用簡單的 session 儲存）
+- 微服務架構（在被證明為瓶頸前使用單體）
+- 前端框架（機器人介面是 LINE 應用程式）
 
-## Governance
+## 治理
 
-### Constitution Authority
+### 憲章權威
 
-This constitution supersedes all other development practices and preferences. When in doubt, refer back to the five core principles: MVP-First, Quality Through Testing, Simplicity Over Perfection, Convenience and Developer Experience, and Usability and User Value.
+本憲章優先於所有其他開發實踐和偏好。當有疑問時，回顧五個核心原則：MVP 優先、透過測試確保品質、簡單勝過完美、便利性和開發者體驗，以及可用性和使用者價值。
 
-### Compliance Requirements
+### 合規要求
 
-- All PRs must include justification for any complexity introduced
-- Code reviews must explicitly verify: Does this align with constitution principles?
-- Any deviation from principles requires documented rationale in PR description
-- Constitution violations block merge unless explicitly approved as exception
+- 所有 PR 必須包含引入任何複雜度的理由
+- 程式碼審查必須明確驗證：這是否符合憲章原則？
+- 任何偏離原則的情況都需要在 PR 描述中記錄理由
+- 違反憲章的情況會阻止合併，除非明確核准為例外
 
-### Amendment Process
+### 修訂流程
 
-1. Propose amendment with rationale and impact analysis
-2. Document what problem the amendment solves
-3. Update version following semantic versioning:
-   - **MAJOR**: Removing or redefining core principles (backward incompatible)
-   - **MINOR**: Adding new principle or expanding existing guidance
-   - **PATCH**: Clarifications, wording improvements, typo fixes
-4. Propagate changes to all dependent templates (plan, spec, tasks)
-5. Commit with changelog in sync impact report
+1. 提出修訂案並附上理由和影響分析
+2. 記錄修訂案解決的問題
+3. 遵循語義化版本更新版本：
+   - **MAJOR**：移除或重新定義核心原則（不向後相容）
+   - **MINOR**：新增原則或擴充現有指導
+   - **PATCH**：釐清、措辭改進、錯字修正
+4. 將變更傳播到所有相依模板（plan、spec、tasks）
+5. 在同步影響報告中附上變更日誌提交
 
-### Complexity Justification Template
+### 複雜度理由模板
 
-When violating simplicity principle, document in plan.md:
+當違反簡單性原則時，在 plan.md 中記錄：
 
-| Violation | Why Needed | Simpler Alternative Rejected Because |
-|-----------|------------|-------------------------------------|
-| [Pattern/library added] | [Specific current problem] | [Why simpler solution insufficient] |
+| 違反項目 | 為何需要 | 拒絕的更簡單替代方案及原因 |
+|---------|---------|------------------------|
+| [新增的模式/函式庫] | [具體當前問題] | [為何更簡單方案不足] |
 
-**Version**: 1.1.0 | **Ratified**: 2025-11-11 | **Last Amended**: 2025-11-11
+**版本**：2.0.0 | **批准日期**：2025-11-11 | **最後修訂**：2025-11-12
