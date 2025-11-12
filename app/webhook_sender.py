@@ -16,21 +16,26 @@ logger = logging.getLogger(__name__)
 def send_to_webhook(entry: BookkeepingEntry) -> bool:
     """
     Send bookkeeping data to Make.com webhook
-    
+
     Converts BookkeepingEntry to JSON format expected by Make.com
     and sends via POST request to webhook URL.
-    
+
     Args:
         entry: BookkeepingEntry object
-    
+
     Returns:
         bool: True if success, False if failed
-    
+
     Error handling:
         - Network errors: returns False
         - HTTP 4xx/5xx: returns False
         - Timeout (default 10s): returns False
     """
+    # Check if webhook URL is configured
+    if not WEBHOOK_URL:
+        logger.warning("WEBHOOK_URL not configured, skipping webhook send")
+        return True
+
     # Prepare payload for Make.com (using Chinese field names as per spec)
     payload = {
         "日期": entry.日期,
