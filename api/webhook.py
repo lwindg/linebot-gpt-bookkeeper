@@ -9,6 +9,14 @@ This module handles:
 4. Return 200 OK to LINE (required for webhook acknowledgment)
 """
 
+import sys
+import os
+from pathlib import Path
+
+# Add project root to sys.path for local development
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
 import logging
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
