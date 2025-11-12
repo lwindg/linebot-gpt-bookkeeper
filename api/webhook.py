@@ -41,14 +41,20 @@ line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 
+@app.route("/api/webhook", methods=['GET'])
+def webhook_health():
+    """Health check endpoint for GET requests"""
+    return 'LINE Bot is running!', 200
+
+
 @app.route("/api/webhook", methods=['POST'])
 def webhook():
     """
     LINE Webhook entry function
-    
+
     Handles POST requests from LINE Platform.
     Validates signature and delegates to handler for processing.
-    
+
     Returns:
         str: Always returns 'OK' to acknowledge receipt to LINE
     """
