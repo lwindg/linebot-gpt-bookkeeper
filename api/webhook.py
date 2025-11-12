@@ -36,9 +36,42 @@ logger = logging.getLogger(__name__)
 # Initialize Flask app
 app = Flask(__name__)
 
-# Initialize LINE Bot API client and Webhook Handler
-line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
-handler = WebhookHandler(LINE_CHANNEL_SECRET)
+# Global variables for lazy initialization (Vercel serverless requirement)
+_line_bot_api = None
+_handler = None
+_handler_registered = False
+
+
+def get_line_bot_api():
+    """Get or initialize LINE Bot API client (lazy initialization)"""
+    global _line_bot_api
+    if _line_bot_api is None:
+        logger.info("Initializing LineBotApi")
+        _line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
+    return _line_bot_api
+
+
+def get_handler():
+    """Get or initialize Webhook Handler (lazy initialization)"""
+    global _handler, _handler_registered
+    if _handler is None:
+        logger.info("Initializing WebhookHandler")
+        _handler = WebhookHandler(LINE_CHANNEL_SECRET)
+
+        # Register event handler
+        if not _handler_registered:
+            @_handler.add(MessageEvent, message=TextMessage)
+            def message_text(event):
+                """Handle text message events"""
+                try:
+                    handle_text_message(event, get_line_bot_api())
+                except Exception as e:
+                    logger.error(f"Error in message_text handler: {e}")
+
+            _handler_registered = True
+            logger.info("Event handler registered")
+
+    return _handler
 
 
 @app.route("/api/webhook", methods=['GET'])
@@ -63,11 +96,14 @@ def webhook():
     if not signature:
         logger.warning("Missing X-Line-Signature header")
         abort(400)
-    
+
     # Get request body
     body = request.get_data(as_text=True)
     logger.info(f"Request body: {body}")
-    
+
+    # Get handler (lazy initialization)
+    handler = get_handler()
+
     # Validate signature and handle events
     try:
         handler.handle(body, signature)
@@ -77,26 +113,9 @@ def webhook():
     except Exception as e:
         # Even on error, return 200 to prevent LINE from retrying
         logger.error(f"Error handling webhook: {e}")
-    
+
     return 'OK'
 
-
-@handler.add(MessageEvent, message=TextMessage)
-def message_text(event):
-    """
-    Handle text message events
-    
-    Called automatically when a text message event is received.
-    Delegates actual processing to line_handler module.
-    
-    Args:
-        event: LINE MessageEvent
-    """
-    try:
-        handle_text_message(event, line_bot_api)
-    except Exception as e:
-        logger.error(f"Error in message_text handler: {e}")
-        # Don't raise exception to prevent webhook failure
 
 # Local development entry point
 if __name__ == "__main__":
