@@ -48,18 +48,65 @@ class BookkeepingEntry:
     response_text: Optional[str] = None
 
 
-def generate_transaction_id() -> str:
+def generate_transaction_id(date_str: str, time_str: Optional[str] = None, item: Optional[str] = None) -> str:
     """
     生成交易ID：YYYYMMDD-HHMMSS（使用台北時間）
 
-    格式範例：20251112-143025（2025-11-12 14:30:25 台北時間）
+    時間戳記生成規則：
+    1. 如果提供明確時間 → 使用該時間
+    2. 如果品項含有「早餐」→ 08:00:00
+    3. 如果品項含有「午餐」→ 12:00:00
+    4. 如果品項含有「晚餐」→ 18:00:00
+    5. 其他情況 → 23:59:00
+
+    Args:
+        date_str: 日期字串（YYYY-MM-DD 格式）
+        time_str: 時間字串（HH:MM 或 HH:MM:SS 格式，可選）
+        item: 品項名稱（用於推測合理時間，可選）
 
     Returns:
-        str: 交易ID
+        str: 交易ID（格式：YYYYMMDD-HHMMSS）
+
+    Examples:
+        >>> generate_transaction_id("2025-11-12", "14:30", None)
+        '20251112-143000'
+        >>> generate_transaction_id("2025-11-12", None, "午餐")
+        '20251112-120000'
+        >>> generate_transaction_id("2025-11-12", None, "線上英文課")
+        '20251112-235900'
     """
     taipei_tz = ZoneInfo('Asia/Taipei')
-    now = datetime.now(taipei_tz)
-    return now.strftime("%Y%m%d-%H%M%S")
+
+    # 解析日期
+    date_parts = date_str.split('-')
+    year, month, day = int(date_parts[0]), int(date_parts[1]), int(date_parts[2])
+
+    # 決定時間
+    if time_str:
+        # 情況1：有明確時間
+        time_parts = time_str.split(':')
+        if len(time_parts) == 2:
+            hour, minute, second = int(time_parts[0]), int(time_parts[1]), 0
+        else:  # len == 3
+            hour, minute, second = int(time_parts[0]), int(time_parts[1]), int(time_parts[2])
+    elif item:
+        # 情況2-4：根據品項推測時間
+        if '早餐' in item:
+            hour, minute, second = 8, 0, 0
+        elif '午餐' in item:
+            hour, minute, second = 12, 0, 0
+        elif '晚餐' in item:
+            hour, minute, second = 18, 0, 0
+        else:
+            # 情況5：其他品項，使用 23:59:00
+            hour, minute, second = 23, 59, 0
+    else:
+        # 無時間、無品項：使用 23:59:00
+        hour, minute, second = 23, 59, 0
+
+    # 組合日期時間並格式化
+    dt = datetime(year, month, day, hour, minute, second, tzinfo=taipei_tz)
+    return dt.strftime("%Y%m%d-%H%M%S")
 
 
 def process_message(user_message: str) -> BookkeepingEntry:
@@ -114,12 +161,22 @@ def process_message(user_message: str) -> BookkeepingEntry:
                 if not entry_data.get(field):
                     raise ValueError(f"Missing required field: {field}")
 
-            # 生成交易ID
-            entry_data["交易ID"] = generate_transaction_id()
-
-            # 補充預設值
+            # 補充日期預設值（在生成交易ID之前）
+            taipei_tz = ZoneInfo('Asia/Taipei')
             if not entry_data.get("日期"):
-                entry_data["日期"] = datetime.now().strftime("%Y-%m-%d")
+                entry_data["日期"] = datetime.now(taipei_tz).strftime("%Y-%m-%d")
+
+            # 提取時間和品項用於生成交易ID
+            time_str = entry_data.get("時間")  # GPT可能會返回時間（可選）
+            item = entry_data.get("品項")
+            date_str = entry_data.get("日期")
+
+            # 生成交易ID（根據日期、時間、品項智能推測時間戳記）
+            entry_data["交易ID"] = generate_transaction_id(date_str, time_str, item)
+
+            # 移除時間欄位（不應發送到webhook）
+            if "時間" in entry_data:
+                del entry_data["時間"]
 
             # 確保數值型別正確
             if "原幣金額" in entry_data:
