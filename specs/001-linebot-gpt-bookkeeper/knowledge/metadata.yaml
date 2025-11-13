@@ -1,0 +1,12 @@
+meta:
+  package_name: 記帳助理週期設定
+  version: 1.0.0
+  created_at: 2025-10-25
+  timezone: Asia/Taipei
+  purpose: 提供家庭記帳助理的固定週期帳目與提醒觸發規則
+  files:
+    - periodic_expenses.json
+    - trigger_rules.json
+  note: 
+    - 請將 periodic_expenses.json 上傳至助理知識庫
+    - 將 trigger_rules.json 匯入助理設定（啟用 on_entry_start 觸發）
