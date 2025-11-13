@@ -13,6 +13,7 @@ import logging
 from dataclasses import dataclass
 from typing import Literal, Optional
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from openai import OpenAI
 
 from app.config import OPENAI_API_KEY, GPT_MODEL
@@ -49,14 +50,15 @@ class BookkeepingEntry:
 
 def generate_transaction_id() -> str:
     """
-    生成交易ID：YYYYMMDD-HHMMSS
+    生成交易ID：YYYYMMDD-HHMMSS（使用台北時間）
 
-    格式範例：20251112-143025（2025-11-12 14:30:25）
+    格式範例：20251112-143025（2025-11-12 14:30:25 台北時間）
 
     Returns:
         str: 交易ID
     """
-    now = datetime.now()
+    taipei_tz = ZoneInfo('Asia/Taipei')
+    now = datetime.now(taipei_tz)
     return now.strftime("%Y%m%d-%H%M%S")
 
 
