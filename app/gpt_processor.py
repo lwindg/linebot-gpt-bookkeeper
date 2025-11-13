@@ -18,6 +18,7 @@ from openai import OpenAI
 
 from app.config import OPENAI_API_KEY, GPT_MODEL
 from app.prompts import SYSTEM_PROMPT
+from app.mappings import normalize_payment_method
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +178,10 @@ def process_message(user_message: str) -> BookkeepingEntry:
             # 移除時間欄位（不應發送到webhook）
             if "時間" in entry_data:
                 del entry_data["時間"]
+
+            # 🆕 本地化標準化付款方式（後處理，不影響速度）
+            if "付款方式" in entry_data:
+                entry_data["付款方式"] = normalize_payment_method(entry_data["付款方式"])
 
             # 確保數值型別正確
             if "原幣金額" in entry_data:
