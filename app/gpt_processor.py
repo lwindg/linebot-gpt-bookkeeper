@@ -34,7 +34,7 @@ class BookkeepingEntry:
     原幣金額: Optional[float] = None
     匯率: Optional[float] = 1.0
     付款方式: Optional[str] = None
-    交易ID: Optional[str] = None           # YYYYMMDD-HHMM
+    交易ID: Optional[str] = None           # YYYYMMDD-HHMMSS
     明細說明: Optional[str] = ""
     分類: Optional[str] = None
     專案: Optional[str] = "日常"
@@ -49,15 +49,15 @@ class BookkeepingEntry:
 
 def generate_transaction_id() -> str:
     """
-    生成交易ID：YYYYMMDD-HHMM
+    生成交易ID：YYYYMMDD-HHMMSS
 
-    格式範例：20251112-1430（2025-11-12 14:30）
+    格式範例：20251112-143025（2025-11-12 14:30:25）
 
     Returns:
         str: 交易ID
     """
     now = datetime.now()
-    return now.strftime("%Y%m%d-%H%M")
+    return now.strftime("%Y%m%d-%H%M%S")
 
 
 def process_message(user_message: str) -> BookkeepingEntry:
