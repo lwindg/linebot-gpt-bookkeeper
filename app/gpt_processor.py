@@ -48,6 +48,74 @@ class BookkeepingEntry:
     response_text: Optional[str] = None
 
 
+def parse_semantic_date(date_str: str, taipei_tz: ZoneInfo) -> str:
+    """
+    解析語義化日期或標準日期格式
+
+    支援格式：
+    - 語義化：「今天」、「昨天」、「前天」、「明天」、「後天」
+    - MM-DD 格式：「11-12」→「2025-11-12」
+    - YYYY-MM-DD 格式：「2025-11-12」（不轉換）
+
+    Args:
+        date_str: 日期字串
+        taipei_tz: 台北時區
+
+    Returns:
+        str: YYYY-MM-DD 格式的日期
+
+    Examples:
+        >>> tz = ZoneInfo('Asia/Taipei')
+        >>> parse_semantic_date("今天", tz)
+        '2025-11-13'
+        >>> parse_semantic_date("昨天", tz)
+        '2025-11-12'
+        >>> parse_semantic_date("11-12", tz)
+        '2025-11-12'
+        >>> parse_semantic_date("2025-11-12", tz)
+        '2025-11-12'
+    """
+    from datetime import timedelta
+    import re
+
+    # 如果已經是 YYYY-MM-DD 格式，直接返回
+    if re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
+        return date_str
+
+    now = datetime.now(taipei_tz)
+
+    # 處理語義化日期
+    semantic_dates = {
+        '今天': 0,
+        '昨天': -1,
+        '前天': -2,
+        '大前天': -3,
+        '明天': 1,
+        '後天': 2,
+        '大後天': 3,
+    }
+
+    if date_str in semantic_dates:
+        target_date = now + timedelta(days=semantic_dates[date_str])
+        return target_date.strftime("%Y-%m-%d")
+
+    # 處理 MM-DD 格式（補上當前年份）
+    if re.match(r'^\d{1,2}-\d{1,2}$', date_str):
+        parts = date_str.split('-')
+        month, day = int(parts[0]), int(parts[1])
+        return f"{now.year:04d}-{month:02d}-{day:02d}"
+
+    # 處理 M/D 或 MM/DD 格式
+    if re.match(r'^\d{1,2}/\d{1,2}$', date_str):
+        parts = date_str.split('/')
+        month, day = int(parts[0]), int(parts[1])
+        return f"{now.year:04d}-{month:02d}-{day:02d}"
+
+    # 其他情況，返回今天
+    logger.warning(f"Unknown date format: {date_str}, using today")
+    return now.strftime("%Y-%m-%d")
+
+
 def generate_transaction_id(date_str: str, time_str: Optional[str] = None, item: Optional[str] = None, use_current_time: bool = False) -> str:
     """
     生成交易ID：YYYYMMDD-HHMMSS（使用台北時間）
@@ -172,8 +240,17 @@ def process_message(user_message: str) -> BookkeepingEntry:
 
             # 補充日期預設值（在生成交易ID之前）
             taipei_tz = ZoneInfo('Asia/Taipei')
-            user_provided_date = bool(entry_data.get("日期"))  # 記錄用戶是否提供日期
-            if not entry_data.get("日期"):
+
+            # 處理日期（包括語義化日期轉換）
+            date_value = entry_data.get("日期")
+            user_provided_date = bool(date_value)  # 記錄用戶是否提供日期
+
+            if date_value:
+                # 處理語義化日期和標準日期格式
+                date_str = parse_semantic_date(date_value, taipei_tz)
+                entry_data["日期"] = date_str
+            else:
+                # 無日期，使用今天
                 entry_data["日期"] = datetime.now(taipei_tz).strftime("%Y-%m-%d")
 
             # 提取時間和品項用於生成交易ID
