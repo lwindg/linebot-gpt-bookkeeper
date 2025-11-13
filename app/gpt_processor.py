@@ -48,26 +48,31 @@ class BookkeepingEntry:
     response_text: Optional[str] = None
 
 
-def generate_transaction_id(date_str: str, time_str: Optional[str] = None, item: Optional[str] = None) -> str:
+def generate_transaction_id(date_str: str, time_str: Optional[str] = None, item: Optional[str] = None, use_current_time: bool = False) -> str:
     """
     生成交易ID：YYYYMMDD-HHMMSS（使用台北時間）
 
     時間戳記生成規則：
     1. 如果提供明確時間 → 使用該時間
-    2. 如果品項含「早餐」→ 08:00:00
-    3. 如果品項含「午餐」→ 12:00:00
-    4. 如果品項含「晚餐」→ 18:00:00
-    5. 其他情況 → 23:59:00
+    2. 如果用戶未提供日期（預設今天）且無明確時間 → 使用當前時間
+    3. 如果提供過去日期且無明確時間，根據品項推測：
+       - 品項含「早餐」→ 08:00:00
+       - 品項含「午餐」→ 12:00:00
+       - 品項含「晚餐」→ 18:00:00
+       - 其他情況 → 23:59:00
 
     Args:
         date_str: 日期字串（YYYY-MM-DD 格式）
         time_str: 時間字串（HH:MM 或 HH:MM:SS 格式，可選）
         item: 品項名稱（用於推測合理時間，可選）
+        use_current_time: 是否使用當前時間（當用戶未提供日期時為 True）
 
     Returns:
         str: 交易ID（格式：YYYYMMDD-HHMMSS）
 
     Examples:
+        >>> generate_transaction_id("2025-11-13", None, "點心", use_current_time=True)
+        '20251113-143027'  # 使用當前時間
         >>> generate_transaction_id("2025-11-12", "14:30", None)
         '20251112-143000'
         >>> generate_transaction_id("2025-11-12", None, "午餐")
@@ -89,8 +94,12 @@ def generate_transaction_id(date_str: str, time_str: Optional[str] = None, item:
             hour, minute, second = int(time_parts[0]), int(time_parts[1]), 0
         else:  # len == 3
             hour, minute, second = int(time_parts[0]), int(time_parts[1]), int(time_parts[2])
+    elif use_current_time:
+        # 情況2：用戶未提供日期（預設今天）且無明確時間，使用當前時間
+        now = datetime.now(taipei_tz)
+        hour, minute, second = now.hour, now.minute, now.second
     elif item:
-        # 情況2-4：根據品項推測時間
+        # 情況3-5：提供過去日期且無明確時間，根據品項推測時間
         if '早餐' in item:
             hour, minute, second = 8, 0, 0
         elif '午餐' in item:
@@ -98,7 +107,7 @@ def generate_transaction_id(date_str: str, time_str: Optional[str] = None, item:
         elif '晚餐' in item:
             hour, minute, second = 18, 0, 0
         else:
-            # 情況5：其他品項，使用 23:59:00
+            # 其他品項，使用 23:59:00
             hour, minute, second = 23, 59, 0
     else:
         # 無時間、無品項：使用 23:59:00
@@ -163,6 +172,7 @@ def process_message(user_message: str) -> BookkeepingEntry:
 
             # 補充日期預設值（在生成交易ID之前）
             taipei_tz = ZoneInfo('Asia/Taipei')
+            user_provided_date = bool(entry_data.get("日期"))  # 記錄用戶是否提供日期
             if not entry_data.get("日期"):
                 entry_data["日期"] = datetime.now(taipei_tz).strftime("%Y-%m-%d")
 
@@ -171,8 +181,11 @@ def process_message(user_message: str) -> BookkeepingEntry:
             item = entry_data.get("品項")
             date_str = entry_data.get("日期")
 
+            # 判斷是否為今天且無明確時間（用戶沒提供日期，應使用當前時間）
+            use_current_time = not user_provided_date and not time_str
+
             # 生成交易ID（根據日期、時間、品項智能推測時間戳記）
-            entry_data["交易ID"] = generate_transaction_id(date_str, time_str, item)
+            entry_data["交易ID"] = generate_transaction_id(date_str, time_str, item, use_current_time)
 
             # 移除時間欄位（不應發送到webhook）
             if "時間" in entry_data:
