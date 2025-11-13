@@ -4,8 +4,14 @@
 本地測試工具 - 直接測試 GPT 解析功能
 
 使用方式：
-  python test_local.py                    # 互動模式
-  python test_local.py "午餐$120現金"     # 單次測試
+  python test_local.py                      # 互動模式（推薦）
+  python test_local.py '午餐$120現金'       # 單次測試（使用單引號）
+  python test_local.py "午餐\\$120現金"     # 單次測試（使用雙引號需跳脫 $）
+
+注意：
+  - 單次測試模式中，如果訊息包含 $ 符號，請使用單引號 '...'
+  - 或使用雙引號但需跳脫：\\$
+  - 推薦使用互動模式以避免 shell 特殊字元問題
 """
 
 import sys
