@@ -30,7 +30,7 @@ class BookkeepingEntry:
 
     # 記帳欄位（若 intent == "bookkeeping" 則必填）
     日期: Optional[str] = None              # YYYY-MM-DD
-    時間: Optional[str] = None              # YYYY-MM-DD
+    時間: Optional[str] = None              # HH:MM
     品項: Optional[str] = None
     原幣別: Optional[str] = "TWD"
     原幣金額: Optional[float] = None
