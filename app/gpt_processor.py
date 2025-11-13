@@ -18,8 +18,6 @@ from openai import OpenAI
 
 from app.config import OPENAI_API_KEY, GPT_MODEL
 from app.prompts import SYSTEM_PROMPT
-from app.mappings import normalize_payment_method
-from app.date_parser import parse_date_from_message
 
 logger = logging.getLogger(__name__)
 
@@ -50,36 +48,32 @@ class BookkeepingEntry:
     response_text: Optional[str] = None
 
 
-def generate_transaction_id(date_str: str, time_str: Optional[str] = None, item: Optional[str] = None, is_today: bool = False) -> str:
+def generate_transaction_id(date_str: str, time_str: Optional[str] = None, item: Optional[str] = None) -> str:
     """
     生成交易ID：YYYYMMDD-HHMMSS（使用台北時間）
 
     時間戳記生成規則：
     1. 如果提供明確時間 → 使用該時間
-    2. 如果沒有明確時間：
-       - 記錄今天的消費（is_today=True）→ 使用當前時間
-       - 記錄過去日期的消費（is_today=False）：
-         - 品項含「早餐」→ 08:00:00
-         - 品項含「午餐」→ 12:00:00
-         - 品項含「晚餐」→ 18:00:00
-         - 其他 → 23:59:00
+    2. 如果品項含「早餐」→ 08:00:00
+    3. 如果品項含「午餐」→ 12:00:00
+    4. 如果品項含「晚餐」→ 18:00:00
+    5. 其他情況 → 23:59:00
 
     Args:
         date_str: 日期字串（YYYY-MM-DD 格式）
         time_str: 時間字串（HH:MM 或 HH:MM:SS 格式，可選）
         item: 品項名稱（用於推測合理時間，可選）
-        is_today: 是否為今天的消費（預設 False）
 
     Returns:
         str: 交易ID（格式：YYYYMMDD-HHMMSS）
 
     Examples:
-        >>> generate_transaction_id("2025-11-13", None, "午餐", is_today=True)
-        '20251113-140530'  # 使用當前時間
-        >>> generate_transaction_id("2025-11-12", None, "午餐", is_today=False)
-        '20251112-120000'  # 使用推測時間
-        >>> generate_transaction_id("2025-11-12", None, "線上英文課", is_today=False)
-        '20251112-235900'  # 非三餐，使用 23:59:00
+        >>> generate_transaction_id("2025-11-12", "14:30", None)
+        '20251112-143000'
+        >>> generate_transaction_id("2025-11-12", None, "午餐")
+        '20251112-120000'
+        >>> generate_transaction_id("2025-11-12", None, "線上英文課")
+        '20251112-235900'
     """
     taipei_tz = ZoneInfo('Asia/Taipei')
 
@@ -95,12 +89,8 @@ def generate_transaction_id(date_str: str, time_str: Optional[str] = None, item:
             hour, minute, second = int(time_parts[0]), int(time_parts[1]), 0
         else:  # len == 3
             hour, minute, second = int(time_parts[0]), int(time_parts[1]), int(time_parts[2])
-    elif is_today:
-        # 情況2：記錄今天的消費，使用當前時間
-        now = datetime.now(taipei_tz)
-        hour, minute, second = now.hour, now.minute, now.second
     elif item:
-        # 情況3-5：記錄過去日期的消費，根據品項推測時間
+        # 情況2-4：根據品項推測時間
         if '早餐' in item:
             hour, minute, second = 8, 0, 0
         elif '午餐' in item:
@@ -108,7 +98,7 @@ def generate_transaction_id(date_str: str, time_str: Optional[str] = None, item:
         elif '晚餐' in item:
             hour, minute, second = 18, 0, 0
         else:
-            # 其他品項，使用 23:59:00
+            # 情況5：其他品項，使用 23:59:00
             hour, minute, second = 23, 59, 0
     else:
         # 無時間、無品項：使用 23:59:00
@@ -141,19 +131,15 @@ def process_message(user_message: str) -> BookkeepingEntry:
         ValueError: JSON 解析失敗或必要欄位缺失
     """
     try:
-        # 🆕 本地預處理：提取日期和時間（提高準確性）
-        processed_message, local_date, local_time = parse_date_from_message(user_message)
-        logger.info(f"Date parsing: original='{user_message}', processed='{processed_message}', date={local_date}, time={local_time}")
-
         # 初始化 OpenAI client
         client = OpenAI(api_key=OPENAI_API_KEY)
 
-        # 呼叫 Chat Completions API（使用處理後的訊息）
+        # 呼叫 Chat Completions API
         completion = client.chat.completions.create(
             model=GPT_MODEL,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": processed_message}  # 🆕 使用處理後的訊息
+                {"role": "user", "content": user_message}
             ],
             response_format={"type": "json_object"}  # 確保 JSON 輸出
         )
@@ -175,39 +161,22 @@ def process_message(user_message: str) -> BookkeepingEntry:
                 if not entry_data.get(field):
                     raise ValueError(f"Missing required field: {field}")
 
-            # 🆕 本地日期覆蓋：如果本地解析到日期，優先使用本地日期（更準確）
+            # 補充日期預設值（在生成交易ID之前）
             taipei_tz = ZoneInfo('Asia/Taipei')
-            if local_date:
-                entry_data["日期"] = local_date
-                logger.info(f"Using local parsed date: {local_date}")
-            elif not entry_data.get("日期"):
-                # 沒有本地日期，也沒有 GPT 日期，使用今天
+            if not entry_data.get("日期"):
                 entry_data["日期"] = datetime.now(taipei_tz).strftime("%Y-%m-%d")
 
-            # 🆕 本地時間覆蓋：如果本地解析到時間，優先使用本地時間
-            if local_time:
-                entry_data["時間"] = local_time
-                logger.info(f"Using local parsed time: {local_time}")
-
             # 提取時間和品項用於生成交易ID
-            time_str = entry_data.get("時間")  # 可能來自本地解析或 GPT
+            time_str = entry_data.get("時間")  # GPT可能會返回時間（可選）
             item = entry_data.get("品項")
             date_str = entry_data.get("日期")
 
-            # 判斷是否為今天（用於決定時間戳記邏輯）
-            today_str = datetime.now(taipei_tz).strftime("%Y-%m-%d")
-            is_today = (date_str == today_str)
-
             # 生成交易ID（根據日期、時間、品項智能推測時間戳記）
-            entry_data["交易ID"] = generate_transaction_id(date_str, time_str, item, is_today)
+            entry_data["交易ID"] = generate_transaction_id(date_str, time_str, item)
 
             # 移除時間欄位（不應發送到webhook）
             if "時間" in entry_data:
                 del entry_data["時間"]
-
-            # 🆕 本地化標準化付款方式（後處理，不影響速度）
-            if "付款方式" in entry_data:
-                entry_data["付款方式"] = normalize_payment_method(entry_data["付款方式"])
 
             # 確保數值型別正確
             if "原幣金額" in entry_data:
