@@ -19,6 +19,7 @@ from openai import OpenAI
 from app.config import OPENAI_API_KEY, GPT_MODEL
 from app.prompts import SYSTEM_PROMPT
 from app.mappings import normalize_payment_method
+from app.date_parser import parse_date_from_message
 
 logger = logging.getLogger(__name__)
 
@@ -140,15 +141,19 @@ def process_message(user_message: str) -> BookkeepingEntry:
         ValueError: JSON 解析失敗或必要欄位缺失
     """
     try:
+        # 🆕 本地預處理：提取日期和時間（提高準確性）
+        processed_message, local_date, local_time = parse_date_from_message(user_message)
+        logger.info(f"Date parsing: original='{user_message}', processed='{processed_message}', date={local_date}, time={local_time}")
+
         # 初始化 OpenAI client
         client = OpenAI(api_key=OPENAI_API_KEY)
 
-        # 呼叫 Chat Completions API
+        # 呼叫 Chat Completions API（使用處理後的訊息）
         completion = client.chat.completions.create(
             model=GPT_MODEL,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_message}
+                {"role": "user", "content": processed_message}  # 🆕 使用處理後的訊息
             ],
             response_format={"type": "json_object"}  # 確保 JSON 輸出
         )
@@ -170,13 +175,22 @@ def process_message(user_message: str) -> BookkeepingEntry:
                 if not entry_data.get(field):
                     raise ValueError(f"Missing required field: {field}")
 
-            # 補充日期預設值（在生成交易ID之前）
+            # 🆕 本地日期覆蓋：如果本地解析到日期，優先使用本地日期（更準確）
             taipei_tz = ZoneInfo('Asia/Taipei')
-            if not entry_data.get("日期"):
+            if local_date:
+                entry_data["日期"] = local_date
+                logger.info(f"Using local parsed date: {local_date}")
+            elif not entry_data.get("日期"):
+                # 沒有本地日期，也沒有 GPT 日期，使用今天
                 entry_data["日期"] = datetime.now(taipei_tz).strftime("%Y-%m-%d")
 
+            # 🆕 本地時間覆蓋：如果本地解析到時間，優先使用本地時間
+            if local_time:
+                entry_data["時間"] = local_time
+                logger.info(f"Using local parsed time: {local_time}")
+
             # 提取時間和品項用於生成交易ID
-            time_str = entry_data.get("時間")  # GPT可能會返回時間（可選）
+            time_str = entry_data.get("時間")  # 可能來自本地解析或 GPT
             item = entry_data.get("品項")
             date_str = entry_data.get("日期")
 
