@@ -116,7 +116,8 @@
 - 無需釐清（使用簡化設計）
 
 **v1.5.0 相關**：
-- Q: When a user sends a single message with multiple expenses (e.g., "早餐80元，午餐150元"), how should the system create transaction records? → A: Same transaction ID for all items in the message, multiple webhooks
+- Q: When a user sends a single message with multiple expense items (e.g., "早餐80元，午餐150元，現金"), how should the system create transaction records? → A: This is ONE transaction with multiple items. Same transaction ID and payment method for all items, send multiple webhooks (one per item)
+- Q: What if a message contains different payment methods (e.g., "早餐80元現金，午餐150元刷卡")? → A: This represents TWO separate transactions, not one. System should reject and ask user to record them separately
 - Q: When users send images (potentially receipts), how should the system process them? → A: Use GPT Vision API to extract receipt details and create transaction if clear, ask for clarification if ambiguous
 
 **v2 完整版相關**：
@@ -156,12 +157,13 @@
 
 #### v1.5.0 新增場景
 
-6. **假設** 使用者發送「早餐80元現金，午餐150元刷卡」（單一訊息多筆支出），**當** 系統處理，**則** 為兩筆支出使用相同的交易ID，但發送兩個獨立的 webhook
-7. **假設** 使用者發送收據圖片，**當** 系統使用 GPT Vision API 處理，**則** 提取品項、金額、日期等資訊並建立記帳項目，若資訊不清晰則回覆「無法辨識收據資訊，請提供文字描述」
-8. **假設** 使用者發送包含多筆支出的收據圖片，**當** 系統識別圖片中有多個品項，**則** 為所有品項使用相同的交易ID，並發送多個獨立的 webhook
+6. **假設** 使用者發送「早餐80元，午餐150元，現金」（單一訊息多筆支出，同一種付款方式），**當** 系統處理，**則** 為兩筆支出使用相同的交易ID和付款方式，但發送兩個獨立的 webhook
+7. **假設** 使用者發送「咖啡50，三明治35，用狗卡」（多個項目共用付款方式），**當** 系統處理，**則** 正確識別兩個項目都使用「台新狗卡」付款，使用相同交易ID
+8. **假設** 使用者發送收據圖片，**當** 系統使用 GPT Vision API 處理，**則** 提取品項、金額、日期等資訊並建立記帳項目，若資訊不清晰則回覆「無法辨識收據資訊，請提供文字描述」
+9. **假設** 使用者發送包含多筆支出的收據圖片（如超商收據列出多個商品），**當** 系統識別圖片中有多個品項，**則** 為所有品項使用相同的交易ID和付款方式，並發送多個獨立的 webhook
 
 **v1.5.0 增強**：
-- 單一訊息多筆支出處理
+- 單一訊息多筆支出處理（同一次支出行為，多個項目，共用付款方式）
 - 圖片/收據識別（GPT Vision API）
 - 維持無狀態架構（不需要儲存層）
 - 交易ID 格式與 v1 相同（時間戳記）
@@ -291,9 +293,11 @@
 #### v1.5.0 邊緣案例
 
 **多筆支出處理**：
-- **當使用者在單一訊息中混合記帳項目和一般對話時**（例如「早餐80元現金，今天天氣不錯」），系統將僅處理識別出的記帳項目，對於一般對話部分透過 GPT 回應
-- **當使用者發送多筆支出但其中部分資訊不完整時**（例如「早餐80元現金，午餐買了便當」缺少午餐金額），系統回覆「第二筆支出缺少金額，請提供完整資訊」，且不觸發任何 webhook
-- **當系統無法明確區分單一訊息中的多筆支出時**（例如「買了三明治和咖啡80元現金」），系統回覆「無法確定是一筆還是多筆支出，請分別描述」
+- **當使用者在單一訊息中混合記帳項目和一般對話時**（例如「早餐80元，午餐150元，現金，今天天氣不錯」），系統將僅處理識別出的記帳項目，對於一般對話部分透過 GPT 回應
+- **當使用者發送多筆項目但缺少付款方式時**（例如「早餐80元，午餐150元」缺少付款方式），系統回覆「請提供付款方式」，且不觸發任何 webhook
+- **當使用者發送多筆項目但其中部分缺少金額時**（例如「早餐80元，午餐買了便當，現金」缺少午餐金額），系統回覆「第二個項目缺少金額，請提供完整資訊」，且不觸發任何 webhook
+- **當系統無法明確區分單一訊息中的多個項目時**（例如「三明治和咖啡80元現金」），系統回覆「無法確定是一個項目還是多個項目（三明治、咖啡），請分別描述金額」
+- **當使用者在同一訊息中混合不同付款方式時**（例如「早餐80元現金，午餐150元刷卡」），系統判斷為兩次獨立支出行為，回覆「偵測到不同付款方式，請分開記帳」
 
 **圖片/收據處理**：
 - **當使用者發送的圖片不是收據時**（例如風景照、人物照），系統回覆「抱歉，無法從圖片中識別收據資訊，請提供文字描述」
