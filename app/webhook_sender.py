@@ -7,6 +7,7 @@ This module sends bookkeeping data to Make.com webhook.
 
 import requests
 import logging
+from typing import List, Tuple
 from app.config import WEBHOOK_URL, WEBHOOK_TIMEOUT
 from app.gpt_processor import BookkeepingEntry
 
@@ -82,3 +83,44 @@ def send_to_webhook(entry: BookkeepingEntry) -> bool:
     except Exception as e:
         logger.error(f"Unexpected error sending webhook: {e}")
         return False
+
+
+def send_multiple_webhooks(entries: List[BookkeepingEntry]) -> Tuple[int, int]:
+    """
+    為多個項目發送 webhook（v1.5.0 新功能）
+
+    依序為每個 entry 呼叫 send_to_webhook()，記錄成功/失敗數量。
+    即使部分失敗，仍繼續處理剩餘項目。
+
+    Args:
+        entries: BookkeepingEntry 列表（共用交易ID）
+
+    Returns:
+        Tuple[int, int]: (成功數量, 失敗數量)
+
+    Examples:
+        >>> entries = [entry1, entry2, entry3]
+        >>> success, failure = send_multiple_webhooks(entries)
+        >>> success
+        3
+        >>> failure
+        0
+    """
+    success_count = 0
+    failure_count = 0
+
+    logger.info(f"Sending {len(entries)} webhooks for multi-item transaction")
+
+    for idx, entry in enumerate(entries, start=1):
+        logger.info(f"Sending webhook {idx}/{len(entries)}: {entry.品項} - {entry.原幣金額} TWD")
+
+        if send_to_webhook(entry):
+            success_count += 1
+            logger.info(f"Webhook {idx}/{len(entries)} sent successfully")
+        else:
+            failure_count += 1
+            logger.error(f"Webhook {idx}/{len(entries)} failed")
+
+    logger.info(f"Multi-webhook batch complete: {success_count} success, {failure_count} failure")
+
+    return (success_count, failure_count)

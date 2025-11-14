@@ -10,14 +10,14 @@ GPT 處理器模組
 
 import json
 import logging
-from dataclasses import dataclass
-from typing import Literal, Optional
+from dataclasses import dataclass, field
+from typing import Literal, Optional, List
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from openai import OpenAI
 
 from app.config import OPENAI_API_KEY, GPT_MODEL
-from app.prompts import SYSTEM_PROMPT
+from app.prompts import SYSTEM_PROMPT, MULTI_EXPENSE_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,22 @@ class BookkeepingEntry:
     附註: Optional[str] = ""
 
     # 對話欄位（若 intent == "conversation" 則必填）
+    response_text: Optional[str] = None
+
+
+@dataclass
+class MultiExpenseResult:
+    """多項目支出處理結果（v1.5.0 新增）"""
+
+    intent: Literal["multi_bookkeeping", "conversation", "error"]
+
+    # 記帳項目列表（若 intent == "multi_bookkeeping" 則必填）
+    entries: List[BookkeepingEntry] = field(default_factory=list)
+
+    # 錯誤訊息（若 intent == "error" 則必填）
+    error_message: Optional[str] = None
+
+    # 對話回應（若 intent == "conversation" 則必填）
     response_text: Optional[str] = None
 
 
@@ -305,3 +321,166 @@ def process_message(user_message: str) -> BookkeepingEntry:
     except Exception as e:
         logger.error(f"GPT API error: {e}")
         raise
+
+
+def process_multi_expense(user_message: str) -> MultiExpenseResult:
+    """
+    處理單一訊息的多項目支出（v1.5.0 新功能）
+
+    流程：
+    1. 構建 GPT messages（使用 MULTI_EXPENSE_PROMPT）
+    2. 呼叫 OpenAI API
+    3. 解析回應（判斷 intent）
+    4. 若為多項記帳 → 驗證所有項目、生成共用交易ID、補充預設值
+    5. 回傳 MultiExpenseResult
+
+    Args:
+        user_message: 使用者訊息文字
+
+    Returns:
+        MultiExpenseResult: 處理後的結果
+
+    支援的 intent：
+        - multi_bookkeeping: 多項目或單項目記帳（items 陣列）
+        - conversation: 一般對話
+        - error: 資訊不完整或包含多種付款方式
+
+    Examples:
+        >>> result = process_multi_expense("早餐80元，午餐150元，現金")
+        >>> result.intent
+        'multi_bookkeeping'
+        >>> len(result.entries)
+        2
+        >>> result.entries[0].付款方式
+        '現金'
+        >>> result.entries[1].付款方式
+        '現金'
+    """
+    try:
+        # 初始化 OpenAI client
+        client = OpenAI(api_key=OPENAI_API_KEY)
+
+        # 呼叫 Chat Completions API（使用 MULTI_EXPENSE_PROMPT）
+        completion = client.chat.completions.create(
+            model=GPT_MODEL,
+            messages=[
+                {"role": "system", "content": MULTI_EXPENSE_PROMPT},
+                {"role": "user", "content": user_message}
+            ],
+            response_format={"type": "json_object"}  # 確保 JSON 輸出
+        )
+
+        # 取得回應並解析 JSON
+        response_text = completion.choices[0].message.content
+        logger.info(f"GPT multi-expense response: {response_text}")
+
+        data = json.loads(response_text)
+        intent = data.get("intent")
+
+        if intent == "multi_bookkeeping":
+            # 多項目記帳意圖：提取資料並驗證
+            payment_method = data.get("payment_method")
+            items = data.get("items", [])
+
+            # 驗證必要欄位
+            if not payment_method:
+                return MultiExpenseResult(
+                    intent="error",
+                    error_message="缺少付款方式，請提供完整資訊"
+                )
+
+            if not items:
+                return MultiExpenseResult(
+                    intent="error",
+                    error_message="未識別到任何記帳項目"
+                )
+
+            # 生成共用交易ID（時間戳記格式）
+            taipei_tz = ZoneInfo('Asia/Taipei')
+            now = datetime.now(taipei_tz)
+            shared_transaction_id = now.strftime("%Y%m%d-%H%M%S")
+
+            # 補充共用日期
+            shared_date = now.strftime("%Y-%m-%d")
+
+            # 處理每個項目
+            entries = []
+            for idx, item_data in enumerate(items, start=1):
+                # 驗證必要欄位
+                品項 = item_data.get("品項")
+                原幣金額 = item_data.get("原幣金額")
+
+                if not 品項:
+                    return MultiExpenseResult(
+                        intent="error",
+                        error_message=f"第{idx}個項目缺少品項名稱，請提供完整資訊"
+                    )
+
+                if 原幣金額 is None:
+                    return MultiExpenseResult(
+                        intent="error",
+                        error_message=f"第{idx}個項目缺少金額，請提供完整資訊"
+                    )
+
+                # 補充預設值和共用欄位
+                entry = BookkeepingEntry(
+                    intent="bookkeeping",
+                    日期=shared_date,
+                    品項=品項,
+                    原幣別="TWD",
+                    原幣金額=float(原幣金額),
+                    匯率=1.0,
+                    付款方式=payment_method,
+                    交易ID=shared_transaction_id,
+                    明細說明=item_data.get("明細說明", ""),
+                    分類=item_data.get("分類", ""),
+                    專案="日常",
+                    必要性=item_data.get("必要性", "必要日常支出"),
+                    代墊狀態="無",
+                    收款支付對象="",
+                    附註=f"多項目支出 {idx}/{len(items)}"
+                )
+
+                entries.append(entry)
+
+            return MultiExpenseResult(
+                intent="multi_bookkeeping",
+                entries=entries
+            )
+
+        elif intent == "conversation":
+            # 一般對話：提取回應文字
+            response = data.get("response", "")
+            return MultiExpenseResult(
+                intent="conversation",
+                response_text=response
+            )
+
+        elif intent == "error":
+            # 錯誤：提取錯誤訊息
+            error_msg = data.get("message", "無法處理您的訊息，請檢查輸入格式")
+            return MultiExpenseResult(
+                intent="error",
+                error_message=error_msg
+            )
+
+        else:
+            # 未知意圖
+            return MultiExpenseResult(
+                intent="error",
+                error_message=f"無法識別意圖：{intent}"
+            )
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse GPT JSON response: {e}")
+        return MultiExpenseResult(
+            intent="error",
+            error_message="系統處理訊息時發生錯誤，請重試"
+        )
+
+    except Exception as e:
+        logger.error(f"GPT API error in process_multi_expense: {e}")
+        return MultiExpenseResult(
+            intent="error",
+            error_message="系統處理訊息時發生錯誤，請重試"
+        )
