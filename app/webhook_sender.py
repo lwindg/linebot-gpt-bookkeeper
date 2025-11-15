@@ -39,6 +39,7 @@ def send_to_webhook(entry: BookkeepingEntry) -> bool:
 
     # Prepare payload for Make.com (using Chinese field names as per spec)
     payload = {
+        "operation": "CREATE",  # v1.5.0: 用於 Make.com Router 區分操作類型
         "日期": entry.日期,
         "品項": entry.品項,
         "原幣別": entry.原幣別,
