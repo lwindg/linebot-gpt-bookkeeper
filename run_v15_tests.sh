@@ -1,19 +1,135 @@
 #!/bin/bash
-# v1.5.0 測試腳本 - 逐個測試並檢視結果
+# v1.5.0 測試腳本 - 支援自動判斷和人工檢視
+#
+# 使用方式：
+#   ./run_v15_tests.sh          # 人工判斷模式（預設）
+#   ./run_v15_tests.sh --auto   # 自動判斷模式
+#   ./run_v15_tests.sh --help   # 顯示說明
+
+# 顏色定義
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# 全域變數
+AUTO_MODE=false
+TOTAL_TESTS=0
+PASSED_TESTS=0
+FAILED_TESTS=0
+SKIPPED_TESTS=0
+
+# 解析參數
+if [[ "$1" == "--auto" ]]; then
+    AUTO_MODE=true
+elif [[ "$1" == "--help" || "$1" == "-h" ]]; then
+    echo "v1.5.0 多項目支出測試腳本"
+    echo ""
+    echo "使用方式："
+    echo "  ./run_v15_tests.sh          人工判斷模式（預設）"
+    echo "  ./run_v15_tests.sh --auto   自動判斷模式"
+    echo "  ./run_v15_tests.sh --help   顯示此說明"
+    echo ""
+    echo "自動判斷模式："
+    echo "  - 自動比對實際結果與預期結果"
+    echo "  - 顯示詳細的差異資訊"
+    echo "  - 統計通過/失敗測試數量"
+    echo "  - 判斷項目：意圖、項目數量、付款方式、錯誤訊息"
+    echo "  - 不判斷：交易ID（每次都不同）"
+    echo ""
+    exit 0
+fi
 
 echo "======================================================================"
 echo "🧪 v1.5.0 多項目支出測試腳本"
 echo "======================================================================"
 echo ""
-echo "使用方式："
-echo "  - 每個測試案例會顯示測試訊息和結果"
-echo "  - 按 Enter 繼續下一個測試"
-echo "  - 按 Ctrl+C 中斷測試"
+if [[ "$AUTO_MODE" == true ]]; then
+    echo "模式：🤖 自動判斷"
+else
+    echo "模式：👤 人工判斷"
+    echo ""
+    echo "使用方式："
+    echo "  - 每個測試案例會顯示測試訊息和結果"
+    echo "  - 按 Enter 繼續下一個測試"
+    echo "  - 按 Ctrl+C 中斷測試"
+fi
 echo ""
 read -p "按 Enter 開始測試..."
 
-# 測試函數
-run_test() {
+# 提取欄位值的輔助函數
+extract_field() {
+    local output="$1"
+    local field="$2"
+
+    case "$field" in
+        "intent")
+            # 提取意圖（可能是「記帳」、「對話」、「錯誤」）
+            echo "$output" | grep "📝 意圖:" | sed 's/.*📝 意圖: //' | xargs
+            ;;
+        "item_count")
+            # 提取項目數量
+            echo "$output" | grep "項目數量:" | sed 's/.*項目數量: //' | xargs
+            ;;
+        "payment")
+            # 提取共用付款方式（多項目格式）
+            echo "$output" | grep "💳 共用付款方式:" | sed 's/.*💳 共用付款方式: //' | xargs
+            ;;
+        "payment_single")
+            # 提取付款方式（單項目格式）
+            echo "$output" | grep "💳 付款:" | sed 's/.*💳 付款: //' | xargs
+            ;;
+        "error_message")
+            # 提取錯誤訊息
+            echo "$output" | grep "💬 錯誤訊息:" | sed 's/.*💬 錯誤訊息: //' | xargs
+            ;;
+        "response")
+            # 提取對話回應
+            echo "$output" | grep "💬 回應:" | sed 's/.*💬 回應: //' | xargs
+            ;;
+    esac
+}
+
+# 比較結果
+compare_result() {
+    local actual="$1"
+    local expected="$2"
+    local field_name="$3"
+
+    # 如果預期值為空，跳過檢查
+    if [[ -z "$expected" ]]; then
+        return 0
+    fi
+
+    # 數字比較（項目數量）
+    if [[ "$field_name" == "項目數量" ]]; then
+        if [[ "$actual" == "$expected" ]]; then
+            return 0
+        else
+            return 1
+        fi
+    fi
+
+    # 包含比較（用於錯誤訊息）
+    if [[ "$field_name" == "錯誤訊息" ]]; then
+        if [[ "$actual" == *"$expected"* ]]; then
+            return 0
+        else
+            return 1
+        fi
+    fi
+
+    # 一般字串比較
+    if [[ "$actual" == "$expected" ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# 測試函數（人工判斷模式）
+run_test_manual() {
     local category="$1"
     local description="$2"
     local message="$3"
@@ -23,7 +139,7 @@ run_test() {
     echo "======================================================================"
     echo "[$category] $description"
     echo "======================================================================"
-    if [ -n "$expected" ]; then
+    if [[ -n "$expected" ]]; then
         echo "預期結果：$expected"
     fi
     echo ""
@@ -34,75 +150,257 @@ run_test() {
     read -p "按 Enter 繼續下一個測試..."
 }
 
+# 測試函數（自動判斷模式）
+run_test_auto() {
+    local category="$1"
+    local description="$2"
+    local message="$3"
+    local expected_desc="$4"
+    local expected_intent="$5"
+    local expected_item_count="$6"
+    local expected_payment="$7"
+    local expected_error_keyword="$8"
+
+    ((TOTAL_TESTS++))
+
+    echo ""
+    echo -e "${BLUE}======================================================================"
+    echo "[$category] $description"
+    echo -e "======================================================================${NC}"
+    echo "📨 測試訊息: $message"
+    if [[ -n "$expected_desc" ]]; then
+        echo "📋 預期: $expected_desc"
+    fi
+
+    # 執行測試並捕獲輸出
+    output=$(python test_local.py "$message" 2>&1)
+
+    # 提取實際結果
+    actual_intent=$(extract_field "$output" "intent")
+    actual_item_count=$(extract_field "$output" "item_count")
+    actual_payment=$(extract_field "$output" "payment")
+    actual_payment_single=$(extract_field "$output" "payment_single")
+    actual_error=$(extract_field "$output" "error_message")
+
+    # 統一付款方式（優先使用多項目格式，否則使用單項目格式）
+    if [[ -z "$actual_payment" ]]; then
+        actual_payment="$actual_payment_single"
+    fi
+
+    # 判斷測試結果
+    test_passed=true
+    failures=()
+
+    # 檢查意圖
+    if ! compare_result "$actual_intent" "$expected_intent" "意圖"; then
+        test_passed=false
+        failures+=("意圖: 預期[$expected_intent] 實際[$actual_intent]")
+    fi
+
+    # 檢查項目數量（只在多項目記帳時）
+    if [[ -n "$expected_item_count" ]]; then
+        if ! compare_result "$actual_item_count" "$expected_item_count" "項目數量"; then
+            test_passed=false
+            failures+=("項目數量: 預期[$expected_item_count] 實際[$actual_item_count]")
+        fi
+    fi
+
+    # 檢查付款方式
+    if [[ -n "$expected_payment" ]]; then
+        if ! compare_result "$actual_payment" "$expected_payment" "付款方式"; then
+            test_passed=false
+            failures+=("付款方式: 預期[$expected_payment] 實際[$actual_payment]")
+        fi
+    fi
+
+    # 檢查錯誤訊息（只在錯誤意圖時）
+    if [[ "$expected_intent" == "錯誤" ]] && [[ -n "$expected_error_keyword" ]]; then
+        if ! compare_result "$actual_error" "$expected_error_keyword" "錯誤訊息"; then
+            test_passed=false
+            failures+=("錯誤訊息: 預期包含[$expected_error_keyword] 實際[$actual_error]")
+        fi
+    fi
+
+    # 顯示結果
+    if [[ "$test_passed" == true ]]; then
+        echo -e "${GREEN}✅ 測試通過${NC}"
+        ((PASSED_TESTS++))
+    else
+        echo -e "${RED}❌ 測試失敗${NC}"
+        echo -e "${YELLOW}差異項目：${NC}"
+        for failure in "${failures[@]}"; do
+            echo -e "  ${RED}✗${NC} $failure"
+        done
+        ((FAILED_TESTS++))
+    fi
+
+    # 顯示實際結果摘要
+    echo ""
+    echo "📊 實際結果："
+    echo "  意圖: $actual_intent"
+    if [[ -n "$actual_item_count" ]]; then
+        echo "  項目數: $actual_item_count"
+    fi
+    if [[ -n "$actual_payment" ]]; then
+        echo "  付款方式: $actual_payment"
+    fi
+    if [[ "$actual_intent" == "錯誤" ]] && [[ -n "$actual_error" ]]; then
+        echo "  錯誤訊息: $actual_error"
+    fi
+
+    echo ""
+
+    # 自動模式下短暫停頓讓使用者看清結果
+    sleep 0.3
+}
+
+# 選擇測試函數
+run_test() {
+    if [[ "$AUTO_MODE" == true ]]; then
+        run_test_auto "$@"
+    else
+        run_test_manual "$1" "$2" "$3" "$4"
+    fi
+}
+
 # ============================================================
 # 單項目記帳（向後相容）
 # ============================================================
 
-run_test "向後相容" "TC-V15-001: v1 格式兼容 - 標準記帳" "午餐120元現金" "✅ 單項目，使用 v1 格式顯示"
+run_test "向後相容" "TC-V15-001: v1 格式兼容 - 標準記帳" \
+    "午餐120元現金" \
+    "✅ 單項目，使用 v1 格式顯示" \
+    "記帳" "" "現金" ""
 
-run_test "向後相容" "TC-V15-002: v1 格式兼容 - 含暱稱" "點心200元狗卡" "✅ 付款方式：台新狗卡"
+run_test "向後相容" "TC-V15-002: v1 格式兼容 - 含暱稱" \
+    "點心200元狗卡" \
+    "✅ 付款方式：台新狗卡" \
+    "記帳" "" "台新狗卡" ""
 
-run_test "向後相容" "TC-V15-003: v1 格式兼容 - 自然語句" "買了咖啡50元，Line轉帳" "✅ 單項目，v1 格式"
+run_test "向後相容" "TC-V15-003: v1 格式兼容 - 自然語句" \
+    "買了咖啡50元，Line轉帳" \
+    "✅ 單項目，v1 格式" \
+    "記帳" "" "Line 轉帳" ""
 
 # ============================================================
 # 多項目記帳（核心功能）
 # ============================================================
 
-run_test "多項目" "TC-V15-010: 雙項目 - 逗號分隔" "早餐80元，午餐150元，現金" "✅ 2個項目，共用付款方式：現金"
+run_test "多項目" "TC-V15-010: 雙項目 - 逗號分隔" \
+    "早餐80元，午餐150元，現金" \
+    "✅ 2個項目，共用付款方式：現金" \
+    "記帳" "2" "現金" ""
 
-run_test "多項目" "TC-V15-011: 雙項目 - 付款方式在前" "用狗卡，咖啡50，三明治35" "✅ 2個項目，共用付款方式：台新狗卡"
+run_test "多項目" "TC-V15-011: 雙項目 - 付款方式在前" \
+    "用狗卡，咖啡50，三明治35" \
+    "✅ 2個項目，共用付款方式：台新狗卡" \
+    "記帳" "2" "台新狗卡" ""
 
-run_test "多項目" "TC-V15-012: 三項目 - 早午晚餐" "早餐50元，午餐120元，晚餐200元，現金" "✅ 3個項目，共用付款方式：現金"
+run_test "多項目" "TC-V15-012: 三項目 - 早午晚餐" \
+    "早餐50元，午餐120元，晚餐200元，現金" \
+    "✅ 3個項目，共用付款方式：現金" \
+    "記帳" "3" "現金" ""
 
-run_test "多項目" "TC-V15-013: 雙項目 - 分號分隔" "咖啡45元；蛋糕120元；Line轉帳" "✅ 2個項目，分號分隔"
+run_test "多項目" "TC-V15-013: 雙項目 - 分號分隔" \
+    "咖啡45元；蛋糕120元；Line轉帳" \
+    "✅ 2個項目，分號分隔" \
+    "記帳" "2" "Line 轉帳" ""
 
-run_test "多項目" "TC-V15-014: 雙項目 - 頓號分隔" "早餐三明治35、飲料30、現金" "✅ 2個項目，頓號分隔"
+run_test "多項目" "TC-V15-014: 雙項目 - 頓號分隔" \
+    "早餐三明治35、飲料30、現金" \
+    "✅ 2個項目，頓號分隔" \
+    "記帳" "2" "現金" ""
 
-run_test "多項目" "TC-V15-015: 四項目以上" "咖啡50、三明治35、沙拉80、果汁40、現金" "✅ 4個項目，共用付款方式"
+run_test "多項目" "TC-V15-015: 四項目以上" \
+    "咖啡50、三明治35、沙拉80、果汁40、現金" \
+    "✅ 4個項目，共用付款方式" \
+    "記帳" "4" "現金" ""
 
 # ============================================================
 # 共用付款方式驗證
 # ============================================================
 
-run_test "共用驗證" "TC-V15-020: 共用交易ID驗證" "早餐80元，午餐150元，現金" "✅ 檢查兩個項目的交易ID是否相同"
+run_test "共用驗證" "TC-V15-020: 共用交易ID驗證" \
+    "早餐80元，午餐150元，現金" \
+    "✅ 檢查兩個項目的交易ID是否相同" \
+    "記帳" "2" "現金" ""
 
-run_test "共用驗證" "TC-V15-021: 共用日期驗證" "早餐80元，午餐150元，現金" "✅ 檢查兩個項目的日期是否相同"
+run_test "共用驗證" "TC-V15-021: 共用日期驗證" \
+    "早餐80元，午餐150元，現金" \
+    "✅ 檢查兩個項目的日期是否相同" \
+    "記帳" "2" "現金" ""
 
-run_test "共用驗證" "TC-V15-022: 共用付款方式驗證" "咖啡50，三明治35，用狗卡" "✅ 檢查兩個項目的付款方式是否都是台新狗卡"
+run_test "共用驗證" "TC-V15-022: 共用付款方式驗證" \
+    "咖啡50，三明治35，用狗卡" \
+    "✅ 檢查兩個項目的付款方式是否都是台新狗卡" \
+    "記帳" "2" "台新狗卡" ""
 
 # ============================================================
 # 錯誤處理與邊界案例
 # ============================================================
 
-run_test "錯誤處理" "TC-V15-030: ❌ 不同付款方式（應拒絕）" "早餐80元現金，午餐150元刷卡" "❌ 應回傳錯誤：偵測到不同付款方式"
+run_test "錯誤處理" "TC-V15-030: ❌ 不同付款方式（應拒絕）" \
+    "早餐80元現金，午餐150元刷卡" \
+    "❌ 應回傳錯誤：偵測到不同付款方式" \
+    "錯誤" "" "" "不同付款方式"
 
-run_test "錯誤處理" "TC-V15-031: ❌ 第二項缺少金額（應拒絕）" "早餐80元，午餐，現金" "❌ 應回傳錯誤：第2個項目缺少金額"
+run_test "錯誤處理" "TC-V15-031: ❌ 第二項缺少金額（應拒絕）" \
+    "早餐80元，午餐，現金" \
+    "❌ 應回傳錯誤：第2個項目缺少金額" \
+    "錯誤" "" "" "缺少金額"
 
-run_test "單項目處理" "TC-V15-032: ✅ 「和」連接詞視為單項目" "三明治和咖啡80元現金" "✅ 應為單項目（如：早餐）"
+run_test "單項目處理" "TC-V15-032: ✅ 「和」連接詞視為單項目" \
+    "三明治和咖啡80元現金" \
+    "✅ 應為單項目（如：早餐）" \
+    "記帳" "" "現金" ""
 
-run_test "錯誤處理" "TC-V15-033: ❌ 缺少付款方式（應拒絕）" "早餐80元，午餐150元" "❌ 應回傳錯誤：缺少付款方式"
+run_test "錯誤處理" "TC-V15-033: ❌ 缺少付款方式（應拒絕）" \
+    "早餐80元，午餐150元" \
+    "❌ 應回傳錯誤：缺少付款方式" \
+    "錯誤" "" "" "付款方式"
 
-run_test "錯誤處理" "TC-V15-034: ❌ 第一項缺少金額（應拒絕）" "早餐，午餐150元，現金" "❌ 應回傳錯誤：第1個項目缺少金額"
+run_test "錯誤處理" "TC-V15-034: ❌ 第一項缺少金額（應拒絕）" \
+    "早餐，午餐150元，現金" \
+    "❌ 應回傳錯誤：第1個項目缺少金額" \
+    "錯誤" "" "" "缺少金額"
 
-run_test "錯誤處理" "TC-V15-035: ❌ 缺少品項名稱（應拒絕）" "80元，150元，現金" "❌ 應回傳錯誤：缺少品項名稱"
+run_test "錯誤處理" "TC-V15-035: ❌ 缺少品項名稱（應拒絕）" \
+    "80元，150元，現金" \
+    "❌ 應回傳錯誤：缺少品項名稱" \
+    "錯誤" "" "" "品項"
 
 # ============================================================
 # 對話意圖識別
 # ============================================================
 
-run_test "對話意圖" "TC-V15-040: 打招呼" "你好" "✅ 意圖：對話"
+run_test "對話意圖" "TC-V15-040: 打招呼" \
+    "你好" \
+    "✅ 意圖：對話" \
+    "對話" "" "" ""
 
-run_test "對話意圖" "TC-V15-041: 詢問功能" "可以幫我做什麼？" "✅ 意圖：對話"
+run_test "對話意圖" "TC-V15-041: 詢問功能" \
+    "可以幫我做什麼？" \
+    "✅ 意圖：對話" \
+    "對話" "" "" ""
 
-run_test "對話意圖" "TC-V15-042: 感謝" "謝謝" "✅ 意圖：對話"
+run_test "對話意圖" "TC-V15-042: 感謝" \
+    "謝謝" \
+    "✅ 意圖：對話" \
+    "對話" "" "" ""
 
 # ============================================================
 # 複雜場景測試
 # ============================================================
 
-run_test "複雜場景" "TC-V15-050: 含明細說明的多項目" "在開飯早餐50元，在7-11買咖啡45元，現金" "✅ 2個項目，含明細說明"
+run_test "複雜場景" "TC-V15-050: 含明細說明的多項目" \
+    "在開飯早餐50元，在7-11買咖啡45元，現金" \
+    "✅ 2個項目，含明細說明" \
+    "記帳" "2" "現金" ""
 
-run_test "複雜場景" "TC-V15-051: 含不同分類的多項目" "咖啡50元，蛋糕120元，狗卡" "✅ 2個項目，不同分類（飲品、點心）"
+run_test "複雜場景" "TC-V15-051: 含不同分類的多項目" \
+    "咖啡50元，蛋糕120元，狗卡" \
+    "✅ 2個項目，不同分類（飲品、點心）" \
+    "記帳" "2" "台新狗卡" ""
 
 # ============================================================
 # 完成
@@ -113,18 +411,50 @@ echo "======================================================================"
 echo "✅ v1.5.0 測試完成！"
 echo "======================================================================"
 echo ""
-echo "測試統計："
-echo "  - 向後相容：3 個測試"
-echo "  - 多項目核心功能：6 個測試"
-echo "  - 共用驗證：3 個測試"
-echo "  - 錯誤處理：6 個測試"
-echo "  - 對話意圖：3 個測試"
-echo "  - 複雜場景：2 個測試"
-echo "  - 總計：23 個測試"
-echo ""
-echo "關鍵驗證點："
-echo "  ✅ 向後相容：單項目使用 v1 格式"
-echo "  ✅ 多項目處理：2-4+ 項目正確識別"
-echo "  ✅ 共用驗證：交易ID、付款方式、日期相同"
-echo "  ❌ 錯誤拒絕：不同付款方式、缺少資訊、模糊情況"
+
+if [[ "$AUTO_MODE" == true ]]; then
+    # 自動模式：顯示統計資訊
+    echo "📊 測試統計："
+    echo "  - 總測試數: $TOTAL_TESTS"
+    echo -e "  - ${GREEN}通過: $PASSED_TESTS${NC}"
+    echo -e "  - ${RED}失敗: $FAILED_TESTS${NC}"
+
+    if [[ $SKIPPED_TESTS -gt 0 ]]; then
+        echo -e "  - ${YELLOW}跳過: $SKIPPED_TESTS${NC}"
+    fi
+
+    echo ""
+
+    # 計算通過率
+    if [[ $TOTAL_TESTS -gt 0 ]]; then
+        pass_rate=$((PASSED_TESTS * 100 / TOTAL_TESTS))
+        echo "📈 通過率: $pass_rate%"
+        echo ""
+
+        if [[ $pass_rate -eq 100 ]]; then
+            echo -e "${GREEN}🎉 所有測試通過！${NC}"
+        elif [[ $pass_rate -ge 80 ]]; then
+            echo -e "${YELLOW}⚠️  大部分測試通過，但仍有失敗項目需要修復${NC}"
+        else
+            echo -e "${RED}❌ 測試失敗率過高，需要檢查問題${NC}"
+        fi
+    fi
+else
+    # 人工模式：顯示基本資訊
+    echo "測試統計："
+    echo "  - 向後相容：3 個測試"
+    echo "  - 多項目核心功能：6 個測試"
+    echo "  - 共用驗證：3 個測試"
+    echo "  - 錯誤處理：6 個測試"
+    echo "  - 對話意圖：3 個測試"
+    echo "  - 複雜場景：2 個測試"
+    echo "  - 總計：23 個測試"
+    echo ""
+    echo "關鍵驗證點："
+    echo "  ✅ 向後相容：單項目使用 v1 格式"
+    echo "  ✅ 多項目處理：2-4+ 項目正確識別"
+    echo "  ✅ 共用驗證：交易ID、付款方式、日期相同"
+    echo "  ❌ 錯誤拒絕：不同付款方式、缺少資訊、模糊情況"
+fi
+
 echo ""
