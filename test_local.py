@@ -74,6 +74,16 @@ def print_result(entry, show_json=False):
 
 def print_multi_result(result: MultiExpenseResult, show_json=False):
     """美化輸出測試結果（v1.5.0 多項目格式）"""
+
+    # 單項目：使用 v1 格式（向後相容）
+    if result.intent == "multi_bookkeeping" and len(result.entries) == 1:
+        print("\n" + "=" * 60)
+        print("📝 v1.5.0 單項目模式（向後相容 v1 格式）")
+        print("=" * 60)
+        print_result(result.entries[0], show_json)
+        return
+
+    # 多項目或其他 intent：使用 v1.5.0 格式
     print("\n" + "=" * 60)
 
     if result.intent == "conversation":
