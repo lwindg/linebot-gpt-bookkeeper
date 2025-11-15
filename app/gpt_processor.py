@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 from openai import OpenAI
 
 from app.config import OPENAI_API_KEY, GPT_MODEL
-from app.prompts import SYSTEM_PROMPT, MULTI_EXPENSE_PROMPT
+from app.prompts import MULTI_EXPENSE_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -205,122 +205,49 @@ def generate_transaction_id(date_str: str, time_str: Optional[str] = None, item:
 
 def process_message(user_message: str) -> BookkeepingEntry:
     """
-    處理使用者訊息並回傳結構化結果
+    處理使用者訊息並回傳結構化結果（v1 向後相容接口）
 
-    流程：
-    1. 構建 GPT messages（system + user）
-    2. 呼叫 OpenAI API
-    3. 解析回應（判斷 intent）
-    4. 若為記帳 → 驗證必要欄位、生成交易ID、補充預設值
-    5. 回傳 BookkeepingEntry
+    **注意**：此函式內部調用 process_multi_expense，已統一使用 v1.5.0 prompt。
+    單項目記帳會自動轉換為 v1 格式回傳。
 
     Args:
         user_message: 使用者訊息文字
 
     Returns:
-        BookkeepingEntry: 處理後的結果
+        BookkeepingEntry: 處理後的結果（v1 格式）
 
     Raises:
-        Exception: OpenAI API 呼叫失敗
-        ValueError: JSON 解析失敗或必要欄位缺失
+        Exception: 處理失敗
     """
-    try:
-        # 初始化 OpenAI client
-        client = OpenAI(api_key=OPENAI_API_KEY)
+    # 內部調用 v1.5.0 處理函式
+    result = process_multi_expense(user_message)
 
-        # 呼叫 Chat Completions API
-        completion = client.chat.completions.create(
-            model=GPT_MODEL,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_message}
-            ],
-            response_format={"type": "json_object"}  # 確保 JSON 輸出
+    # 轉換回 v1 格式
+    if result.intent == "multi_bookkeeping":
+        # 單項目：直接回傳第一個 entry
+        if len(result.entries) == 1:
+            return result.entries[0]
+        # 多項目：回傳第一個 entry（v1 不支援多項目）
+        else:
+            logger.warning(f"v1 API called with multi-item message, returning first item only")
+            return result.entries[0]
+
+    elif result.intent == "conversation":
+        # 對話意圖：轉換為 v1 格式
+        return BookkeepingEntry(
+            intent="conversation",
+            response_text=result.response_text
         )
 
-        # 取得回應並解析 JSON
-        response_text = completion.choices[0].message.content
-        logger.info(f"GPT response: {response_text}")
+    elif result.intent == "error":
+        # 錯誤意圖：轉換為對話回應
+        return BookkeepingEntry(
+            intent="conversation",
+            response_text=result.error_message
+        )
 
-        data = json.loads(response_text)
-        intent = data.get("intent")
-
-        if intent == "bookkeeping":
-            # 記帳意圖：提取資料並驗證
-            entry_data = data.get("data", {})
-
-            # 驗證必要欄位
-            required_fields = ["品項", "原幣金額", "付款方式"]
-            for field in required_fields:
-                if not entry_data.get(field):
-                    raise ValueError(f"Missing required field: {field}")
-
-            # 補充日期預設值（在生成交易ID之前）
-            taipei_tz = ZoneInfo('Asia/Taipei')
-
-            # 處理日期（包括語義化日期轉換）
-            date_value = entry_data.get("日期")
-            user_provided_date = bool(date_value)  # 記錄用戶是否提供日期
-
-            if date_value:
-                # 處理語義化日期和標準日期格式
-                date_str = parse_semantic_date(date_value, taipei_tz)
-                entry_data["日期"] = date_str
-            else:
-                # 無日期，使用今天
-                entry_data["日期"] = datetime.now(taipei_tz).strftime("%Y-%m-%d")
-
-            # 提取時間和品項用於生成交易ID
-            time_str = entry_data.get("時間")  # GPT可能會返回時間（可選）
-            item = entry_data.get("品項")
-            date_str = entry_data.get("日期")
-
-            # 判斷是否為今天且無明確時間（用戶沒提供日期，應使用當前時間）
-            use_current_time = not user_provided_date and not time_str
-
-            # 生成交易ID（根據日期、時間、品項智能推測時間戳記）
-            entry_data["交易ID"] = generate_transaction_id(date_str, time_str, item, use_current_time)
-
-            # 移除時間欄位（不應發送到webhook）
-            if "時間" in entry_data:
-                del entry_data["時間"]
-
-            # 確保數值型別正確
-            if "原幣金額" in entry_data:
-                entry_data["原幣金額"] = float(entry_data["原幣金額"])
-            if "匯率" in entry_data:
-                entry_data["匯率"] = float(entry_data["匯率"])
-            else:
-                entry_data["匯率"] = 1.0
-
-            # 確保必要欄位有預設值
-            entry_data.setdefault("原幣別", "TWD")
-            entry_data.setdefault("專案", "日常")
-            entry_data.setdefault("代墊狀態", "無")
-            entry_data.setdefault("明細說明", "")
-            entry_data.setdefault("收款支付對象", "")
-            entry_data.setdefault("附註", "")
-
-            return BookkeepingEntry(intent="bookkeeping", **entry_data)
-
-        elif intent == "conversation":
-            # 一般對話：提取回應文字
-            response = data.get("response", "")
-            return BookkeepingEntry(
-                intent="conversation",
-                response_text=response
-            )
-
-        else:
-            raise ValueError(f"Unknown intent: {intent}")
-
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse GPT JSON response: {e}")
-        raise ValueError(f"Invalid JSON response from GPT: {e}")
-
-    except Exception as e:
-        logger.error(f"GPT API error: {e}")
-        raise
+    else:
+        raise ValueError(f"Unknown intent from process_multi_expense: {result.intent}")
 
 
 def process_multi_expense(user_message: str) -> MultiExpenseResult:
