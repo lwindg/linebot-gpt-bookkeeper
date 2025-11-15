@@ -1,0 +1,233 @@
+"""
+圖片處理模組
+
+此模組負責：
+1. 從 LINE 下載圖片
+2. 將圖片轉換為 base64 編碼
+3. 使用 GPT-4 Vision API 分析收據內容
+4. 回傳結構化收據資料
+"""
+
+import base64
+import json
+import logging
+from dataclasses import dataclass
+from typing import Optional, List, Dict, Any
+from openai import OpenAI
+from linebot.v3.messaging import MessagingApiBlob
+
+from app.config import OPENAI_API_KEY, GPT_VISION_MODEL
+from app.prompts import RECEIPT_VISION_PROMPT
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ReceiptItem:
+    """單筆收據項目"""
+    品項: str
+    原幣金額: float
+    付款方式: Optional[str] = None
+    分類: Optional[str] = None
+
+
+class ImageDownloadError(Exception):
+    """圖片下載失敗"""
+    pass
+
+
+class ImageTooLargeError(Exception):
+    """圖片過大"""
+    pass
+
+
+class VisionAPIError(Exception):
+    """Vision API 失敗"""
+    pass
+
+
+def download_image(message_id: str, messaging_api_blob: MessagingApiBlob) -> bytes:
+    """
+    從 LINE 下載圖片內容
+
+    Args:
+        message_id: LINE 訊息 ID
+        messaging_api_blob: LINE Messaging API Blob 實例
+
+    Returns:
+        bytes: 圖片二進位內容
+
+    Raises:
+        ImageDownloadError: 下載失敗
+        ImageTooLargeError: 圖片過大（>10MB）
+    """
+    try:
+        logger.info(f"開始下載圖片，message_id={message_id}")
+
+        # 使用 LINE SDK 下載圖片
+        image_content = messaging_api_blob.get_message_content(message_id)
+
+        # 讀取圖片內容
+        image_data = b''
+        max_size = 10 * 1024 * 1024  # 10MB
+
+        for chunk in image_content.iter_content(chunk_size=8192):
+            image_data += chunk
+            if len(image_data) > max_size:
+                raise ImageTooLargeError(f"圖片過大（>{max_size} bytes），請重新上傳")
+
+        logger.info(f"圖片下載成功，大小={len(image_data)} bytes")
+        return image_data
+
+    except ImageTooLargeError:
+        raise
+    except Exception as e:
+        logger.error(f"圖片下載失敗: {e}")
+        raise ImageDownloadError(f"圖片下載失敗: {e}")
+
+
+def encode_image_base64(image_data: bytes) -> str:
+    """
+    將圖片轉換為 base64 編碼
+
+    Args:
+        image_data: 圖片二進位資料
+
+    Returns:
+        str: base64 編碼字串（用於 GPT Vision API）
+    """
+    return base64.b64encode(image_data).decode('utf-8')
+
+
+def process_receipt_image(
+    image_data: bytes,
+    openai_client: Optional[OpenAI] = None
+) -> tuple[List[ReceiptItem], Optional[str], Optional[str]]:
+    """
+    使用 GPT-4 Vision API 分析收據圖片
+
+    Args:
+        image_data: 圖片二進位資料
+        openai_client: OpenAI client 實例（可選，用於測試）
+
+    Returns:
+        tuple: (收據項目列表, 錯誤狀態碼, 錯誤訊息)
+
+        正常情況：([ReceiptItem, ...], None, None)
+        錯誤情況：([], "error_code", "錯誤訊息")
+
+        錯誤狀態碼：
+        - "not_receipt": 非收據圖片
+        - "unsupported_currency": 非台幣收據
+        - "unclear": 圖片模糊/無法辨識
+        - "incomplete": 缺少關鍵資訊
+        - "api_error": API 呼叫失敗
+
+    流程：
+        1. 將圖片編碼為 base64
+        2. 呼叫 GPT-4o Vision API
+        3. 解析回應（JSON 格式）
+        4. 驗證資料完整性
+        5. 回傳 ReceiptItem 列表
+
+    錯誤處理：
+        - 圖片模糊/無法識別 → 回傳空列表 + 錯誤訊息
+        - 非收據圖片 → 回傳空列表 + 提示訊息
+        - API 失敗 → 拋出 VisionAPIError
+    """
+    try:
+        # 初始化 OpenAI client
+        if openai_client is None:
+            openai_client = OpenAI(api_key=OPENAI_API_KEY)
+
+        # 編碼圖片為 base64
+        base64_image = encode_image_base64(image_data)
+
+        logger.info("開始呼叫 GPT-4 Vision API 分析收據")
+
+        # 呼叫 GPT-4 Vision API
+        response = openai_client.chat.completions.create(
+            model=GPT_VISION_MODEL,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": RECEIPT_VISION_PROMPT
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{base64_image}"
+                            }
+                        }
+                    ]
+                }
+            ],
+            max_tokens=1000,
+            response_format={"type": "json_object"}
+        )
+
+        # 解析回應
+        response_text = response.choices[0].message.content
+        logger.info(f"GPT Vision 回應: {response_text}")
+
+        result = json.loads(response_text)
+
+        # 檢查狀態
+        status = result.get("status")
+
+        if status == "success":
+            # 成功識別收據
+            items_data = result.get("items", [])
+            payment_method = result.get("payment_method")
+
+            # 轉換為 ReceiptItem 列表
+            receipt_items = []
+            for item in items_data:
+                receipt_items.append(ReceiptItem(
+                    品項=item["品項"],
+                    原幣金額=float(item["金額"]),
+                    付款方式=payment_method
+                ))
+
+            logger.info(f"成功識別 {len(receipt_items)} 個收據項目")
+            return receipt_items, None, None
+
+        elif status == "not_receipt":
+            # 非收據圖片
+            message = result.get("message", "這不是收據圖片")
+            logger.warning(f"非收據圖片: {message}")
+            return [], "not_receipt", message
+
+        elif status == "unsupported_currency":
+            # 非台幣收據
+            message = result.get("message", "v1.5.0 僅支援台幣")
+            logger.warning(f"非台幣收據: {message}")
+            return [], "unsupported_currency", message
+
+        elif status == "unclear":
+            # 圖片模糊
+            message = result.get("message", "圖片模糊，無法辨識")
+            logger.warning(f"圖片模糊: {message}")
+            return [], "unclear", message
+
+        elif status == "incomplete":
+            # 資訊不完整
+            message = result.get("message", "缺少關鍵資訊")
+            logger.warning(f"收據資訊不完整: {message}")
+            return [], "incomplete", message
+
+        else:
+            # 未知狀態
+            logger.error(f"未知的回應狀態: {status}")
+            return [], "api_error", f"無法處理收據（狀態：{status}）"
+
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON 解析失敗: {e}, response_text={response_text}")
+        return [], "api_error", "無法解析 Vision API 回應"
+
+    except Exception as e:
+        logger.error(f"Vision API 呼叫失敗: {e}")
+        raise VisionAPIError(f"Vision API 失敗: {e}")

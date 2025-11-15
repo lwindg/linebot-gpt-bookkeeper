@@ -411,3 +411,133 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
             intent="error",
             error_message="系統處理訊息時發生錯誤，請重試"
         )
+
+
+def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None) -> MultiExpenseResult:
+    """
+    將收據資料轉換為記帳項目（v1.5.0 圖片識別）
+
+    流程：
+    1. 接收從 Vision API 提取的收據項目（List[ReceiptItem]）
+    2. 為每個項目補充預設值
+    3. 生成共用交易ID（時間戳記格式）
+    4. 回傳 MultiExpenseResult
+
+    Args:
+        receipt_items: 從圖片識別出的收據項目列表（ReceiptItem 物件）
+        receipt_date: 收據上的日期（YYYY-MM-DD），若無則使用當前日期
+
+    Returns:
+        MultiExpenseResult: 包含完整記帳資料的結果
+
+    Examples:
+        >>> from app.image_handler import ReceiptItem
+        >>> items = [
+        ...     ReceiptItem(品項="咖啡", 原幣金額=50, 付款方式="現金"),
+        ...     ReceiptItem(品項="三明治", 原幣金額=80, 付款方式="現金")
+        ... ]
+        >>> result = process_receipt_data(items)
+        >>> result.intent
+        'multi_bookkeeping'
+        >>> len(result.entries)
+        2
+    """
+    try:
+        if not receipt_items:
+            return MultiExpenseResult(
+                intent="error",
+                error_message="未識別到任何收據項目"
+            )
+
+        # 生成共用交易ID（時間戳記格式）
+        taipei_tz = ZoneInfo('Asia/Taipei')
+        now = datetime.now(taipei_tz)
+        shared_transaction_id = now.strftime("%Y%m%d-%H%M%S")
+
+        # 使用收據日期或當前日期
+        if receipt_date:
+            shared_date = receipt_date
+        else:
+            shared_date = now.strftime("%Y-%m-%d")
+
+        # 取得共用付款方式（第一個項目的付款方式）
+        payment_method = receipt_items[0].付款方式 if receipt_items[0].付款方式 else "現金"
+
+        # 處理每個項目
+        entries = []
+        for idx, receipt_item in enumerate(receipt_items, start=1):
+            # 簡單分類推斷（基於品項關鍵字）
+            品項 = receipt_item.品項
+            分類 = _infer_category(品項)
+
+            # 補充預設值和共用欄位
+            entry = BookkeepingEntry(
+                intent="bookkeeping",
+                日期=shared_date,
+                品項=品項,
+                原幣別="TWD",
+                原幣金額=float(receipt_item.原幣金額),
+                匯率=1.0,
+                付款方式=payment_method,
+                交易ID=shared_transaction_id,
+                明細說明=f"收據識別 {idx}/{len(receipt_items)}",
+                分類=分類,
+                專案="日常",
+                必要性="必要日常支出",
+                代墊狀態="無",
+                收款支付對象="",
+                附註=f"收據圖片識別 {idx}/{len(receipt_items)}"
+            )
+
+            entries.append(entry)
+
+        return MultiExpenseResult(
+            intent="multi_bookkeeping",
+            entries=entries
+        )
+
+    except Exception as e:
+        logger.error(f"處理收據資料時發生錯誤: {e}")
+        return MultiExpenseResult(
+            intent="error",
+            error_message="處理收據資料時發生錯誤，請重試"
+        )
+
+
+def _infer_category(品項: str) -> str:
+    """
+    簡單的分類推斷（基於關鍵字）
+
+    Args:
+        品項: 品項名稱
+
+    Returns:
+        str: 推斷的分類
+
+    Note:
+        這是簡化版本，僅根據品項關鍵字進行基本推斷。
+        完整版本應該使用 GPT 或更複雜的規則進行分類。
+    """
+    品項_lower = 品項.lower()
+
+    # 餐飲類別
+    if any(keyword in 品項_lower for keyword in ["早餐", "三明治", "蛋餅", "豆漿", "漢堡"]):
+        return "家庭／餐飲／早餐"
+    elif any(keyword in 品項_lower for keyword in ["午餐", "便當", "麵", "飯"]):
+        return "家庭／餐飲／午餐"
+    elif any(keyword in 品項_lower for keyword in ["晚餐", "火鍋"]):
+        return "家庭／餐飲／晚餐"
+    elif any(keyword in 品項_lower for keyword in ["咖啡", "茶", "飲料", "果汁", "冰沙", "奶茶"]):
+        return "家庭／飲品"
+    elif any(keyword in 品項_lower for keyword in ["點心", "蛋糕", "甜點", "餅乾", "糖果"]):
+        return "家庭／點心"
+
+    # 交通類別
+    elif any(keyword in 品項_lower for keyword in ["計程車", "uber", "高鐵", "火車", "捷運", "公車"]):
+        return "交通／接駁"
+    elif any(keyword in 品項_lower for keyword in ["加油", "汽油", "柴油"]):
+        return "交通／加油"
+
+    # 預設分類
+    else:
+        return "家庭支出"

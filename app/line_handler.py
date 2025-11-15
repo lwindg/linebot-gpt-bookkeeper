@@ -8,9 +8,11 @@ This module handles LINE message events and user interactions.
 import logging
 from linebot.models import MessageEvent, TextSendMessage
 from linebot import LineBotApi
+from linebot.v3.messaging import MessagingApiBlob
 
-from app.gpt_processor import process_multi_expense, MultiExpenseResult, BookkeepingEntry
+from app.gpt_processor import process_multi_expense, process_receipt_data, MultiExpenseResult, BookkeepingEntry
 from app.webhook_sender import send_multiple_webhooks
+from app.image_handler import download_image, process_receipt_image, ImageDownloadError, ImageTooLargeError, VisionAPIError
 
 logger = logging.getLogger(__name__)
 
@@ -169,4 +171,156 @@ def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
         line_bot_api.reply_message(
             reply_token,
             TextSendMessage(text="系統處理訊息時發生錯誤，請重試。")
+        )
+
+
+def handle_image_message(event: MessageEvent, messaging_api_blob: MessagingApiBlob, line_bot_api: LineBotApi) -> None:
+    """
+    處理圖片訊息的主流程（v1.5.0 新增）
+
+    流程：
+    1. 取得圖片訊息 ID
+    2. 下載圖片內容
+    3. 使用 Vision API 分析收據
+    4. 若識別成功：
+       - 轉換為 BookkeepingEntry 列表
+       - 為每一筆發送 webhook
+       - 回覆確認訊息（列出所有項目）
+    5. 若識別失敗：
+       - 回覆錯誤訊息並建議使用文字描述
+
+    Args:
+        event: LINE MessageEvent（圖片訊息）
+        messaging_api_blob: LINE Messaging API Blob 實例（用於下載圖片）
+        line_bot_api: LINE Bot API client（用於回覆訊息）
+
+    錯誤處理：
+        - 下載失敗 → 「圖片下載失敗，請稍後再試」
+        - Vision API 失敗 → 「無法處理圖片，請改用文字描述」
+        - 非台幣收據 → 「v1.5.0 僅支援台幣，請提供文字描述並換算台幣金額」
+        - 非收據圖片 → 「無法辨識收據資訊，請提供文字描述」
+        - 圖片模糊 → 「收據圖片不清晰，請提供文字描述：品項、金額、付款方式」
+    """
+    message_id = event.message.id
+    reply_token = event.reply_token
+
+    logger.info(f"Received image message, message_id={message_id}")
+
+    try:
+        # 1. 下載圖片
+        logger.info("開始下載圖片")
+        image_data = download_image(message_id, messaging_api_blob)
+        logger.info(f"圖片下載成功，大小={len(image_data)} bytes")
+
+        # 2. 使用 Vision API 分析收據
+        logger.info("開始分析收據圖片")
+        receipt_items, error_code, error_message = process_receipt_image(image_data)
+
+        # 3. 檢查處理結果
+        if error_code:
+            # 識別失敗：根據錯誤碼回覆不同訊息
+            if error_code == "not_receipt":
+                reply_text = f"❌ 無法辨識收據資訊\n\n{error_message}\n\n💡 請提供文字描述進行記帳，格式如：\n「午餐花了150元，用現金」"
+            elif error_code == "unsupported_currency":
+                reply_text = f"❌ 不支援的幣別\n\n{error_message}\n\n💡 請提供文字描述並手動換算台幣金額，格式如：\n「午餐花了150元，用現金」"
+            elif error_code == "unclear":
+                reply_text = f"❌ 收據圖片不清晰\n\n{error_message}\n\n💡 請提供文字描述，格式如：\n「品項、金額、付款方式」\n範例：「午餐花了150元，用現金」"
+            elif error_code == "incomplete":
+                reply_text = f"❌ 收據資訊不完整\n\n{error_message}\n\n💡 請提供文字描述補充完整資訊，格式如：\n「品項、金額、付款方式」"
+            else:
+                reply_text = f"❌ 無法處理收據圖片\n\n{error_message}\n\n💡 請改用文字描述進行記帳"
+
+            logger.warning(f"收據識別失敗: {error_code} - {error_message}")
+
+        else:
+            # 識別成功：處理收據資料
+            logger.info(f"收據識別成功，共 {len(receipt_items)} 個項目")
+
+            # 4. 轉換為 BookkeepingEntry 列表
+            # 提取收據日期（若 Vision API 有回傳）
+            receipt_date = None  # TODO: 從 process_receipt_image 回傳值取得日期
+            result = process_receipt_data(receipt_items, receipt_date)
+
+            if result.intent == "multi_bookkeeping":
+                # 成功轉換為記帳項目
+                entries = result.entries
+                total_items = len(entries)
+
+                logger.info(f"轉換為 {total_items} 筆記帳項目")
+
+                # 5. 發送 webhook
+                success_count, failure_count = send_multiple_webhooks(entries)
+
+                # 6. 回覆確認訊息
+                if success_count == total_items:
+                    reply_text = f"✅ 收據識別成功！已記錄 {total_items} 個項目：\n\n"
+                elif failure_count == total_items:
+                    reply_text = f"❌ 記帳失敗！{total_items} 個項目均未能記錄。\n\n"
+                else:
+                    reply_text = f"⚠️ 部分記帳成功！已記錄 {success_count}/{total_items} 個項目：\n\n"
+
+                # 列出所有項目
+                for idx, entry in enumerate(entries, start=1):
+                    twd_amount = entry.原幣金額 * entry.匯率
+                    reply_text += f"📋 #{idx} {entry.品項}\n"
+                    reply_text += f"💰 {twd_amount:.0f} 元 | {entry.付款方式}\n"
+                    reply_text += f"📂 {entry.分類}\n"
+
+                    if idx < total_items:
+                        reply_text += "\n"
+
+                # 顯示共用資訊
+                reply_text += f"\n🔖 交易ID：{entries[0].交易ID}"
+                reply_text += f"\n💳 付款方式：{entries[0].付款方式}（共用）"
+                reply_text += f"\n📅 日期：{entries[0].日期}"
+
+            elif result.intent == "error":
+                # 處理收據資料時發生錯誤
+                reply_text = f"❌ 處理收據資料時發生錯誤\n\n{result.error_message}"
+                logger.error(f"處理收據資料失敗: {result.error_message}")
+
+            else:
+                reply_text = "無法處理收據資料，請重試"
+
+        # 回覆 LINE 使用者
+        logger.info(f"回覆 LINE 訊息: {reply_text[:100]}")
+        line_bot_api.reply_message(
+            reply_token,
+            TextSendMessage(text=reply_text)
+        )
+
+        logger.info("圖片訊息處理完成")
+
+    except ImageTooLargeError as e:
+        logger.error(f"圖片過大: {e}")
+        reply_text = "❌ 圖片過大（超過 10MB）\n\n請重新上傳較小的圖片，或使用文字描述進行記帳"
+        line_bot_api.reply_message(
+            reply_token,
+            TextSendMessage(text=reply_text)
+        )
+
+    except ImageDownloadError as e:
+        logger.error(f"圖片下載失敗: {e}")
+        reply_text = "❌ 圖片下載失敗\n\n請稍後再試，或使用文字描述進行記帳"
+        line_bot_api.reply_message(
+            reply_token,
+            TextSendMessage(text=reply_text)
+        )
+
+    except VisionAPIError as e:
+        logger.error(f"Vision API 失敗: {e}")
+        reply_text = "❌ 無法處理圖片\n\n系統暫時無法分析收據，請使用文字描述進行記帳"
+        line_bot_api.reply_message(
+            reply_token,
+            TextSendMessage(text=reply_text)
+        )
+
+    except Exception as e:
+        # 未預期的錯誤
+        import traceback
+        logger.error(f"處理圖片訊息時發生錯誤: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        line_bot_api.reply_message(
+            reply_token,
+            TextSendMessage(text="系統處理圖片時發生錯誤，請重試或使用文字描述進行記帳。")
         )
