@@ -53,10 +53,13 @@ class BookkeepingEntry:
 class MultiExpenseResult:
     """多項目支出處理結果（v1.5.0 新增）"""
 
-    intent: Literal["multi_bookkeeping", "conversation", "error"]
+    intent: Literal["multi_bookkeeping", "conversation", "error", "update_last_entry"]
 
     # 記帳項目列表（若 intent == "multi_bookkeeping" 則必填）
     entries: List[BookkeepingEntry] = field(default_factory=list)
+
+    # 修改上一筆的欄位（若 intent == "update_last_entry" 則必填）
+    fields_to_update: Optional[dict] = None
 
     # 錯誤訊息（若 intent == "error" 則必填）
     error_message: Optional[str] = None
@@ -373,6 +376,21 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
             return MultiExpenseResult(
                 intent="multi_bookkeeping",
                 entries=entries
+            )
+
+        elif intent == "update_last_entry":
+            # 修改上一筆記帳：提取要更新的欄位
+            fields_to_update = data.get("fields_to_update", {})
+
+            if not fields_to_update:
+                return MultiExpenseResult(
+                    intent="error",
+                    error_message="未識別到要更新的欄位"
+                )
+
+            return MultiExpenseResult(
+                intent="update_last_entry",
+                fields_to_update=fields_to_update
             )
 
         elif intent == "conversation":

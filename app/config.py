@@ -20,6 +20,12 @@ GPT_MODEL = os.getenv('GPT_MODEL', 'gpt-4o-mini')
 GPT_VISION_MODEL = os.getenv('GPT_VISION_MODEL', 'gpt-4o')
 WEBHOOK_TIMEOUT = int(os.getenv('WEBHOOK_TIMEOUT', '10'))
 
+# Vercel KV (Redis) configuration (optional, for update-last-entry feature)
+KV_REST_API_URL = os.getenv('KV_REST_API_URL', '')
+KV_REST_API_TOKEN = os.getenv('KV_REST_API_TOKEN', '')
+KV_ENABLED = bool(KV_REST_API_URL and KV_REST_API_TOKEN)
+LAST_TRANSACTION_TTL = int(os.getenv('LAST_TRANSACTION_TTL', '600'))  # 10 minutes default
+
 # Validate required variables
 required_vars = {
     'LINE_CHANNEL_ACCESS_TOKEN': LINE_CHANNEL_ACCESS_TOKEN,

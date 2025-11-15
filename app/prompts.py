@@ -128,15 +128,19 @@ MULTI_EXPENSE_PROMPT = f"""你是專業的記帳助手，協助使用者記錄�
 
 ## 你的任務
 
-1. **判斷意圖**（僅支援以下三種 intent）：
+1. **判斷意圖**（僅支援以下四種 intent）：
    - **multi_bookkeeping**：記帳意圖（單項目或多項目都使用此 intent）
      - 單項目：items 陣列只有一個元素
      - 多項目：items 陣列有多個元素（必須有分隔符號：逗號、分號、頓號、換行）
      - **重要**：無論單項目還是多項目，都使用 `"intent": "multi_bookkeeping"`
+   - **update_last_entry**：修改上一筆記帳（v1.5.0 新增）
+     - 使用者想修改最近一次記帳的某個欄位
+     - 關鍵詞：「上一筆」、「剛才」、「剛剛」、「修改」、「改成」
+     - 範例：「上一筆改成Line轉帳」、「剛才那筆改成狗卡」、「修改付款方式為現金」
    - **conversation**：一般對話（非記帳相關訊息）
    - **error**：錯誤（資訊不完整或包含多種付款方式）
 
-   **注意**：不要使用 `single_bookkeeping` 或其他 intent，只能使用上述三種！
+   **注意**：不要使用 `single_bookkeeping` 或其他 intent，只能使用上述四種！
 
 2. **單項目 vs 多項目判斷規則**：
 
@@ -214,8 +218,9 @@ MULTI_EXPENSE_PROMPT = f"""你是專業的記帳助手，協助使用者記錄�
 
 ## 輸出格式
 
-**重要提醒**：僅支援三種 intent 值：`multi_bookkeeping`、`conversation`、`error`
+**重要提醒**：僅支援四種 intent 值：`multi_bookkeeping`、`update_last_entry`、`conversation`、`error`
 - 單項目和多項目記帳都使用 `multi_bookkeeping`
+- 修改上一筆記帳使用 `update_last_entry`
 - 不要使用 `single_bookkeeping`、`bookkeeping` 或其他值！
 
 ### 多項記帳（共用付款方式）
@@ -298,6 +303,45 @@ MULTI_EXPENSE_PROMPT = f"""你是專業的記帳助手，協助使用者記錄�
   "response": "您好！有什麼可以協助您的嗎？"
 }}
 ```
+
+### 修改上一筆記帳（v1.5.0 新增）
+
+範例 1：修改付款方式
+```json
+{{
+  "intent": "update_last_entry",
+  "fields_to_update": {{
+    "付款方式": "Line 轉帳"
+  }}
+}}
+```
+
+範例 2：修改分類
+```json
+{{
+  "intent": "update_last_entry",
+  "fields_to_update": {{
+    "分類": "個人／餐飲"
+  }}
+}}
+```
+
+範例 3：修改多個欄位
+```json
+{{
+  "intent": "update_last_entry",
+  "fields_to_update": {{
+    "付款方式": "台新狗卡",
+    "明細說明": "已修正付款方式"
+  }}
+}}
+```
+
+**注意**：
+- 使用者輸入「上一筆改成Line轉帳」→ 偵測為 update_last_entry intent
+- `fields_to_update` 為物件，包含要更新的欄位名稱和新值
+- 付款方式必須轉換為標準名稱（參照付款方式對照表）
+- 支援更新的欄位：付款方式、分類、明細說明、必要性
 
 ### 錯誤（資訊不完整或多種付款方式）
 
