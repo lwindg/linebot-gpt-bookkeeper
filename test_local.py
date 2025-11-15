@@ -98,12 +98,12 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
         entries = result.entries
         total_items = len(entries)
 
-        print(f"📝 意圖: 多項目記帳")
+        print(f"📝 意圖: 記帳")
         print(f"📊 項目數量: {total_items}")
 
         if total_items > 0:
             # 顯示共用資訊
-            print(f"💳 付款方式: {entries[0].付款方式}（共用）")
+            print(f"💳 共用付款方式: {entries[0].付款方式}")
             print(f"🆔 交易ID: {entries[0].交易ID}（共用）")
             print(f"📅 日期: {entries[0].日期}")
             print()
