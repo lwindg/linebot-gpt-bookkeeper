@@ -91,7 +91,7 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
         print(f"💬 回應: {result.response_text}")
 
     elif result.intent == "error":
-        print(f"❌ 意圖: 錯誤")
+        print(f"📝 意圖: 錯誤")
         print(f"💬 錯誤訊息: {result.error_message}")
 
     elif result.intent == "multi_bookkeeping":
