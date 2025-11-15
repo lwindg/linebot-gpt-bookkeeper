@@ -461,7 +461,9 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
             shared_date = now.strftime("%Y-%m-%d")
 
         # 取得共用付款方式（第一個項目的付款方式）
+        # 如果 Vision API 無法識別，預設為「現金」（最常見情況）
         payment_method = receipt_items[0].付款方式 if receipt_items[0].付款方式 else "現金"
+        payment_method_is_default = not receipt_items[0].付款方式  # 標記是否使用預設值
 
         # 處理每個項目
         entries = []
@@ -471,6 +473,11 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
             分類 = _infer_category(品項)
 
             # 補充預設值和共用欄位
+            # 如果付款方式是預設值，在附註中標記
+            附註_內容 = f"收據圖片識別 {idx}/{len(receipt_items)}"
+            if payment_method_is_default:
+                附註_內容 += "；付款方式預設為現金"
+
             entry = BookkeepingEntry(
                 intent="bookkeeping",
                 日期=shared_date,
@@ -486,15 +493,21 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
                 必要性="必要日常支出",
                 代墊狀態="無",
                 收款支付對象="",
-                附註=f"收據圖片識別 {idx}/{len(receipt_items)}"
+                附註=附註_內容
             )
 
             entries.append(entry)
 
-        return MultiExpenseResult(
+        result = MultiExpenseResult(
             intent="multi_bookkeeping",
             entries=entries
         )
+
+        # 如果付款方式是預設值，在 response_text 中加入提醒
+        if payment_method_is_default:
+            result.response_text = "⚠️ 未從收據識別到付款方式，已預設為「現金」"
+
+        return result
 
     except Exception as e:
         logger.error(f"處理收據資料時發生錯誤: {e}")
