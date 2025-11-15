@@ -88,6 +88,14 @@ extract_field() {
             # 提取對話回應
             echo "$output" | grep "💬 回應:" | sed 's/.*💬 回應: //' | xargs
             ;;
+        "transaction_id")
+            # 提取交易ID（單項目格式）
+            echo "$output" | grep "🆔 交易ID:" | sed 's/.*🆔 交易ID: //' | xargs
+            ;;
+        "shared_transaction_id")
+            # 提取共用交易ID（多項目格式）
+            echo "$output" | grep "🆔 共用交易ID:" | sed 's/.*🆔 共用交易ID: //' | xargs
+            ;;
     esac
 }
 
@@ -181,10 +189,17 @@ run_test_auto() {
     actual_payment=$(extract_field "$output" "payment")
     actual_payment_single=$(extract_field "$output" "payment_single")
     actual_error=$(extract_field "$output" "error_message")
+    actual_transaction_id=$(extract_field "$output" "transaction_id")
+    actual_shared_transaction_id=$(extract_field "$output" "shared_transaction_id")
 
     # 統一付款方式（優先使用多項目格式，否則使用單項目格式）
     if [[ -z "$actual_payment" ]]; then
         actual_payment="$actual_payment_single"
+    fi
+
+    # 統一交易ID（優先使用共用交易ID，否則使用單項目交易ID）
+    if [[ -z "$actual_transaction_id" ]]; then
+        actual_transaction_id="$actual_shared_transaction_id"
     fi
 
     # 判斷測試結果
@@ -246,6 +261,9 @@ run_test_auto() {
     fi
     if [[ "$actual_intent" == "錯誤" ]] && [[ -n "$actual_error" ]]; then
         echo "  錯誤訊息: $actual_error"
+    fi
+    if [[ "$actual_intent" == "記帳" ]] && [[ -n "$actual_transaction_id" ]]; then
+        echo "  交易ID: $actual_transaction_id （僅供參考，不比對）"
     fi
 
     echo ""
