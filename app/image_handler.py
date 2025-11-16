@@ -69,19 +69,41 @@ def download_image(message_id: str, messaging_api_blob: MessagingApiBlob) -> byt
         # 使用 LINE SDK 下載圖片
         image_content = messaging_api_blob.get_message_content(message_id)
 
-        # 讀取圖片內容
-        image_data = b''
+        # 檢查返回類型並處理
         max_size = 10 * 1024 * 1024  # 10MB
 
-        for chunk in image_content.iter_content(chunk_size=8192):
-            image_data += chunk
-            if len(image_data) > max_size:
-                raise ImageTooLargeError(f"圖片過大（>{max_size} bytes），請重新上傳")
+        # 如果已經是 bytes（LINE SDK v3 新版本）
+        if isinstance(image_content, bytes):
+            logger.info("圖片內容已是 bytes 格式")
+            image_data = image_content
+
+        # 如果是流對象（LINE SDK 舊版本或某些情況）
+        elif hasattr(image_content, 'iter_content'):
+            logger.info("使用 iter_content 讀取圖片")
+            image_data = b''
+            for chunk in image_content.iter_content(chunk_size=8192):
+                image_data += chunk
+                if len(image_data) > max_size:
+                    raise ImageTooLargeError(f"圖片過大（>{max_size} bytes），請重新上傳")
+
+        # 如果是其他可讀對象
+        elif hasattr(image_content, 'read'):
+            logger.info("使用 read() 讀取圖片")
+            image_data = image_content.read()
+
+        else:
+            raise ImageDownloadError(f"不支援的圖片內容類型: {type(image_content)}")
+
+        # 檢查大小
+        if len(image_data) > max_size:
+            raise ImageTooLargeError(f"圖片過大（{len(image_data)} bytes > {max_size} bytes），請重新上傳")
 
         logger.info(f"圖片下載成功，大小={len(image_data)} bytes")
         return image_data
 
     except ImageTooLargeError:
+        raise
+    except ImageDownloadError:
         raise
     except Exception as e:
         logger.error(f"圖片下載失敗: {e}")
