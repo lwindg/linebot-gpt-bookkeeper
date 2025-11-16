@@ -127,11 +127,11 @@ def main():
 
     try:
         # 為了診斷，我們需要看到原始的 Vision API 回應
-        # 暫時修改 process_receipt_image 來取得原始回應
-        import base64
-        from app.image_handler import compress_image, encode_image_base64
+        from app.image_handler import encode_image_base64
+        from app.prompts import RECEIPT_VISION_PROMPT
+        from app.config import GPT_VISION_MODEL
 
-        # 準備圖片
+        # 準備圖片（compress_image 已在頂部 import）
         if enable_compression:
             compressed_image = compress_image(image_data)
         else:
@@ -140,9 +140,6 @@ def main():
         base64_image = encode_image_base64(compressed_image)
 
         # 直接呼叫 Vision API 並顯示原始回應
-        from app.prompts import RECEIPT_VISION_PROMPT
-        from app.config import GPT_VISION_MODEL
-
         print("🔍 呼叫 Vision API...")
         response = client.chat.completions.create(
             model=GPT_VISION_MODEL,
