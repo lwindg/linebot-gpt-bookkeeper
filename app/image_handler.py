@@ -268,7 +268,8 @@ def process_receipt_image(
                 receipt_items.append(ReceiptItem(
                     品項=item["品項"],
                     原幣金額=float(item["金額"]),
-                    付款方式=payment_method
+                    付款方式=payment_method,
+                    分類=item.get("分類")  # Vision API 提供的分類（可選）
                 ))
 
             logger.info(f"成功識別 {len(receipt_items)} 個收據項目")

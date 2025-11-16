@@ -486,9 +486,16 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
         # 處理每個項目
         entries = []
         for idx, receipt_item in enumerate(receipt_items, start=1):
-            # 簡單分類推斷（基於品項關鍵字）
+            # 分類處理：優先使用 Vision API 提供的分類，沒有則用 GPT 推斷
             品項 = receipt_item.品項
-            分類 = _infer_category(品項)
+            if receipt_item.分類:
+                # Vision API 已提供分類
+                分類 = receipt_item.分類
+                logger.info(f"使用 Vision API 分類：{品項} → {分類}")
+            else:
+                # Vision API 未提供分類，使用 GPT 推斷
+                分類 = _infer_category(品項)
+                logger.info(f"使用 GPT 推斷分類：{品項} → {分類}")
 
             # 補充預設值和共用欄位
             # 如果付款方式是預設值，在附註中標記
