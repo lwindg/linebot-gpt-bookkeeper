@@ -126,6 +126,57 @@ def main():
         print("🔍 開始分析收據（使用原圖，不壓縮）...\n")
 
     try:
+        # 為了診斷，我們需要看到原始的 Vision API 回應
+        # 暫時修改 process_receipt_image 來取得原始回應
+        import base64
+        from app.image_handler import compress_image, encode_image_base64
+
+        # 準備圖片
+        if enable_compression:
+            compressed_image = compress_image(image_data)
+        else:
+            compressed_image = image_data
+
+        base64_image = encode_image_base64(compressed_image)
+
+        # 直接呼叫 Vision API 並顯示原始回應
+        from app.prompts import RECEIPT_VISION_PROMPT
+        from app.config import GPT_VISION_MODEL
+
+        print("🔍 呼叫 Vision API...")
+        response = client.chat.completions.create(
+            model=GPT_VISION_MODEL,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": RECEIPT_VISION_PROMPT
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{base64_image}"
+                            }
+                        }
+                    ]
+                }
+            ],
+            max_tokens=1000,
+            response_format={"type": "json_object"}
+        )
+
+        response_text = response.choices[0].message.content
+
+        # 顯示原始 API 回應
+        print("\n" + "=" * 60)
+        print("📋 Vision API 原始回應:")
+        print("=" * 60)
+        print(response_text)
+        print("=" * 60 + "\n")
+
+        # 現在使用正常流程處理
         receipt_items, error_code, error_message = process_receipt_image(
             image_data,
             client,
