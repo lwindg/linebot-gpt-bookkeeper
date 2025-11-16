@@ -437,25 +437,25 @@ RECEIPT_VISION_PROMPT = f"""你是專業的收據辨識助手，協助使用者�
 ### 成功識別
 
 ```json
-{
+{{
   "status": "success",
   "currency": "TWD",
   "date": "2025-11-15",
   "items": [
-    {
+    {{
       "品項": "美式咖啡",
       "金額": 50,
       "分類": "家庭／飲品"
-    },
-    {
+    }},
+    {{
       "品項": "三明治",
       "金額": 80,
       "分類": "家庭／餐飲／早餐"
-    }
+    }}
   ],
   "total": 130,
   "payment_method": "現金"
-}
+}}
 ```
 
 **注意**：
@@ -469,37 +469,37 @@ RECEIPT_VISION_PROMPT = f"""你是專業的收據辨識助手，協助使用者�
 ### 錯誤情況 1：非收據圖片
 
 ```json
-{
+{{
   "status": "not_receipt",
   "message": "這不是收據圖片"
-}
+}}
 ```
 
 ### 錯誤情況 2：非台幣收據
 
 ```json
-{
+{{
   "status": "unsupported_currency",
   "message": "收據幣別為 JPY，v1.5.0 僅支援台幣"
-}
+}}
 ```
 
 ### 錯誤情況 3：圖片模糊
 
 ```json
-{
+{{
   "status": "unclear",
   "message": "圖片模糊，無法辨識品項和金額"
-}
+}}
 ```
 
 ### 錯誤情況 4：資訊不完整
 
 ```json
-{
+{{
   "status": "incomplete",
   "message": "無法辨識品項或金額"
-}
+}}
 ```
 
 ## 收據範例說明
