@@ -155,26 +155,39 @@ def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
                 reply_text = "❌ 找不到最近的記帳記錄\n\n可能原因：\n1. 超過 10 分鐘（記錄已過期）\n2. 尚未進行過記帳\n\n請直接輸入完整記帳資訊。"
                 logger.warning(f"No last transaction found for user {user_id}")
             else:
-                # 取得交易 ID 和要更新的欄位
+                # 取得交易 ID、要更新的欄位和項目數量
                 transaction_id = last_transaction.get("交易ID")
                 fields_to_update = result.fields_to_update
+                item_count = last_transaction.get("item_count", 1)  # 預設為 1（單筆）
 
-                logger.info(f"Updating transaction {transaction_id} with fields: {fields_to_update}")
+                logger.info(f"Updating transaction {transaction_id} with {item_count} item(s)")
+                logger.info(f"Fields to update: {fields_to_update}")
 
-                # 發送 UPDATE webhook
-                success = send_update_webhook(user_id, transaction_id, fields_to_update)
+                # 發送 UPDATE webhook（包含項目數量以支援多項目批次更新）
+                success = send_update_webhook(user_id, transaction_id, fields_to_update, item_count)
 
                 if success:
                     # 更新成功
-                    reply_text = "✅ 已更新上一筆記帳\n\n"
+                    if item_count > 1:
+                        reply_text = f"✅ 已更新上一筆記帳（共 {item_count} 個項目）\n\n"
+                    else:
+                        reply_text = "✅ 已更新上一筆記帳\n\n"
+
                     reply_text += f"🔖 交易ID：{transaction_id}\n"
-                    reply_text += f"📝 原品項：{last_transaction.get('品項', '未知')}\n"
+                    reply_text += f"📝 原品項：{last_transaction.get('品項', '未知')}"
+                    if item_count > 1:
+                        reply_text += f" 等 {item_count} 項\n"
+                    else:
+                        reply_text += "\n"
                     reply_text += f"💰 原金額：{last_transaction.get('原幣金額', 0)} 元\n\n"
                     reply_text += "更新內容：\n"
 
                     for field_name, new_value in fields_to_update.items():
                         old_value = last_transaction.get(field_name, "未設定")
                         reply_text += f"• {field_name}：{old_value} → {new_value}\n"
+
+                    if item_count > 1:
+                        reply_text += f"\n💡 已同時更新相同交易ID的所有 {item_count} 筆記錄"
 
                     # 刪除 KV 記錄（防止重複修改）
                     delete_last_transaction(user_id)
