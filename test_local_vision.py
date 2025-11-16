@@ -127,7 +127,7 @@ def main():
 
     try:
         # 為了診斷，我們需要看到原始的 Vision API 回應
-        from app.image_handler import encode_image_base64
+        from app.image_handler import encode_image_base64, ReceiptItem
         from app.prompts import RECEIPT_VISION_PROMPT
         from app.config import GPT_VISION_MODEL
 
@@ -173,12 +173,40 @@ def main():
         print(response_text)
         print("=" * 60 + "\n")
 
-        # 現在使用正常流程處理
-        receipt_items, error_code, error_message = process_receipt_image(
-            image_data,
-            client,
-            enable_compression=enable_compression
-        )
+        # 解析回應（避免重複調用 Vision API）
+        import json
+        result = json.loads(response_text)
+        status = result.get("status")
+
+        if status == "success":
+            # 成功識別收據
+            items_data = result.get("items", [])
+            payment_method = result.get("payment_method")
+
+            # 轉換為 ReceiptItem 列表
+            receipt_items = []
+            for item in items_data:
+                receipt_items.append(ReceiptItem(
+                    品項=item["品項"],
+                    原幣金額=float(item["金額"]),
+                    付款方式=payment_method,
+                    分類=item.get("分類")  # Vision API 提供的分類（可選）
+                ))
+
+            error_code = None
+            error_message = None
+
+        elif status in ["not_receipt", "unsupported_currency", "unclear", "incomplete"]:
+            # 錯誤情況
+            receipt_items = []
+            error_code = status
+            error_message = result.get("message", "無法處理收據")
+
+        else:
+            # 未知狀態
+            receipt_items = []
+            error_code = "api_error"
+            error_message = f"無法處理收據（狀態：{status}）"
 
         # 顯示結果
         print("=" * 60)
