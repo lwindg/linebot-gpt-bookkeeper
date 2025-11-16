@@ -245,8 +245,9 @@ def handle_image_message(event: MessageEvent, messaging_api_blob: MessagingApiBl
     """
     message_id = event.message.id
     reply_token = event.reply_token
+    user_id = event.source.user_id  # 取得使用者 ID（用於 KV 儲存）
 
-    logger.info(f"Received image message, message_id={message_id}")
+    logger.info(f"Received image message from user {user_id}, message_id={message_id}")
 
     try:
         # 1. 下載圖片
@@ -290,8 +291,8 @@ def handle_image_message(event: MessageEvent, messaging_api_blob: MessagingApiBl
 
                 logger.info(f"轉換為 {total_items} 筆記帳項目")
 
-                # 5. 發送 webhook
-                success_count, failure_count = send_multiple_webhooks(entries)
+                # 5. 發送 webhook（傳入 user_id 以儲存到 KV，支援「修改上一筆」功能）
+                success_count, failure_count = send_multiple_webhooks(entries, user_id)
 
                 # 6. 回覆確認訊息（使用統一的多項目格式）
                 reply_text = format_multi_confirmation_message(result, success_count, failure_count)
