@@ -11,8 +11,10 @@
 import base64
 import json
 import logging
+import io
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Any
+from PIL import Image
 from openai import OpenAI
 from linebot.v3.messaging import MessagingApiBlob
 
@@ -86,6 +88,73 @@ def download_image(message_id: str, messaging_api_blob: MessagingApiBlob) -> byt
         raise ImageDownloadError(f"圖片下載失敗: {e}")
 
 
+def compress_image(image_data: bytes, max_width: int = 1024, quality: int = 85) -> bytes:
+    """
+    壓縮圖片以減少 Vision API token 消耗
+
+    策略：
+    1. 調整圖片尺寸（保持比例，最大寬度 1024px）
+    2. 降低 JPEG 品質（85% 仍保持良好可讀性）
+    3. 轉換為 JPEG 格式（如果是 PNG）
+
+    Args:
+        image_data: 原始圖片二進位資料
+        max_width: 最大寬度（預設 1024px）
+        quality: JPEG 品質（1-100，預設 85）
+
+    Returns:
+        bytes: 壓縮後的圖片二進位資料
+
+    Examples:
+        >>> original_size = len(image_data)
+        >>> compressed = compress_image(image_data)
+        >>> compressed_size = len(compressed)
+        >>> reduction = (1 - compressed_size / original_size) * 100
+        >>> print(f"壓縮率：{reduction:.1f}%")
+    """
+    try:
+        # 開啟圖片
+        img = Image.open(io.BytesIO(image_data))
+
+        # 記錄原始尺寸
+        original_width, original_height = img.size
+        logger.info(f"原始圖片尺寸：{original_width}x{original_height}")
+
+        # 計算新尺寸（保持比例）
+        if original_width > max_width:
+            ratio = max_width / original_width
+            new_width = max_width
+            new_height = int(original_height * ratio)
+
+            # 調整尺寸（使用高品質重採樣）
+            img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            logger.info(f"調整後尺寸：{new_width}x{new_height}")
+
+        # 轉換為 RGB（如果是 RGBA 或其他模式）
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
+
+        # 壓縮並儲存到記憶體
+        output = io.BytesIO()
+        img.save(output, format='JPEG', quality=quality, optimize=True)
+        compressed_data = output.getvalue()
+
+        # 記錄壓縮結果
+        original_size = len(image_data)
+        compressed_size = len(compressed_data)
+        reduction = (1 - compressed_size / original_size) * 100
+
+        logger.info(f"原始大小：{original_size} bytes")
+        logger.info(f"壓縮後大小：{compressed_size} bytes")
+        logger.info(f"壓縮率：{reduction:.1f}%")
+
+        return compressed_data
+
+    except Exception as e:
+        logger.warning(f"圖片壓縮失敗，使用原圖：{e}")
+        return image_data
+
+
 def encode_image_base64(image_data: bytes) -> str:
     """
     將圖片轉換為 base64 編碼
@@ -140,8 +209,11 @@ def process_receipt_image(
         if openai_client is None:
             openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
+        # 壓縮圖片以減少 token 消耗
+        compressed_image = compress_image(image_data)
+
         # 編碼圖片為 base64
-        base64_image = encode_image_base64(image_data)
+        base64_image = encode_image_base64(compressed_image)
 
         logger.info("開始呼叫 GPT-4 Vision API 分析收據")
 
