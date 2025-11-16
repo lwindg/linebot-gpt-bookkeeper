@@ -170,7 +170,8 @@ def encode_image_base64(image_data: bytes) -> str:
 
 def process_receipt_image(
     image_data: bytes,
-    openai_client: Optional[OpenAI] = None
+    openai_client: Optional[OpenAI] = None,
+    enable_compression: bool = True
 ) -> tuple[List[ReceiptItem], Optional[str], Optional[str]]:
     """
     使用 GPT-4 Vision API 分析收據圖片
@@ -178,6 +179,7 @@ def process_receipt_image(
     Args:
         image_data: 圖片二進位資料
         openai_client: OpenAI client 實例（可選，用於測試）
+        enable_compression: 是否啟用圖片壓縮（預設 True，用於測試可設為 False）
 
     Returns:
         tuple: (收據項目列表, 錯誤狀態碼, 錯誤訊息)
@@ -209,8 +211,13 @@ def process_receipt_image(
         if openai_client is None:
             openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
-        # 壓縮圖片以減少 token 消耗
-        compressed_image = compress_image(image_data)
+        # 壓縮圖片以減少 token 消耗（可選）
+        if enable_compression:
+            compressed_image = compress_image(image_data)
+            logger.info("圖片壓縮已啟用")
+        else:
+            compressed_image = image_data
+            logger.info("圖片壓縮已停用（使用原圖）")
 
         # 編碼圖片為 base64
         base64_image = encode_image_base64(compressed_image)

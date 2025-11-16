@@ -63,13 +63,17 @@ def main():
     """主函式"""
     # 檢查參數
     if len(sys.argv) < 2:
-        print("❌ 使用方式: python test_local_vision.py <圖片路徑>")
+        print("❌ 使用方式: python test_local_vision.py <圖片路徑> [--no-compress]")
         print("\n範例:")
         print("  python test_local_vision.py receipt.jpg")
         print("  python test_local_vision.py ~/Downloads/receipt.png")
+        print("  python test_local_vision.py receipt.jpg --no-compress  # 測試不壓縮")
         sys.exit(1)
 
     image_path = sys.argv[1]
+
+    # 檢查是否停用壓縮
+    enable_compression = "--no-compress" not in sys.argv
 
     # 檢查檔案是否存在
     if not os.path.exists(image_path):
@@ -91,31 +95,42 @@ def main():
     if len(image_data) > 10 * 1024 * 1024:
         print("⚠️  圖片過大（超過 10MB），可能導致處理失敗")
 
-    # 壓縮圖片並儲存供人眼確認
-    print("\n🗜️  壓縮圖片...")
-    compressed_data = compress_image(image_data)
-    compressed_size_mb = len(compressed_data) / (1024 * 1024)
-    compression_ratio = (1 - len(compressed_data) / len(image_data)) * 100
+    # 壓縮圖片並儲存供人眼確認（僅在啟用壓縮時）
+    if enable_compression:
+        print("\n🗜️  壓縮圖片...")
+        compressed_data = compress_image(image_data)
+        compressed_size_mb = len(compressed_data) / (1024 * 1024)
+        compression_ratio = (1 - len(compressed_data) / len(image_data)) * 100
 
-    print(f"   原始大小: {image_size_mb:.2f} MB")
-    print(f"   壓縮後大小: {compressed_size_mb:.2f} MB")
-    print(f"   壓縮率: {compression_ratio:.1f}%")
+        print(f"   原始大小: {image_size_mb:.2f} MB")
+        print(f"   壓縮後大小: {compressed_size_mb:.2f} MB")
+        print(f"   壓縮率: {compression_ratio:.1f}%")
 
-    # 儲存壓縮後的圖片
-    compressed_path = save_compressed_image(compressed_data, image_path)
-    print(f"✅ 壓縮後圖片已儲存: {compressed_path}")
-    print(f"   請用圖片查看器打開確認品質是否足以辨識")
+        # 儲存壓縮後的圖片
+        compressed_path = save_compressed_image(compressed_data, image_path)
+        print(f"✅ 壓縮後圖片已儲存: {compressed_path}")
+        print(f"   請用圖片查看器打開確認品質是否足以辨識")
+    else:
+        print("\n⚠️  壓縮已停用，將使用原圖測試")
 
     # 初始化 OpenAI client
     print("\n🤖 初始化 OpenAI client...")
     client = OpenAI(api_key=OPENAI_API_KEY)
 
-    # 處理圖片（使用原始圖片，process_receipt_image 內部會自動壓縮）
-    print("🔍 開始分析收據...\n")
-    print("   ℹ️  注意：process_receipt_image 會自動壓縮圖片")
-    print("   ℹ️  你可以對比儲存的 _compressed.jpg 與實際發送給 API 的壓縮版本\n")
+    # 處理圖片
+    if enable_compression:
+        print("🔍 開始分析收據...\n")
+        print("   ℹ️  注意：process_receipt_image 會壓縮圖片")
+        print("   ℹ️  你可以對比儲存的 _compressed.jpg 與實際發送給 API 的壓縮版本\n")
+    else:
+        print("🔍 開始分析收據（使用原圖，不壓縮）...\n")
+
     try:
-        receipt_items, error_code, error_message = process_receipt_image(image_data, client)
+        receipt_items, error_code, error_message = process_receipt_image(
+            image_data,
+            client,
+            enable_compression=enable_compression
+        )
 
         # 顯示結果
         print("=" * 60)
