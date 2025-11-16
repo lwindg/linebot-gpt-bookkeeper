@@ -160,7 +160,7 @@ def main():
                     ]
                 }
             ],
-            max_tokens=1000,
+            max_tokens=2000,  # 提高 token 上限以支援更複雜的收據
             response_format={"type": "json_object"}
         )
 
