@@ -34,19 +34,19 @@ def format_confirmation_message(entry: BookkeepingEntry) -> str:
     # Calculate TWD amount
     twd_amount = entry.原幣金額 * entry.匯率
 
-    message = f"""已成功記帳！
+    message = f"""✅ 記帳成功！
 
-日期：{entry.日期}
-品項：{entry.品項}
-台幣金額：{twd_amount:.0f} TWD
-付款方式：{entry.付款方式}
-分類：{entry.分類}
-必要性：{entry.必要性}
-交易ID：{entry.交易ID}"""
+📋 {entry.品項}
+💰 金額：{twd_amount:.0f} 元 TWD
+💳 付款方式：{entry.付款方式}
+📂 分類：{entry.分類}
+⭐ 必要性：{entry.必要性}
+🔖 交易ID：{entry.交易ID}
+📅 日期：{entry.日期}"""
 
     # Add optional detail note if present
     if entry.明細說明:
-        message += f"\n明細說明：{entry.明細說明}"
+        message += f"\n📝 明細說明：{entry.明細說明}"
 
     return message
 
@@ -86,8 +86,9 @@ def format_multi_confirmation_message(result: MultiExpenseResult, success_count:
         twd_amount = entry.原幣金額 * entry.匯率
 
         message += f"\n📋 #{idx} {entry.品項}"
-        message += f"\n💰 {twd_amount:.0f} 元 | {entry.付款方式}"
+        message += f"\n💰 {twd_amount:.0f} 元"
         message += f"\n📂 {entry.分類}"
+        message += f"\n⭐ {entry.必要性}"
 
         if entry.明細說明:
             message += f"\n📝 {entry.明細說明}"
@@ -98,8 +99,8 @@ def format_multi_confirmation_message(result: MultiExpenseResult, success_count:
 
     # 顯示共用資訊
     if entries:
-        message += f"\n\n🔖 交易ID：{entries[0].交易ID}"
-        message += f"\n💳 付款方式：{entries[0].付款方式}（共用）"
+        message += f"\n\n💳 付款方式：{entries[0].付款方式}"
+        message += f"\n🔖 交易ID：{entries[0].交易ID}"
         message += f"\n📅 日期：{entries[0].日期}"
 
     return message
