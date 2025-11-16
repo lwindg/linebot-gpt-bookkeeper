@@ -537,7 +537,7 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
 
 def _infer_category(品項: str) -> str:
     """
-    簡單的分類推斷（基於關鍵字）
+    使用 GPT 進行智能分類推斷
 
     Args:
         品項: 品項名稱
@@ -546,8 +546,64 @@ def _infer_category(品項: str) -> str:
         str: 推斷的分類
 
     Note:
-        這是簡化版本，僅根據品項關鍵字進行基本推斷。
-        完整版本應該使用 GPT 或更複雜的規則進行分類。
+        使用 GPT 根據品項名稱和完整的分類規則進行智能判斷。
+        確保分類符合 CLASSIFICATION_RULES 定義的標準。
+    """
+    from app.prompts import CLASSIFICATION_RULES
+
+    try:
+        client = OpenAI(api_key=OPENAI_API_KEY)
+
+        # 簡化的分類 prompt
+        classification_prompt = f"""請根據品項名稱判斷最合適的分類。
+
+{CLASSIFICATION_RULES}
+
+**任務**：
+- 品項：「{品項}」
+- 請從上述分類列表中選擇**最合適**的分類
+- 必須使用「大類／子類」或「大類／子類／細類」格式
+- 只能使用已定義的分類，不可自創
+
+**輸出格式**：
+只回傳分類名稱，不要有其他文字。
+
+範例：
+- 輸入：咖啡 → 輸出：家庭／飲品
+- 輸入：面紙 → 輸出：家庭／用品／雜項
+- 輸入：早餐 → 輸出：家庭／餐飲／早餐
+- 輸入：火車票 → 輸出：交通／接駁
+"""
+
+        response = client.chat.completions.create(
+            model=GPT_MODEL,
+            messages=[
+                {"role": "user", "content": classification_prompt}
+            ],
+            max_tokens=50,
+            temperature=0.3  # 較低的 temperature 確保穩定輸出
+        )
+
+        分類 = response.choices[0].message.content.strip()
+        logger.info(f"GPT 分類推斷：{品項} → {分類}")
+
+        return 分類
+
+    except Exception as e:
+        logger.error(f"GPT 分類推斷失敗：{e}")
+        # 失敗時回退到簡單關鍵字匹配
+        return _simple_category_fallback(品項)
+
+
+def _simple_category_fallback(品項: str) -> str:
+    """
+    簡單的分類推斷（作為 GPT 分類失敗時的備選方案）
+
+    Args:
+        品項: 品項名稱
+
+    Returns:
+        str: 推斷的分類
     """
     品項_lower = 品項.lower()
 
@@ -560,8 +616,12 @@ def _infer_category(品項: str) -> str:
         return "家庭／餐飲／晚餐"
     elif any(keyword in 品項_lower for keyword in ["咖啡", "茶", "飲料", "果汁", "冰沙", "奶茶"]):
         return "家庭／飲品"
-    elif any(keyword in 品項_lower for keyword in ["點心", "蛋糕", "甜點", "餅乾", "糖果"]):
+    elif any(keyword in 品項_lower for keyword in ["點心", "蛋糕", "甜點", "餅乾", "糖果", "巧克力"]):
         return "家庭／點心"
+
+    # 家庭用品
+    elif any(keyword in 品項_lower for keyword in ["面紙", "衛生紙", "紙巾", "棉條", "衛生棉"]):
+        return "家庭／用品／雜項"
 
     # 交通類別
     elif any(keyword in 品項_lower for keyword in ["計程車", "uber", "高鐵", "火車", "捷運", "公車"]):
