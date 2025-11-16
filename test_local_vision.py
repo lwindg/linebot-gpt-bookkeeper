@@ -21,10 +21,23 @@ from pathlib import Path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from app.image_handler import process_receipt_image, ReceiptItem
+from app.image_handler import process_receipt_image, ReceiptItem, compress_image
 from app.gpt_processor import process_receipt_data
 from openai import OpenAI
 from app.config import OPENAI_API_KEY
+
+
+def save_compressed_image(compressed_data: bytes, original_path: str) -> str:
+    """儲存壓縮後的圖片供人眼確認"""
+    # 產生輸出檔名
+    path_obj = Path(original_path)
+    output_path = path_obj.parent / f"{path_obj.stem}_compressed.jpg"
+
+    # 儲存檔案
+    with open(output_path, 'wb') as f:
+        f.write(compressed_data)
+
+    return str(output_path)
 
 
 def load_image_from_file(image_path: str) -> bytes:
@@ -78,12 +91,29 @@ def main():
     if len(image_data) > 10 * 1024 * 1024:
         print("⚠️  圖片過大（超過 10MB），可能導致處理失敗")
 
+    # 壓縮圖片並儲存供人眼確認
+    print("\n🗜️  壓縮圖片...")
+    compressed_data = compress_image(image_data)
+    compressed_size_mb = len(compressed_data) / (1024 * 1024)
+    compression_ratio = (1 - len(compressed_data) / len(image_data)) * 100
+
+    print(f"   原始大小: {image_size_mb:.2f} MB")
+    print(f"   壓縮後大小: {compressed_size_mb:.2f} MB")
+    print(f"   壓縮率: {compression_ratio:.1f}%")
+
+    # 儲存壓縮後的圖片
+    compressed_path = save_compressed_image(compressed_data, image_path)
+    print(f"✅ 壓縮後圖片已儲存: {compressed_path}")
+    print(f"   請用圖片查看器打開確認品質是否足以辨識")
+
     # 初始化 OpenAI client
     print("\n🤖 初始化 OpenAI client...")
     client = OpenAI(api_key=OPENAI_API_KEY)
 
-    # 處理圖片
+    # 處理圖片（使用原始圖片，process_receipt_image 內部會自動壓縮）
     print("🔍 開始分析收據...\n")
+    print("   ℹ️  注意：process_receipt_image 會自動壓縮圖片")
+    print("   ℹ️  你可以對比儲存的 _compressed.jpg 與實際發送給 API 的壓縮版本\n")
     try:
         receipt_items, error_code, error_message = process_receipt_image(image_data, client)
 
