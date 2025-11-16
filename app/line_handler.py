@@ -293,28 +293,8 @@ def handle_image_message(event: MessageEvent, messaging_api_blob: MessagingApiBl
                 # 5. 發送 webhook
                 success_count, failure_count = send_multiple_webhooks(entries)
 
-                # 6. 回覆確認訊息
-                if success_count == total_items:
-                    reply_text = f"✅ 收據識別成功！已記錄 {total_items} 個項目：\n\n"
-                elif failure_count == total_items:
-                    reply_text = f"❌ 記帳失敗！{total_items} 個項目均未能記錄。\n\n"
-                else:
-                    reply_text = f"⚠️ 部分記帳成功！已記錄 {success_count}/{total_items} 個項目：\n\n"
-
-                # 列出所有項目
-                for idx, entry in enumerate(entries, start=1):
-                    twd_amount = entry.原幣金額 * entry.匯率
-                    reply_text += f"📋 #{idx} {entry.品項}\n"
-                    reply_text += f"💰 {twd_amount:.0f} 元 | {entry.付款方式}\n"
-                    reply_text += f"📂 {entry.分類}\n"
-
-                    if idx < total_items:
-                        reply_text += "\n"
-
-                # 顯示共用資訊
-                reply_text += f"\n🔖 交易ID：{entries[0].交易ID}"
-                reply_text += f"\n💳 付款方式：{entries[0].付款方式}（共用）"
-                reply_text += f"\n📅 日期：{entries[0].日期}"
+                # 6. 回覆確認訊息（使用統一的多項目格式）
+                reply_text = format_multi_confirmation_message(result, success_count, failure_count)
 
                 # 如果付款方式是預設值，顯示警告訊息
                 if result.response_text:

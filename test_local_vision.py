@@ -46,19 +46,6 @@ def load_image_from_file(image_path: str) -> bytes:
         return f.read()
 
 
-def format_receipt_items(receipt_items: list[ReceiptItem]) -> str:
-    """格式化收據項目"""
-    if not receipt_items:
-        return "無項目"
-
-    lines = []
-    for idx, item in enumerate(receipt_items, 1):
-        lines.append(f"  {idx}. {item.品項} - {item.原幣金額} 元")
-        if item.付款方式:
-            lines.append(f"     付款方式: {item.付款方式}")
-    return "\n".join(lines)
-
-
 def main():
     """主函式"""
     # 檢查參數
@@ -232,28 +219,42 @@ def main():
 
         else:
             # 識別成功
-            print(f"✅ 識別成功！共 {len(receipt_items)} 個項目")
-            print("\n📋 識別到的項目:")
-            print(format_receipt_items(receipt_items))
+            print(f"✅ 識別成功！共 {len(receipt_items)} 個項目\n")
 
             # 轉換為記帳資料
-            print("\n🔄 轉換為記帳資料...")
             result = process_receipt_data(receipt_items)
 
             if result.intent == "multi_bookkeeping":
-                print("✅ 轉換成功！\n")
+                entries = result.entries
+                total_items = len(entries)
 
-                # 顯示記帳資料
-                for idx, entry in enumerate(result.entries, 1):
-                    print(f"記帳項目 #{idx}:")
-                    print(f"  品項: {entry.品項}")
-                    print(f"  金額: {entry.原幣金額} TWD")
-                    print(f"  付款方式: {entry.付款方式}")
-                    print(f"  分類: {entry.分類}")
-                    print(f"  日期: {entry.日期}")
-                    print(f"  交易ID: {entry.交易ID}")
-                    if idx < len(result.entries):
+                # 使用統一的多項目格式顯示
+                print(f"✅ 記帳成功！已記錄 {total_items} 個項目：\n")
+
+                # 列出所有項目
+                for idx, entry in enumerate(entries, start=1):
+                    twd_amount = entry.原幣金額 * entry.匯率
+
+                    print(f"📋 #{idx} {entry.品項}")
+                    print(f"💰 {twd_amount:.0f} 元")
+                    print(f"📂 {entry.分類}")
+                    print(f"⭐ {entry.必要性}")
+
+                    if entry.明細說明:
+                        print(f"📝 {entry.明細說明}")
+
+                    # 項目之間加空行（除了最後一個）
+                    if idx < total_items:
                         print()
+
+                # 顯示共用資訊
+                print(f"\n💳 付款方式：{entries[0].付款方式}")
+                print(f"🔖 交易ID：{entries[0].交易ID}")
+                print(f"📅 日期：{entries[0].日期}")
+
+                # 如果有警告訊息（例如付款方式預設為現金）
+                if result.response_text:
+                    print(f"\n{result.response_text}")
             else:
                 print(f"❌ 轉換失敗: {result.error_message}")
 
