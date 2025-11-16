@@ -10,33 +10,31 @@ import logging
 import json
 from typing import Optional, Dict, Any
 from redis import Redis
-from app.config import KV_REST_API_URL, KV_REST_API_TOKEN, KV_ENABLED, LAST_TRANSACTION_TTL
+from app.config import REDIS_URL, KV_ENABLED, LAST_TRANSACTION_TTL
 
 logger = logging.getLogger(__name__)
 
 
 def get_kv_client() -> Optional[Redis]:
     """
-    取得 KV (Redis) 客戶端
+    取得 Redis 客戶端
 
     Returns:
-        Redis 客戶端實例，若 KV 未啟用則回傳 None
+        Redis 客戶端實例，若 Redis 未啟用則回傳 None
     """
     if not KV_ENABLED:
-        logger.warning("KV not enabled, skipping KV operations")
+        logger.warning("Redis not enabled, skipping KV operations")
         return None
 
     try:
-        # Vercel KV uses REST API via redis-py
-        # URL format: rediss://default:token@host:port
+        # Vercel provides REDIS_URL (format: redis://... or rediss://...)
         client = Redis.from_url(
-            KV_REST_API_URL,
-            password=KV_REST_API_TOKEN,
+            REDIS_URL,
             decode_responses=True
         )
         return client
     except Exception as e:
-        logger.error(f"Failed to create KV client: {e}")
+        logger.error(f"Failed to create Redis client: {e}")
         return None
 
 
