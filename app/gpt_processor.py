@@ -366,8 +366,8 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
                     分類=item_data.get("分類", ""),
                     專案="日常",
                     必要性=item_data.get("必要性", "必要日常支出"),
-                    代墊狀態="無",
-                    收款支付對象="",
+                    代墊狀態=item_data.get("代墊狀態", "無"),
+                    收款支付對象=item_data.get("收款支付對象", ""),
                     附註=f"多項目支出 {idx}/{len(items)}"
                 )
 

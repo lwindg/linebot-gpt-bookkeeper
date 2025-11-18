@@ -40,7 +40,17 @@ def format_confirmation_message(entry: BookkeepingEntry) -> str:
 💰 金額：{twd_amount:.0f} 元 TWD
 💳 付款方式：{entry.付款方式}
 📂 分類：{entry.分類}
-⭐ 必要性：{entry.必要性}
+⭐ 必要性：{entry.必要性}"""
+
+    # Add advance payment information if present
+    if entry.代墊狀態 == "代墊":
+        message += f"\n💸 代墊給：{entry.收款支付對象}"
+    elif entry.代墊狀態 == "需支付":
+        message += f"\n💰 需支付給：{entry.收款支付對象}"
+    elif entry.代墊狀態 == "不索取":
+        message += f"\n🎁 不索取（代墊給：{entry.收款支付對象}）"
+
+    message += f"""
 🔖 交易ID：{entry.交易ID}
 📅 日期：{entry.日期}"""
 
@@ -92,6 +102,14 @@ def format_multi_confirmation_message(result: MultiExpenseResult, success_count:
 
         if entry.明細說明:
             message += f"\n📝 {entry.明細說明}"
+
+        # Add advance payment information if present
+        if entry.代墊狀態 == "代墊":
+            message += f"\n💸 代墊給：{entry.收款支付對象}"
+        elif entry.代墊狀態 == "需支付":
+            message += f"\n💰 需支付給：{entry.收款支付對象}"
+        elif entry.代墊狀態 == "不索取":
+            message += f"\n🎁 不索取（代墊給：{entry.收款支付對象}）"
 
         # 項目之間加空行（除了最後一個）
         if idx < total_items:
