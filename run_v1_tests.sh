@@ -69,7 +69,7 @@ extract_field() {
             echo "$output" | grep "📝 意圖:" | sed 's/.*📝 意圖: //' | xargs
             ;;
         "品項")
-            echo "$output" | grep "🛍️  品項:" | sed 's/.*🛍️  品項: //' | xargs
+            echo "$output" | grep "🛍️ 品項:" | sed 's/.*🛍️ 品項: //' | xargs
             ;;
         "金額")
             echo "$output" | grep "💰 金額:" | sed 's/.*💰 金額: TWD //' | xargs
@@ -78,7 +78,7 @@ extract_field() {
             echo "$output" | grep "💳 付款:" | sed 's/.*💳 付款: //' | xargs
             ;;
         "分類")
-            echo "$output" | grep "🏷️  分類:" | sed 's/.*🏷️  分類: //' | xargs
+            echo "$output" | grep "🏷️ 分類:" | sed 's/.*🏷️ 分類: //' | xargs
             ;;
         "日期")
             echo "$output" | grep "📅 日期:" | sed 's/.*📅 日期: //' | xargs
