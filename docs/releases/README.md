@@ -6,43 +6,25 @@ This directory contains all release notes for the linebot-gpt-bookkeeper project
 
 ```
 docs/releases/
-├── README.md                           # This file
-├── RELEASE_TAGGING_GUIDE.md           # Git tagging and release guide
-│
-├── RELEASE_NOTES_v1.2.0.md            # Full release notes
-├── RELEASE_NOTES_v1.2.0_GitHub.md     # GitHub-optimized version
-│
-├── RELEASE_NOTES_v1.3.0.md            # Full release notes
-├── RELEASE_NOTES_v1.3.0_GitHub.md     # GitHub-optimized version
-│
-├── RELEASE_NOTES_v1.5.0.md            # Full release notes
-├── RELEASE_NOTES_v1.5.0_GitHub.md     # GitHub-optimized version
-│
-├── RELEASE_NOTES_v1.7.0.md            # Full release notes
-└── RELEASE_NOTES_v1.7.0_GitHub.md     # GitHub-optimized version
+├── README.md                    # This file
+├── RELEASE_TAGGING_GUIDE.md    # Git tagging and release guide
+├── RELEASE_NOTES_v1.2.0.md     # v1.2.0 release notes
+├── RELEASE_NOTES_v1.3.0.md     # v1.3.0 release notes
+├── RELEASE_NOTES_v1.5.0.md     # v1.5.0 release notes
+└── RELEASE_NOTES_v1.7.0.md     # v1.7.0 release notes
 ```
 
-## 📝 File Types
+## 📝 Release Notes Content
 
-### Full Release Notes (`RELEASE_NOTES_vX.X.X.md`)
-Complete documentation including:
+Each release note includes:
 - Detailed feature descriptions
 - Technical implementation details
 - Complete commit history
 - Development statistics
 - Comprehensive testing guide
-
-**Use for**: Internal reference, detailed technical review
-
-### GitHub-Optimized (`RELEASE_NOTES_vX.X.X_GitHub.md`)
-Concise versions suitable for GitHub releases:
-- Key features and highlights
-- Quick usage examples
+- Usage examples
 - Installation instructions
 - Known limitations
-- What's coming next
-
-**Use for**: Publishing GitHub releases, public-facing documentation
 
 ## 📋 Release History
 
@@ -59,13 +41,12 @@ See [RELEASE_TAGGING_GUIDE.md](./RELEASE_TAGGING_GUIDE.md) for complete instruct
 - Creating git tags
 - Pushing tags to GitHub
 - Creating GitHub releases
-- Using GitHub-optimized release notes
 
 ## 🔖 Quick Commands
 
 ```bash
 # Create all tags (from project root)
-../create_tags.sh
+./create_tags.sh
 
 # Push all tags
 git push origin --tags

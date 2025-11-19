@@ -267,9 +267,18 @@ python test_local.py
 
 ## 📚 相關文件
 
+### 核心文件
 - [功能規格書](specs/001-linebot-gpt-bookkeeper/spec.md) - 完整的功能需求和驗收標準
 - [專案憲章](.specify/memory/constitution.md) - 核心開發原則
 - [Claude 開發指南](CLAUDE.md) - AI 助手開發規範
+
+### 使用指南
+- [收據辨識指南](docs/RECEIPT_USAGE_GUIDE.md) - 收據拍照和圖片辨識使用說明
+- [本地 Vision 測試](docs/LOCAL_VISION_TEST.md) - 本地測試 GPT Vision API
+- [自動化測試指南](docs/AUTO_TEST_GUIDE.md) - 自動化測試腳本使用說明
+
+### 版本發布
+- [Release Notes](docs/releases/) - 所有版本的詳細發布說明
 
 ## 🤝 貢獻
 
