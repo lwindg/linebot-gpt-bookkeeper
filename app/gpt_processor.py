@@ -18,6 +18,7 @@ from openai import OpenAI
 
 from app.config import OPENAI_API_KEY, GPT_MODEL
 from app.prompts import MULTI_EXPENSE_PROMPT
+from app.schemas import MULTI_BOOKKEEPING_SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -290,14 +291,17 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
         # 初始化 OpenAI client
         client = OpenAI(api_key=OPENAI_API_KEY)
 
-        # 呼叫 Chat Completions API（使用 MULTI_EXPENSE_PROMPT）
+        # 呼叫 Chat Completions API（使用 MULTI_EXPENSE_PROMPT + Structured Output）
         completion = client.chat.completions.create(
             model=GPT_MODEL,
             messages=[
                 {"role": "system", "content": MULTI_EXPENSE_PROMPT},
                 {"role": "user", "content": user_message}
             ],
-            response_format={"type": "json_object"}  # 確保 JSON 輸出
+            response_format={
+                "type": "json_schema",
+                "json_schema": MULTI_BOOKKEEPING_SCHEMA
+            }
         )
 
         # 取得回應並解析 JSON
