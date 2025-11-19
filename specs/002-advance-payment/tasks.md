@@ -262,7 +262,7 @@
 #### 文件更新
 
 - [ ] T057 [P] 更新 README.md 說明 v1.7 代墊功能（如需要）
-- [ ] T058 [P] 建立 RELEASE_NOTES_v1.7.0.md（參考 RELEASE_NOTES_v1.3.0.md 格式）
+- [ ] T058 [P] 建立 docs/releases/RELEASE_NOTES_v1.7.0.md（參考 RELEASE_NOTES_v1.3.0.md 格式）
 
 #### 端到端驗證（真實 LINE）
 

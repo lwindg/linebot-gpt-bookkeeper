@@ -320,7 +320,7 @@ PYTHONPATH=. uv run pytest tests/test_multi_expense.py::TestNoCollection -v
 - **功能規格**：`specs/002-advance-payment/spec.md`
 - **實作計畫**：`specs/002-advance-payment/plan.md`
 - **快速入門**：`specs/002-advance-payment/quickstart.md`
-- **發布說明**：`RELEASE_NOTES_v1.7.0.md`
+- **發布說明**：`docs/releases/RELEASE_NOTES_v1.7.0.md`
 - **單元測試**：`tests/test_multi_expense.py`
 
 ---
