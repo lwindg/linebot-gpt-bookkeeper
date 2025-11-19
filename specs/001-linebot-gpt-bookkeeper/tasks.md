@@ -1,1004 +1,1122 @@
-# LINE Bot GPT Bookkeeper - v1 MVP 任務清單
+# LINE Bot GPT Bookkeeper - v1.5.0 任務清單
 
-**版本**：1.0.0 | **建立日期**：2025-11-12 | **目標版本**：v1 MVP
+**版本**：1.5.0 | **建立日期**：2025-11-14 | **目標版本**：v1.5.0 多筆支出與視覺識別版
+**輸入**：[spec.md](./spec.md), [plan-v1.5.0.md](./plan-v1.5.0.md)
 
 ---
 
 ## 📋 任務概覽
 
-本文件定義 v1 MVP 的所有開發任務，按照依賴順序和優先級組織。
+本文件定義 v1.5.0 的所有開發任務，按照依賴順序和優先級組織。
 
 ### 任務統計
 
-- **總任務數**：25 個
-- **P1（必要）**：25 個
-- **預估總工時**：約 16-20 小時
+- **總任務數**：60+ 個任務
+- **P1（必要）**：58 個
+- **P2（文件）**：2 個
+- **預估總工時**：約 16-24 小時（2-3 個工作天）
 
 ### 階段劃分
 
-1. **Phase 1 - 基礎架構**：5 個任務（2-3 小時）
-2. **Phase 2 - 核心功能**：10 個任務（8-10 小時）
-3. **Phase 3 - 測試**：4 個任務（3-4 小時）
-4. **Phase 4 - 部署**：4 個任務（2-3 小時）
-5. **Phase 5 - 驗證**：2 個任務（1 小時）
+1. **Phase 0 - 前置準備**：3 個任務（已完成）
+2. **Phase 1 - 多項目支出功能**：13 個任務（6-8 小時）
+3. **Phase 2 - 圖片識別功能**：11 個任務（6-8 小時）
+4. **Phase 3 - 整合測試**：5 個任務（2-3 小時）
+5. **Phase 4 - 部署準備**：5 個任務（1-2 小時）
+6. **Phase 5 - 手動驗證**：20 個測試案例（2-3 小時）
+7. **Phase 6 - 文件更新**：2 個任務（1 小時）
 
 ---
 
-## Phase 1: 基礎架構設定
+## 任務格式說明
 
-### T-001: 建立專案目錄結構
+**格式**：`[ID] [P?] [Story] 任務描述`
+
+- **[P]**: 可平行執行（不同檔案，無相依性）
+- **[Story]**: 任務所屬使用者故事（US1, US2）
+- 每個任務包含完整檔案路徑
+
+---
+
+## Phase 0: 前置準備
+
+**目的**：確認 v1 MVP 基礎已就緒
+
+### T000: 驗證 v1 MVP 功能運作正常
 
 **優先級**：P1
+**狀態**：✅ 已完成
 **預估時間**：30 分鐘
 **依賴**：無
 
 **描述**：
-建立完整的專案目錄結構，包括所有必要的資料夾和空檔案。
+確認 v1 MVP 的單筆記帳功能正常運作，作為 v1.5.0 的基礎。
 
 **驗收標準**：
-- [x] 建立 `api/` 目錄及 `webhook.py`
-- [x] 建立 `app/` 目錄及所有模組檔案（`__init__.py`, `config.py`, `line_handler.py`, `gpt_processor.py`, `webhook_sender.py`, `prompts.py`）
-- [x] 建立 `tests/` 目錄及測試檔案骨架
-- [x] 目錄結構符合 plan.md 定義
-
-**實作筆記**：
-```bash
-mkdir -p api app tests
-touch api/webhook.py
-touch app/{__init__.py,config.py,line_handler.py,gpt_processor.py,webhook_sender.py,prompts.py}
-touch tests/{test_gpt_processor.py,test_webhook_sender.py,test_integration.py}
-```
+- [x] 單筆記帳功能正常（如「午餐120元現金」）
+- [x] Webhook 正確發送到 Make.com
+- [x] 確認訊息格式正確
+- [x] 錯誤處理正常
 
 ---
 
-### T-002: 設定 .gitignore
+### T001: 確認現有專案結構符合規劃
 
 **優先級**：P1
+**狀態**：✅ 已完成
 **預估時間**：15 分鐘
-**依賴**：T-001
+**依賴**：T000
 
 **描述**：
-設定 .gitignore 排除不應提交的檔案（環境變數、Python cache 等）。
+檢查現有專案結構是否符合 plan-v1.5.0.md 的規劃，確認可以直接擴充。
 
 **驗收標準**：
-- [x] 排除 `.env`
-- [x] 排除 `__pycache__/` 和 `*.pyc`
-- [x] 排除 `.pytest_cache/`
-- [x] 排除 `.vercel/`
-- [x] 排除 `venv/` 和 `.venv/`
-
-**實作筆記**：
-參考標準 Python .gitignore 模板。
+- [x] `api/webhook.py` 存在
+- [x] `app/` 目錄包含所有 v1 模組
+- [x] `tests/` 目錄結構正確
 
 ---
 
-### T-003: 建立 requirements.txt
+### T002: 確認環境變數設定完整
 
 **優先級**：P1
+**狀態**：✅ 已完成
 **預估時間**：15 分鐘
-**依賴**：T-001
+**依賴**：T001
 
 **描述**：
-定義所有 Python 依賴套件及版本。
+確認 Vercel 環境變數包含所有 v1 必要變數，準備新增 v1.5.0 變數。
 
 **驗收標準**：
-- [x] 包含 `line-bot-sdk==3.8.0`
-- [x] 包含 `openai>=1.12.0`
-- [x] 包含 `requests>=2.31.0`
-- [x] 包含 `Flask>=3.0.0`
-- [x] 包含 `python-dotenv>=1.0.0`
-- [x] 包含測試依賴：`pytest>=7.4.0`, `pytest-mock>=3.12.0`
+- [x] `LINE_CHANNEL_ACCESS_TOKEN` 已設定
+- [x] `LINE_CHANNEL_SECRET` 已設定
+- [x] `OPENAI_API_KEY` 已設定
+- [x] `WEBHOOK_URL` 已設定
+- [x] `GPT_MODEL` 已設定（gpt-4o-mini）
 
-**實作筆記**：
-參考 plan.md 的「依賴套件清單」章節。
+**Checkpoint 0.1**: v1 MVP 基礎驗證完成，可開始 v1.5.0 開發
 
 ---
 
-### T-004: 設定 vercel.json
+## Phase 1: 多項目支出功能
+
+**目標**：支援單一訊息多個項目，共用付款方式和交易ID
+
+**使用者故事**：US1 場景 6-7（多項目文字支出）
+
+**獨立測試**：發送「早餐80元，午餐150元，現金」，驗證記錄兩個項目且共用付款方式
+
+---
+
+### T101 [P] [US1]: 建立 MULTI_EXPENSE_PROMPT
 
 **優先級**：P1
-**預估時間**：20 分鐘
-**依賴**：T-001
+**狀態**：⏳ 待執行
+**預估時間**：1 小時
+**依賴**：T002
+**檔案**：`app/prompts.py`
 
 **描述**：
-建立 Vercel 部署配置檔，定義 Serverless Function 設定。
+在 `app/prompts.py` 中建立 `MULTI_EXPENSE_PROMPT`，定義多項目識別邏輯。
 
 **驗收標準**：
-- [x] 設定 Python 3.11 runtime
-- [x] 定義 `api/webhook.py` 為 Serverless Function
-- [x] 設定路由：`/api/webhook` → `api/webhook.py`
-- [x] 符合 plan.md 的 vercel.json 範例
+- [ ] 定義「一條訊息 = 一次支出 = 一種付款方式」的概念
+- [ ] 說明如何識別多個項目（逗號、分號、頓號、換行分隔）
+- [ ] 定義共用付款方式的提取邏輯
+- [ ] 定義錯誤情況（不同付款方式、模糊情況、缺少資訊）
+- [ ] 定義 JSON 輸出格式（payment_method 在最外層，items 陣列）
+- [ ] 包含完整範例（正確、錯誤情況）
 
 **實作筆記**：
-```json
+```python
+MULTI_EXPENSE_PROMPT = """你是專業的記帳助手...
+
+## v1.5.0 新功能：支援單一訊息多個項目（同一次支出）
+
+**重要概念**：一條訊息代表「一次支出行為」，可能包含多個項目，但只有「一種付款方式」。
+
+## 輸出格式
+
+### 多項記帳（共用付款方式）
 {
-  "version": 2,
-  "builds": [{"src": "api/webhook.py", "use": "@vercel/python"}],
-  "routes": [{"src": "/api/webhook", "dest": "api/webhook.py"}],
-  "env": {"PYTHON_VERSION": "3.11"}
+  "intent": "multi_bookkeeping",
+  "payment_method": "現金",
+  "items": [...]
 }
+"""
 ```
 
 ---
 
-### T-005: 建立 .env.example
+### T102 [P] [US1]: 更新資料類別
 
 **優先級**：P1
-**預估時間**：15 分鐘
-**依賴**：T-001
+**狀態**：⏳ 待執行
+**預估時間**：45 分鐘
+**依賴**：T002
+**檔案**：`app/gpt_processor.py`
 
 **描述**：
-建立環境變數範例檔，供開發者參考。
+在 `app/gpt_processor.py` 中新增 `MultiExpenseResult` 資料類別。
 
 **驗收標準**：
-- [x] 包含所有必要環境變數（見下方）
-- [x] 提供說明註解
-- [x] 敏感值使用 placeholder
-
-**實作筆記**：
-```bash
-# LINE Bot Configuration
-LINE_CHANNEL_ACCESS_TOKEN=your_line_channel_access_token_here
-LINE_CHANNEL_SECRET=your_line_channel_secret_here
-
-# OpenAI Configuration
-OPENAI_API_KEY=sk-proj-your_openai_api_key_here
-GPT_MODEL=gpt-4o-mini
-
-# Webhook Configuration
-WEBHOOK_URL=https://hook.us2.make.com/your_webhook_url_here
-WEBHOOK_TIMEOUT=10
-```
-
----
-
-## Phase 2: 核心功能實作
-
-### T-006: 實作 app/config.py
-
-**優先級**：P1
-**預估時間**：30 分鐘
-**依賴**：T-003, T-005
-
-**描述**：
-實作環境變數管理模組，載入並驗證所有配置。
-
-**驗收標準**：
-- [x] 使用 `python-dotenv` 載入 `.env`
-- [x] 定義所有環境變數（LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET, OPENAI_API_KEY, WEBHOOK_URL, GPT_MODEL, WEBHOOK_TIMEOUT）
-- [x] 驗證必要變數存在（若缺少則拋出 `ValueError`）
-- [x] 提供預設值（GPT_MODEL, WEBHOOK_TIMEOUT）
-- [x] 通過單元測試（測試缺少必要變數時的行為）
+- [ ] 新增 `MultiExpenseResult` dataclass
+- [ ] 包含欄位：`intent`, `entries: List[BookkeepingEntry]`, `error_message: Optional[str]`
+- [ ] intent 類型：`Literal["multi_bookkeeping", "conversation", "error"]`
+- [ ] 確保 `BookkeepingEntry` 可被重複使用（多項目情況）
 
 **實作筆記**：
 ```python
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
-
-# 必要變數
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
-LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET')
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-WEBHOOK_URL = os.getenv('WEBHOOK_URL')
-
-# 選用變數（有預設值）
-GPT_MODEL = os.getenv('GPT_MODEL', 'gpt-4o-mini')
-WEBHOOK_TIMEOUT = int(os.getenv('WEBHOOK_TIMEOUT', '10'))
-
-# 驗證
-required_vars = {
-    'LINE_CHANNEL_ACCESS_TOKEN': LINE_CHANNEL_ACCESS_TOKEN,
-    'LINE_CHANNEL_SECRET': LINE_CHANNEL_SECRET,
-    'OPENAI_API_KEY': OPENAI_API_KEY,
-    'WEBHOOK_URL': WEBHOOK_URL,
-}
-
-for var_name, var_value in required_vars.items():
-    if not var_value:
-        raise ValueError(f"Missing required environment variable: {var_name}")
-```
-
----
-
-### T-007: 實作 app/prompts.py
-
-**優先級**：P1
-**預估時間**：1 小時
-**依賴**：T-001
-
-**描述**：
-定義 GPT System Prompt，整合 knowledge/ 的所有欄位標準值。
-
-**驗收標準**：
-- [x] 定義 `SYSTEM_PROMPT` 常數
-- [x] 包含角色定義（「你是專業的記帳助手」）
-- [x] 包含任務說明（判斷意圖、記帳處理、對話處理）
-- [x] 整合完整的欄位標準值：
-  - [x] 分類（所有類別及說明）
-  - [x] 付款方式（包含別名映射）
-  - [x] 專案、必要性、代墊狀態
-- [x] 提供 JSON 輸出格式範例（bookkeeping + conversation）
-- [x] 符合 plan.md 的 System Prompt 設計
-
-**實作筆記**：
-參考 plan.md 第 4 節「app/prompts.py - System Prompt 定義」的完整內容。
-
----
-
-### T-008: 實作 app/gpt_processor.py - 資料結構
-
-**優先級**：P1
-**預估時間**：30 分鐘
-**依賴**：T-007
-
-**描述**：
-定義 `BookkeepingEntry` 資料類別，用於表示處理結果。
-
-**驗收標準**：
-- [x] 使用 `dataclasses` 定義 `BookkeepingEntry`
-- [x] 包含所有欄位（日期、品項、原幣別、原幣金額等 14 個記帳欄位）
-- [x] 包含 `intent` 欄位（Literal["bookkeeping", "conversation"]）
-- [x] 包含 `response_text` 欄位（用於對話回應）
-- [x] 適當的型別標註（使用 `Optional`, `Literal`）
-
-**實作筆記**：
-```python
-from dataclasses import dataclass
-from typing import Literal, Optional
-from datetime import date
-
 @dataclass
-class BookkeepingEntry:
-    intent: Literal["bookkeeping", "conversation"]
-
-    # 記帳欄位
-    日期: Optional[str] = None
-    品項: Optional[str] = None
-    原幣別: Optional[str] = "TWD"
-    原幣金額: Optional[float] = None
-    匯率: Optional[float] = 1.0
-    付款方式: Optional[str] = None
-    交易ID: Optional[str] = None
-    明細說明: Optional[str] = ""
-    分類: Optional[str] = None
-    專案: Optional[str] = "日常"
-    必要性: Optional[str] = None
-    代墊狀態: Optional[str] = "無"
-    收款支付對象: Optional[str] = ""
-    附註: Optional[str] = ""
-
-    # 對話欄位
-    response_text: Optional[str] = None
+class MultiExpenseResult:
+    """多項目支出處理結果"""
+    intent: Literal["multi_bookkeeping", "conversation", "error"]
+    entries: List[BookkeepingEntry] = field(default_factory=list)
+    error_message: Optional[str] = None
 ```
 
 ---
 
-### T-009: 實作 app/gpt_processor.py - 交易ID生成
+### T103 [US1]: 實作 process_multi_expense() 函式
 
 **優先級**：P1
-**預估時間**：30 分鐘
-**依賴**：T-008
+**狀態**：⏳ 待執行
+**預估時間**：2 小時
+**依賴**：T101, T102
+**檔案**：`app/gpt_processor.py`
 
 **描述**：
-實作交易ID生成邏輯（`YYYYMMDD-序號` 格式）。
+實作 `process_multi_expense()` 函式，處理單一訊息的多項目支出。
 
 **驗收標準**：
-- [x] 函式 `generate_transaction_id()` 回傳字串
-- [x] 格式：`YYYYMMDD-HHMM`（日期 + 時分）
-- [x] 範例：`20251112-1430`（2025-11-12 14:30）
-- [x] 通過單元測試（驗證格式正確）
+- [ ] 函式簽章：`def process_multi_expense(user_message: str) -> MultiExpenseResult`
+- [ ] 使用 `MULTI_EXPENSE_PROMPT` 呼叫 GPT-4o-mini
+- [ ] 解析 JSON 回應（payment_method + items）
+- [ ] 驗證所有項目資訊完整性（品項、金額）
+- [ ] 驗證付款方式存在
+- [ ] 處理錯誤情況：
+  - 不同付款方式 → error intent
+  - 缺少金額 → error intent
+  - 缺少付款方式 → error intent
+  - 模糊情況 → error intent
+- [ ] 生成共用交易ID（時間戳記格式，如 `20251114-143052`）
+- [ ] 為所有項目補充預設值（日期、原幣別=TWD、匯率=1.0、共用付款方式）
+- [ ] 回傳 `MultiExpenseResult`
 
 **實作筆記**：
-```python
-from datetime import datetime
-
-def generate_transaction_id() -> str:
-    """生成交易ID：YYYYMMDD-HHMM"""
-    now = datetime.now()
-    return now.strftime("%Y%m%d-%H%M")
-```
+- 使用 OpenAI SDK 呼叫 API
+- JSON 解析錯誤應回傳 error intent
+- 交易ID 使用 `datetime.now().strftime("%Y%m%d-%H%M%S")`
 
 ---
 
-### T-010: 實作 app/gpt_processor.py - GPT API 呼叫
+### T104 [US1]: 更新 handle_text_message() 函式
 
 **優先級**：P1
+**狀態**：⏳ 待執行
 **預估時間**：1.5 小時
-**依賴**：T-006, T-007, T-008, T-009
+**依賴**：T103
+**檔案**：`app/line_handler.py`
 
 **描述**：
-實作 `process_message()` 函式，呼叫 OpenAI API 並解析回應。
+更新 `handle_text_message()` 函式，改為呼叫 `process_multi_expense()`。
 
 **驗收標準**：
-- [x] 函式簽章：`def process_message(user_message: str) -> BookkeepingEntry`
-- [x] 使用 `openai` SDK 呼叫 Chat Completions API
-- [x] 使用 `config.OPENAI_API_KEY` 和 `config.GPT_MODEL`
-- [x] 構建 messages：`[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user_message}]`
-- [x] 解析 GPT JSON 回應
-- [x] 判斷 intent：
-  - 若為 "bookkeeping" → 驗證必要欄位（品項、原幣金額、付款方式）、生成交易ID、補充預設值（日期、匯率、專案等）
-  - 若為 "conversation" → 提取 response_text
-- [x] 錯誤處理：
-  - GPT API 失敗 → 拋出 `Exception`
-  - JSON 解析失敗 → 拋出 `ValueError`
-  - 必要欄位缺失 → 拋出 `ValueError`
-- [x] 通過單元測試（mock OpenAI API）
+- [ ] 改為呼叫 `gpt_processor.process_multi_expense()` 取代原有 `process_message()`
+- [ ] 處理 `MultiExpenseResult` 的三種 intent：
+  - `multi_bookkeeping` → 發送多個 webhook + 回覆確認
+  - `conversation` → 回覆對話
+  - `error` → 回覆錯誤訊息
+- [ ] 支援單項目和多項目兩種情況（單項目時 entries 長度為 1）
+- [ ] 呼叫 `send_multiple_webhooks()` 發送 webhook
 
 **實作筆記**：
-```python
-import json
-from openai import OpenAI
-from app.config import OPENAI_API_KEY, GPT_MODEL
-from app.prompts import SYSTEM_PROMPT
-
-def process_message(user_message: str) -> BookkeepingEntry:
-    client = OpenAI(api_key=OPENAI_API_KEY)
-
-    completion = client.chat.completions.create(
-        model=GPT_MODEL,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_message}
-        ],
-        response_format={"type": "json_object"}  # 確保 JSON 輸出
-    )
-
-    response_text = completion.choices[0].message.content
-    data = json.loads(response_text)
-
-    intent = data.get("intent")
-
-    if intent == "bookkeeping":
-        entry_data = data.get("data", {})
-        # 生成交易ID
-        entry_data["交易ID"] = generate_transaction_id()
-        # 補充日期
-        if not entry_data.get("日期"):
-            entry_data["日期"] = datetime.now().strftime("%Y-%m-%d")
-        # 驗證必要欄位
-        required = ["品項", "原幣金額", "付款方式"]
-        for field in required:
-            if not entry_data.get(field):
-                raise ValueError(f"Missing required field: {field}")
-
-        return BookkeepingEntry(intent="bookkeeping", **entry_data)
-
-    elif intent == "conversation":
-        return BookkeepingEntry(
-            intent="conversation",
-            response_text=data.get("response", "")
-        )
-
-    else:
-        raise ValueError(f"Unknown intent: {intent}")
-```
+- 保持與 v1 的向後相容性（單項目情況）
+- 錯誤訊息從 `result.error_message` 取得
 
 ---
 
-### T-011: 實作 app/webhook_sender.py
+### T105 [P] [US1]: 實作 send_multiple_webhooks() 函式
 
 **優先級**：P1
+**狀態**：⏳ 待執行
 **預估時間**：1 小時
-**依賴**：T-006, T-008
+**依賴**：T002
+**檔案**：`app/webhook_sender.py`
 
 **描述**：
-實作 `send_to_webhook()` 函式，發送記帳資料到 Make.com。
+實作 `send_multiple_webhooks()` 函式，為多個項目發送 webhook。
 
 **驗收標準**：
-- [x] 函式簽章：`def send_to_webhook(entry: BookkeepingEntry) -> bool`
-- [x] 轉換 BookkeepingEntry 為 Make.com JSON 格式（14 個欄位，**不包含**「金額（台幣）」）
-- [x] 使用 `requests.post()` 發送到 `config.WEBHOOK_URL`
-- [x] 設定 `Content-Type: application/json`
-- [x] 設定 timeout（使用 `config.WEBHOOK_TIMEOUT`）
-- [x] 錯誤處理：
-  - 網路錯誤 → 記錄日誌，回傳 False
-  - HTTP 4xx/5xx → 記錄日誌，回傳 False
-  - Timeout → 記錄日誌，回傳 False
-  - 成功（200/201/202） → 回傳 True
-- [x] 通過單元測試（mock requests）
+- [ ] 函式簽章：`def send_multiple_webhooks(entries: List[BookkeepingEntry], transaction_id: str) -> tuple[int, int]`
+- [ ] 為每個 entry 使用相同的 transaction_id
+- [ ] 依序呼叫 `send_to_webhook()` 發送每個項目
+- [ ] 記錄成功/失敗數量
+- [ ] 回傳 `(成功數量, 失敗數量)`
+- [ ] 即使部分失敗，仍繼續處理剩餘項目
 
 **實作筆記**：
 ```python
-import requests
-import logging
-from app.config import WEBHOOK_URL, WEBHOOK_TIMEOUT
-from app.gpt_processor import BookkeepingEntry
-
-logger = logging.getLogger(__name__)
-
-def send_to_webhook(entry: BookkeepingEntry) -> bool:
-    """發送記帳資料到 Make.com webhook"""
-
-    # 轉換為 Make.com 格式
-    payload = {
-        "日期": entry.日期,
-        "品項": entry.品項,
-        "原幣別": entry.原幣別,
-        "原幣金額": entry.原幣金額,
-        "匯率": entry.匯率,
-        "付款方式": entry.付款方式,
-        "交易ID": entry.交易ID,
-        "明細說明": entry.明細說明,
-        "分類": entry.分類,
-        "專案": entry.專案,
-        "必要性": entry.必要性,
-        "代墊狀態": entry.代墊狀態,
-        "收款／支付對象": entry.收款支付對象,
-        "附註": entry.附註,
-    }
-
-    try:
-        response = requests.post(
-            WEBHOOK_URL,
-            json=payload,
-            headers={"Content-Type": "application/json"},
-            timeout=WEBHOOK_TIMEOUT
-        )
-
-        if response.status_code in [200, 201, 202]:
-            logger.info(f"Webhook sent successfully: {entry.交易ID}")
-            return True
+def send_multiple_webhooks(entries: List[BookkeepingEntry], transaction_id: str) -> tuple[int, int]:
+    success_count = 0
+    failure_count = 0
+    for entry in entries:
+        entry.交易ID = transaction_id
+        if send_to_webhook(entry):
+            success_count += 1
         else:
-            logger.error(f"Webhook failed with status {response.status_code}")
-            return False
-
-    except requests.Timeout:
-        logger.error("Webhook request timeout")
-        return False
-    except requests.RequestException as e:
-        logger.error(f"Webhook request failed: {e}")
-        return False
+            failure_count += 1
+    return (success_count, failure_count)
 ```
 
 ---
 
-### T-012: 實作 app/line_handler.py - 確認訊息格式化
+### T106 [US1]: 更新確認訊息格式
 
 **優先級**：P1
+**狀態**：⏳ 待執行
 **預估時間**：45 分鐘
-**依賴**：T-008
+**依賴**：T104, T105
+**檔案**：`app/line_handler.py`
 
 **描述**：
-實作 `format_confirmation_message()` 函式，格式化記帳確認訊息。
+更新確認訊息格式，支援列出多個項目。
 
 **驗收標準**：
-- [x] 函式簽章：`def format_confirmation_message(entry: BookkeepingEntry) -> str`
-- [x] 顯示所有重要欄位（日期、品項、金額台幣、付款方式、分類、必要性、交易ID）
-- [x] **計算並顯示「金額（台幣）」**：`原幣金額 × 匯率`
-- [x] 格式清晰、易讀（使用表情符號 ✅）
-- [x] 符合 plan.md 的範例格式
-- [x] 通過單元測試
+- [ ] 單項目時維持原有格式（向後相容）
+- [ ] 多項目時列出所有項目，使用 emoji 區分（📋 #1, #2...）
+- [ ] 標註「💳 付款方式：XXX（共用）」
+- [ ] 顯示共用交易ID
+- [ ] 訊息格式清晰易讀
 
 **實作筆記**：
 ```python
-def format_confirmation_message(entry: BookkeepingEntry) -> str:
-    """格式化記帳確認訊息"""
+# 多項目格式範例
+"""
+✅ 記帳成功！已記錄 2 個項目：
 
-    # 計算金額（台幣）
-    金額台幣 = entry.原幣金額 * entry.匯率
+📋 #1 早餐
+💰 80 元 | 現金
+📂 家庭／餐飲／早餐
 
-    message = f"""✅ 記帳成功！
+📋 #2 午餐
+💰 150 元 | 現金
+📂 家庭／餐飲／午餐
 
-日期：{entry.日期}
-品項：{entry.品項}
-金額（台幣）：{金額台幣:.0f} 元
-付款方式：{entry.付款方式}
-分類：{entry.分類}
-必要性：{entry.必要性}
-交易ID：{entry.交易ID}"""
-
-    # 如果有明細說明，加上
-    if entry.明細說明:
-        message += f"\n明細說明：{entry.明細說明}"
-
-    return message
+🔖 交易ID：20251114-143052
+💳 付款方式：現金（共用）
+"""
 ```
 
 ---
 
-### T-013: 實作 app/line_handler.py - 主處理函式
+### T107 [P] [US1]: 撰寫多項目支出單元測試
 
 **優先級**：P1
-**預估時間**：1.5 小時
-**依賴**：T-006, T-010, T-011, T-012
+**狀態**：⏳ 待執行
+**預估時間**：2 小時
+**依賴**：T103
+**檔案**：`tests/test_gpt_processor.py`
 
 **描述**：
-實作 `handle_text_message()` 函式，處理 LINE 文字訊息的主流程。
+在 `tests/test_gpt_processor.py` 中新增多項目支出測試案例。
 
 **驗收標準**：
-- [x] 函式簽章：`def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None`
-- [x] 取得使用者訊息文字
-- [x] 呼叫 `gpt_processor.process_message()`
-- [x] 判斷 intent：
-  - 若為 "bookkeeping"：
-    - 呼叫 `webhook_sender.send_to_webhook()`
-    - 若成功 → 回覆確認訊息（使用 `format_confirmation_message()`）
-    - 若失敗 → 回覆「記帳資料處理失敗，請稍後重試」
-  - 若為 "conversation"：
-    - 回覆 GPT 生成的 `response_text`
-- [x] 錯誤處理：
-  - GPT API 失敗 → 回覆「抱歉，目前無法處理您的訊息，請稍後再試」
-  - 其他錯誤 → 回覆通用錯誤訊息
-- [x] 使用 `line_bot_api.reply_message()` 回覆
-- [x] 記錄適當的日誌
-- [x] 通過整合測試
-
-**實作筆記**：
-```python
-import logging
-from linebot.models import MessageEvent, TextSendMessage
-from linebot import LineBotApi
-from app.gpt_processor import process_message
-from app.webhook_sender import send_to_webhook
-
-logger = logging.getLogger(__name__)
-
-def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
-    """處理文字訊息"""
-
-    user_message = event.message.text
-    reply_token = event.reply_token
-
-    try:
-        # 呼叫 GPT 處理
-        entry = process_message(user_message)
-
-        if entry.intent == "bookkeeping":
-            # 發送 webhook
-            success = send_to_webhook(entry)
-
-            if success:
-                # 成功：回覆確認訊息
-                reply_text = format_confirmation_message(entry)
-            else:
-                # 失敗：提示使用者
-                reply_text = "記帳資料處理失敗，請稍後重試。"
-
-        elif entry.intent == "conversation":
-            # 對話：回覆 GPT 生成的文字
-            reply_text = entry.response_text
-
-        else:
-            reply_text = "抱歉，無法理解您的訊息。"
-
-        # 回覆 LINE 使用者
-        line_bot_api.reply_message(
-            reply_token,
-            TextSendMessage(text=reply_text)
-        )
-
-    except Exception as e:
-        logger.error(f"Error handling message: {e}")
-        line_bot_api.reply_message(
-            reply_token,
-            TextSendMessage(text="抱歉，目前無法處理您的訊息，請稍後再試。")
-        )
-```
-
----
-
-### T-014: 實作 api/webhook.py - LINE 簽章驗證
-
-**優先級**：P1
-**預估時間**：45 分鐘
-**依賴**：T-006
-
-**描述**：
-實作 Vercel Function 入口，驗證 LINE Webhook 簽章。
-
-**驗收標準**：
-- [x] 函式名稱：`handler(request)` 或符合 Vercel Python runtime 規範
-- [x] 取得 request body（as text）
-- [x] 取得 `X-Line-Signature` header
-- [x] 使用 `WebhookHandler` 驗證簽章
-- [x] 驗證失敗 → 回傳 400
-- [x] 驗證成功 → 繼續處理
-- [x] 符合 Vercel Serverless Function 格式
-
-**實作筆記**：
-```python
-from flask import Flask, request, abort
-from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage
-from app.config import LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET
-from app.line_handler import handle_text_message
-
-app = Flask(__name__)
-
-line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
-handler = WebhookHandler(LINE_CHANNEL_SECRET)
-
-@app.route("/api/webhook", methods=['POST'])
-def webhook():
-    # 取得簽章
-    signature = request.headers.get('X-Line-Signature')
-
-    # 取得 request body
-    body = request.get_data(as_text=True)
-
-    # 驗證簽章
-    try:
-        handler.handle(body, signature)
-    except InvalidSignatureError:
-        abort(400)
-
-    return 'OK'
-
-@handler.add(MessageEvent, message=TextMessage)
-def message_text(event):
-    handle_text_message(event, line_bot_api)
-```
-
----
-
-### T-015: 實作 api/webhook.py - Event 處理
-
-**優先級**：P1
-**預估時間**：30 分鐘
-**依賴**：T-013, T-014
-
-**描述**：
-完成 Vercel Function，處理 LINE MessageEvent。
-
-**驗收標準**：
-- [x] 使用 `@handler.add()` decorator 處理 `MessageEvent`
-- [x] 僅處理 `TextMessage` 類型
-- [x] 呼叫 `line_handler.handle_text_message()`
-- [x] 其他訊息類型（圖片、貼圖等）忽略或回覆提示
-- [x] 回傳 200 OK（LINE 平台要求）
-- [x] 錯誤時也回傳 200（避免 LINE 重試）
-- [x] 記錄適當日誌
-
-**實作筆記**：
-整合到 T-014 的程式碼中。
-
----
-
-## Phase 3: 測試
-
-### T-016: 撰寫 test_gpt_processor.py - 單元測試
-
-**優先級**：P1
-**預估時間**：1.5 小時
-**依賴**：T-010
-
-**描述**：
-撰寫 GPT 處理器的單元測試。
-
-**驗收標準**：
-- [x] 測試記帳意圖識別（mock OpenAI API 回傳 bookkeeping intent）
-- [x] 測試一般對話識別（mock OpenAI API 回傳 conversation intent）
-- [x] 測試交易ID生成（驗證格式 `YYYYMMDD-HHMM`）
-- [x] 測試必要欄位驗證（缺少品項/金額/付款方式時拋出 ValueError）
-- [x] 測試預設值補充（日期、匯率、專案等）
-- [x] 測試 GPT API 錯誤處理
-- [x] 所有測試通過（`pytest tests/test_gpt_processor.py`）
-
-**實作筆記**：
-使用 `pytest-mock` mock OpenAI API。
-
----
-
-### T-017: 撰寫 test_webhook_sender.py - 單元測試
-
-**優先級**：P1
-**預估時間**：1 小時
-**依賴**：T-011
-
-**描述**：
-撰寫 Webhook 發送器的單元測試。
-
-**驗收標準**：
-- [x] 測試正常發送（mock `requests.post` 回傳 200）→ 回傳 True
-- [x] 測試 HTTP 錯誤（mock 回傳 500）→ 回傳 False
-- [x] 測試網路錯誤（mock 拋出 `RequestException`）→ 回傳 False
-- [x] 測試 Timeout（mock 拋出 `Timeout`）→ 回傳 False
-- [x] 驗證發送的 JSON payload 格式正確（14 個欄位）
-- [x] 驗證 Content-Type header
-- [x] 所有測試通過（`pytest tests/test_webhook_sender.py`）
-
-**實作筆記**：
-使用 `pytest-mock` mock `requests` 模組。
-
----
-
-### T-018: 撰寫 test_integration.py - 整合測試
-
-**優先級**：P1
-**預估時間**：1.5 小時
-**依賴**：T-015
-
-**描述**：
-撰寫端到端整合測試。
-
-**驗收標準**：
-- [x] 測試完整記帳流程（模擬 LINE Webhook → GPT → Make.com → LINE 回覆）
-- [x] 測試完整對話流程
-- [x] 測試不完整資訊處理
-- [x] 測試錯誤情境（GPT API 失敗、Webhook 失敗）
-- [x] Mock 所有外部 API（LINE、OpenAI、Make.com）
-- [x] 驗證回覆訊息內容正確
-- [x] 所有測試通過（`pytest tests/test_integration.py`）
-
-**實作筆記**：
-使用 Flask test client 模擬 LINE Webhook 請求。
-
----
-
-### T-019: 執行所有測試並修正
-
-**優先級**：P1
-**預估時間**：1 小時
-**依賴**：T-016, T-017, T-018
-
-**描述**：
-執行完整測試套件，確保所有測試通過。
-
-**驗收標準**：
-- [x] 執行 `pytest tests/` 所有測試通過
-- [x] 測試覆蓋率 > 80%（核心模組）
-- [x] 無 flaky tests（不穩定的測試）
-- [x] 修正所有發現的 bug
-
-**實作筆記**：
-```bash
-pytest tests/ -v --cov=app --cov=api
-```
-
----
-
-## Phase 4: 部署
-
-### T-020: 準備 Vercel 部署
-
-**優先級**：P1
-**預估時間**：30 分鐘
-**依賴**：T-019
-
-**描述**：
-確認所有部署相關檔案就緒。
-
-**驗收標準**：
-- [x] `vercel.json` 配置正確
-- [x] `requirements.txt` 包含所有依賴
-- [x] `.gitignore` 排除敏感檔案
-- [x] `.env.example` 文件化完整
-- [x] 程式碼已提交到 Git repository
-- [x] README.md 包含基本說明（選用）
-
----
-
-### T-021: 連接 Vercel 並設定環境變數
-
-**優先級**：P1
-**預估時間**：45 分鐘
-**依賴**：T-020
-
-**描述**：
-在 Vercel Dashboard 連接 GitHub repository 並設定環境變數。
-
-**驗收標準**：
-- [x] Vercel 連接到 GitHub repository
-- [x] 設定所有環境變數（見下方）：
-  - `LINE_CHANNEL_ACCESS_TOKEN` (Secret)
-  - `LINE_CHANNEL_SECRET` (Secret)
-  - `OPENAI_API_KEY` (Secret)
-  - `WEBHOOK_URL` (Sensitive)
-  - `GPT_MODEL` (Plain Text)
-- [x] 環境變數設定為 Production + Preview
-- [x] 截圖保存環境變數設定（記錄用）
-
-**實作筆記**：
-Vercel Dashboard → Settings → Environment Variables
-
----
-
-### T-022: 部署到 Vercel 並驗證
-
-**優先級**：P1
-**預估時間**：30 分鐘
-**依賴**：T-021
-
-**描述**：
-觸發 Vercel 部署並驗證部署成功。
-
-**驗收標準**：
-- [x] Vercel 自動偵測 `vercel.json` 並部署
-- [x] 部署成功（Build 狀態為 Ready）
-- [x] 取得部署 URL：`https://<your-app>.vercel.app`
-- [x] 測試 `/api/webhook` endpoint（使用 curl 或 Postman）
-- [x] 檢查 Vercel Function Logs（確認無啟動錯誤）
-
-**實作筆記**：
-```bash
-# 測試 endpoint（應回傳 400，因為無有效簽章）
-curl -X POST https://<your-app>.vercel.app/api/webhook
-```
-
----
-
-### T-023: 設定 LINE Bot Webhook URL
-
-**優先級**：P1
-**預估時間**：30 分鐘
-**依賴**：T-022
-
-**描述**：
-在 LINE Developers Console 設定 Webhook URL。
-
-**驗收標準**：
-- [x] 前往 LINE Developers Console
-- [x] 選擇對應的 Channel
-- [x] Messaging API → Webhook settings
-- [x] 設定 Webhook URL：`https://<your-app>.vercel.app/api/webhook`
-- [x] 啟用 "Use webhook"
-- [x] 點擊 "Verify" 驗證 Webhook（應顯示成功）
-- [x] 關閉 "Auto-reply messages"（避免干擾）
-- [x] 關閉 "Greeting messages"（選用）
-
-**實作筆記**：
-LINE Developers Console → Messaging API settings
-
----
-
-## Phase 5: 驗證
-
-### T-024: 手動測試 - 記帳功能
-
-**優先級**：P1
-**預估時間**：30 分鐘
-**依賴**：T-023
-
-**描述**：
-在 LINE 進行手動測試，驗證記帳功能正常運作。
-
-**驗收標準**：
-- [x] 加入 LINE Bot 為好友
-- [x] 測試案例 1：「午餐 120 現金」
-  - 收到確認訊息
-  - Make.com 接收到資料
-  - 資料正確（品項、金額、付款方式、分類等）
-- [x] 測試案例 2：「200 點心 狗卡」
-  - 付款方式正確映射為「台新狗卡」
-- [x] 測試案例 3：「早餐 50」（缺付款方式）
-  - 收到提示訊息：「請提供品項、金額及付款方式」
-- [x] 測試案例 4：多次記帳（驗證交易ID不重複）
-- [x] 檢查 Make.com 接收的資料格式正確
-
-**實作筆記**：
-準備測試案例清單和預期結果。
-
----
-
-### T-025: 手動測試 - 一般對話與錯誤處理
-
-**優先級**：P1
-**預估時間**：30 分鐘
-**依賴**：T-024
-
-**描述**：
-測試一般對話和錯誤處理情境。
-
-**驗收標準**：
-- [x] 測試一般對話：
-  - 「你好」→ GPT 友善回應
-  - 「怎麼記帳？」→ GPT 說明記帳格式
-- [x] 測試錯誤處理（需臨時調整配置）：
-  - 錯誤的 OPENAI_API_KEY → 回覆通用錯誤訊息（不洩露內部資訊）
-  - 錯誤的 WEBHOOK_URL → 回覆「記帳資料處理失敗」
-- [x] 檢查 Vercel Logs 確認錯誤有正確記錄
-- [x] 所有測試案例通過
-
-**實作筆記**：
-記錄所有測試結果和截圖。
-
----
-
-## 📊 任務依賴圖
-
-```
-T-001 (專案結構)
-  ├─→ T-002 (.gitignore)
-  ├─→ T-003 (requirements.txt)
-  ├─→ T-004 (vercel.json)
-  ├─→ T-005 (.env.example)
-  └─→ T-007 (prompts.py)
-
-T-003 → T-006 (config.py)
-
-T-007 → T-008 (資料結構)
-       → T-009 (交易ID)
-       → T-010 (GPT processor)
-
-T-006, T-008 → T-011 (webhook sender)
-
-T-008 → T-012 (確認訊息)
-
-T-006, T-010, T-011, T-012 → T-013 (line handler)
-
-T-006 → T-014 (webhook 簽章驗證)
-
-T-013, T-014 → T-015 (webhook event 處理)
-
-T-010 → T-016 (GPT 測試)
-T-011 → T-017 (Webhook 測試)
-T-015 → T-018 (整合測試)
-
-T-016, T-017, T-018 → T-019 (執行所有測試)
-
-T-019 → T-020 (準備部署)
-      → T-021 (Vercel 設定)
-      → T-022 (部署驗證)
-      → T-023 (LINE 設定)
-      → T-024 (手動測試 - 記帳)
-      → T-025 (手動測試 - 對話)
-```
-
----
-
-## ✅ 完成檢查清單
-
-### Phase 1 完成標準
-- [ ] 所有 T-001 至 T-005 完成
-- [ ] 專案結構建立
-- [ ] 配置檔案就緒
-
-### Phase 2 完成標準
-- [ ] 所有 T-006 至 T-015 完成
-- [ ] 所有核心模組實作完成
-- [ ] 程式碼符合 plan.md 設計
-
-### Phase 3 完成標準
-- [ ] 所有 T-016 至 T-019 完成
-- [ ] 所有測試通過
+- [ ] `test_multi_items_shared_payment()` - 驗證共用付款方式
+- [ ] `test_multi_items_incomplete_amount()` - 第二項缺少金額
+- [ ] `test_multi_items_missing_payment()` - 缺少付款方式
+- [ ] `test_multi_items_ambiguous()` - 模糊情況（三明治和咖啡80元）
+- [ ] `test_multi_items_different_payments()` - 不同付款方式拒絕
+- [ ] `test_multi_items_shared_transaction_id()` - 驗證共用交易ID
+- [ ] 所有測試使用 mock 避免實際呼叫 GPT API
 - [ ] 測試覆蓋率 > 80%
 
-### Phase 4 完成標準
-- [ ] 所有 T-020 至 T-023 完成
-- [ ] Vercel 部署成功
-- [ ] LINE Bot Webhook 連線驗證成功
+---
 
-### Phase 5 完成標準
-- [ ] 所有 T-024 至 T-025 完成
-- [ ] 所有手動測試案例通過
-- [ ] Make.com 接收資料正確
+### T108 [P] [US1]: 撰寫 webhook 批次發送測試
 
-### v1 MVP 完成標準
-- [ ] 所有 25 個任務完成
-- [ ] 符合 spec.md 的 v1 MVP 驗收標準
-- [ ] 符合 plan.md 的成功標準
-- [ ] 系統穩定運作，無重大 bug
+**優先級**：P1
+**狀態**：⏳ 待執行
+**預估時間**：1 小時
+**依賴**：T105
+**檔案**：`tests/test_webhook_sender.py`
+
+**描述**：
+在 `tests/test_webhook_sender.py` 中新增批次發送測試案例。
+
+**驗收標準**：
+- [ ] `test_send_multiple_webhooks_success()` - 全部成功
+- [ ] `test_send_multiple_webhooks_partial_failure()` - 部分失敗
+- [ ] `test_send_multiple_webhooks_all_failure()` - 全部失敗
+- [ ] 使用 mock 避免實際發送 webhook
+- [ ] 驗證回傳的成功/失敗數量正確
+
+**Checkpoint 1.1**: 多項目文字支出功能完整，單元測試通過
 
 ---
 
-## 📝 備註
+## Phase 2: 圖片識別功能
 
-### 開發建議
+**目標**：使用 GPT-4 Vision API 識別收據圖片
 
-1. **嚴格按照依賴順序**：不要跳過前置任務
-2. **每完成一個 Phase 提交一次 Git**：方便回溯
-3. **測試驅動**：Phase 2 實作時可先寫測試（TDD）
-4. **日誌記錄**：開發過程記錄遇到的問題和解決方案
-5. **環境變數**：本地開發使用 `.env`，部署使用 Vercel Environment Variables
+**使用者故事**：US1 場景 8-9（收據圖片識別）
 
-### 時間估算說明
+**獨立測試**：上傳清晰台幣收據圖片，驗證正確提取品項和金額
 
-- 預估總工時：16-20 小時
-- 建議分配：
-  - Day 1：Phase 1 + Phase 2 部分（6-8 小時）
-  - Day 2：Phase 2 完成 + Phase 3（6-8 小時）
-  - Day 3：Phase 4 + Phase 5（3-4 小時）
+---
 
-### 風險提示
+### T201 [P] [US2]: 建立 image_handler.py 模組
 
-- **GPT API 成本**：開發測試時會產生少量 API 費用（gpt-4o-mini 成本很低）
-- **Vercel Cold Start**：首次請求可能較慢（3-5 秒），後續會快速
-- **LINE Webhook Timeout**：確保 GPT 回應時間 < 3 秒
+**優先級**：P1
+**狀態**：⏳ 待執行
+**預估時間**：30 分鐘
+**依賴**：T002
+**檔案**：`app/image_handler.py`（新增）
+
+**描述**：
+建立 `app/image_handler.py` 模組，定義收據項目資料類別。
+
+**驗收標準**：
+- [ ] 新增檔案 `app/image_handler.py`
+- [ ] 定義 `ReceiptItem` dataclass
+- [ ] 包含欄位：品項、原幣金額、付款方式（Optional）、分類（Optional）
+- [ ] 匯入必要套件（typing, dataclasses, base64, requests）
+
+**實作筆記**：
+```python
+@dataclass
+class ReceiptItem:
+    """單筆收據項目"""
+    品項: str
+    原幣金額: float
+    付款方式: Optional[str] = None
+    分類: Optional[str] = None
+```
+
+---
+
+### T202 [P] [US2]: 實作 download_image() 函式
+
+**優先級**：P1
+**狀態**：⏳ 待執行
+**預估時間**：1 小時
+**依賴**：T201
+**檔案**：`app/image_handler.py`
+
+**描述**：
+實作 `download_image()` 函式，從 LINE 下載圖片內容。
+
+**驗收標準**：
+- [ ] 函式簽章：`def download_image(message_id: str, line_bot_api: LineBotApi) -> bytes`
+- [ ] 使用 `line_bot_api.get_message_content(message_id)` 下載圖片
+- [ ] 驗證圖片大小 < 10MB（檢查 Content-Length）
+- [ ] 回傳圖片 bytes
+- [ ] 錯誤處理：
+  - 下載失敗 → 拋出 `ImageDownloadError`
+  - 圖片過大 → 拋出 `ImageTooLargeError`
+
+---
+
+### T203 [P] [US2]: 實作 encode_image_base64() 函式
+
+**優先級**：P1
+**狀態**：⏳ 待執行
+**預估時間**：15 分鐘
+**依賴**：T201
+**檔案**：`app/image_handler.py`
+
+**描述**：
+實作 `encode_image_base64()` 函式，將圖片轉換為 base64 編碼。
+
+**驗收標準**：
+- [ ] 函式簽章：`def encode_image_base64(image_data: bytes) -> str`
+- [ ] 使用 `base64.b64encode()` 轉換
+- [ ] 回傳 UTF-8 字串
+
+**實作筆記**：
+```python
+def encode_image_base64(image_data: bytes) -> str:
+    return base64.b64encode(image_data).decode('utf-8')
+```
+
+---
+
+### T204 [US2]: 實作 process_receipt_image() 函式
+
+**優先級**：P1
+**狀態**：⏳ 待執行
+**預估時間**：2 小時
+**依賴**：T201, T203, T205
+**檔案**：`app/image_handler.py`
+
+**描述**：
+實作 `process_receipt_image()` 函式，使用 GPT Vision API 分析收據。
+
+**驗收標準**：
+- [ ] 函式簽章：`def process_receipt_image(image_data: bytes, openai_client) -> List[ReceiptItem]`
+- [ ] 呼叫 `encode_image_base64()` 轉換圖片
+- [ ] 使用 GPT-4o Vision API（`gpt-4o`）
+- [ ] 使用 `RECEIPT_VISION_PROMPT`
+- [ ] 解析 JSON 回應（status, currency, items, payment_method）
+- [ ] 處理各種狀態：
+  - `success` → 轉換為 `List[ReceiptItem]` 並回傳
+  - `not_receipt` → 回傳空列表 + 錯誤訊息
+  - `unsupported_currency` → 回傳空列表 + 錯誤訊息
+  - `unclear` → 回傳空列表 + 錯誤訊息
+- [ ] 錯誤處理：API 失敗 → 拋出 `VisionAPIError`
+
+---
+
+### T205 [P] [US2]: 建立 RECEIPT_VISION_PROMPT
+
+**優先級**：P1
+**狀態**：⏳ 待執行
+**預估時間**：1 小時
+**依賴**：T002
+**檔案**：`app/prompts.py`
+
+**描述**：
+在 `app/prompts.py` 中建立 `RECEIPT_VISION_PROMPT`，定義收據識別邏輯。
+
+**驗收標準**：
+- [ ] 定義收據識別任務（品項、金額、付款方式）
+- [ ] 檢查圖片類型（是否為收據）
+- [ ] 檢查幣別（僅支援 TWD）
+- [ ] 檢查清晰度
+- [ ] 定義錯誤狀態 JSON 格式（not_receipt, unsupported_currency, unclear）
+- [ ] 定義成功 JSON 格式（status, currency, items, payment_method）
+- [ ] 包含完整範例
+
+---
+
+### T206 [US2]: 實作 process_receipt_data() 函式
+
+**優先級**：P1
+**狀態**：⏳ 待執行
+**預估時間**：1 小時
+**依賴**：T201, T102
+**檔案**：`app/gpt_processor.py`
+
+**描述**：
+實作 `process_receipt_data()` 函式，將收據資料轉換為記帳項目。
+
+**驗收標準**：
+- [ ] 函式簽章：`def process_receipt_data(receipt_items: List[ReceiptItem], payment_method: str) -> MultiExpenseResult`
+- [ ] 為每個 ReceiptItem 建立 BookkeepingEntry
+- [ ] 生成共用交易ID（時間戳記格式）
+- [ ] 補充預設值（日期=今天、原幣別=TWD、匯率=1.0、共用付款方式）
+- [ ] 推斷分類、必要性等欄位
+- [ ] 回傳 `MultiExpenseResult` (intent="multi_bookkeeping")
+
+---
+
+### T207 [US2]: 實作 handle_image_message() 函式
+
+**優先級**：P1
+**狀態**：⏳ 待執行
+**預估時間**：1.5 小時
+**依賴**：T202, T204, T206
+**檔案**：`app/line_handler.py`
+
+**描述**：
+實作 `handle_image_message()` 函式，處理圖片訊息的主流程。
+
+**驗收標準**：
+- [ ] 函式簽章：`def handle_image_message(event: MessageEvent, line_bot_api: LineBotApi) -> None`
+- [ ] 取得圖片訊息 ID
+- [ ] 呼叫 `download_image()` 下載圖片
+- [ ] 呼叫 `process_receipt_image()` 分析收據
+- [ ] 若成功（有 receipt_items）：
+  - 呼叫 `process_receipt_data()` 轉換為 BookkeepingEntry
+  - 呼叫 `send_multiple_webhooks()` 發送 webhook
+  - 回覆確認訊息（列出所有項目）
+- [ ] 若失敗（空列表）：
+  - 根據錯誤訊息回覆適當提示
+- [ ] 錯誤處理：
+  - 下載失敗 → 「圖片下載失敗，請稍後再試」
+  - Vision API 失敗 → 「無法處理圖片，請改用文字描述」
+
+---
+
+### T208 [US2]: 更新 webhook.py 處理圖片訊息
+
+**優先級**：P1
+**狀態**：⏳ 待執行
+**預估時間**：30 分鐘
+**依賴**：T207
+**檔案**：`api/webhook.py`
+
+**描述**：
+更新 `api/webhook.py` 新增圖片訊息事件處理。
+
+**驗收標準**：
+- [ ] 識別 `ImageMessage` 訊息類型
+- [ ] 呼叫 `line_handler.handle_image_message(event, line_bot_api)`
+- [ ] 保持與文字訊息處理的一致性（簽章驗證、錯誤處理）
+
+**實作筆記**：
+```python
+from linebot.models import ImageMessage
+
+if isinstance(event.message, TextMessage):
+    handle_text_message(event, line_bot_api)
+elif isinstance(event.message, ImageMessage):
+    handle_image_message(event, line_bot_api)
+```
+
+---
+
+### T209 [P] [US2]: 更新 config.py 新增環境變數
+
+**優先級**：P1
+**狀態**：⏳ 待執行
+**預估時間**：15 分鐘
+**依賴**：T002
+**檔案**：`app/config.py`
+
+**描述**：
+更新 `app/config.py` 新增 GPT Vision 相關環境變數。
+
+**驗收標準**：
+- [ ] 新增 `GPT_VISION_MODEL` 環境變數
+- [ ] 預設值：`gpt-4o`
+- [ ] 驗證邏輯（若未設定則使用預設值）
+
+**實作筆記**：
+```python
+GPT_VISION_MODEL = os.getenv('GPT_VISION_MODEL', 'gpt-4o')
+```
+
+---
+
+### T210 [P] [US2]: 更新 .env.example 文件
+
+**優先級**：P2
+**狀態**：⏳ 待執行
+**預估時間**：10 分鐘
+**依賴**：T209
+**檔案**：`.env.example`
+
+**描述**：
+更新 `.env.example` 新增 v1.5.0 環境變數說明。
+
+**驗收標準**：
+- [ ] 新增 `GPT_VISION_MODEL=gpt-4o` 說明
+- [ ] 註明用途（圖片收據識別）
+
+---
+
+### T211 [P] [US2]: 撰寫圖片處理單元測試
+
+**優先級**：P1
+**狀態**：⏳ 待執行
+**預估時間**：2 小時
+**依賴**：T204
+**檔案**：`tests/test_image_handler.py`（新增）
+
+**描述**：
+建立 `tests/test_image_handler.py` 測試圖片處理功能。
+
+**驗收標準**：
+- [ ] `test_download_image_success()` - Mock 成功下載
+- [ ] `test_download_image_failure()` - Mock 下載失敗
+- [ ] `test_download_image_too_large()` - Mock 圖片過大
+- [ ] `test_encode_image_base64()` - 驗證 base64 編碼
+- [ ] `test_process_receipt_success()` - Mock Vision API 成功（單項目）
+- [ ] `test_process_receipt_multi_items()` - Mock Vision API 成功（多項目）
+- [ ] `test_process_receipt_not_receipt()` - Mock 非收據圖片
+- [ ] `test_process_receipt_unsupported_currency()` - Mock 非台幣
+- [ ] `test_process_receipt_unclear()` - Mock 模糊圖片
+- [ ] 所有測試使用 mock 避免實際呼叫 API
+- [ ] 測試覆蓋率 > 80%
+
+**Checkpoint 2.1**: 圖片識別功能完整，單元測試通過
+
+---
+
+## Phase 3: 整合測試
+
+**目的**：端到端測試完整流程
+
+---
+
+### T301 [P] [US1]: 整合測試（多項目文字）
+
+**優先級**：P1
+**狀態**：⏳ 待執行
+**預估時間**：1 小時
+**依賴**：Phase 1 完成
+**檔案**：`tests/test_integration.py`
+
+**描述**：
+更新 `tests/test_integration.py` 新增多項目文字支出的端到端測試。
+
+**驗收標準**：
+- [ ] `test_end_to_end_multi_items_text()` - 端到端多項目文字支出
+- [ ] `test_multi_items_text_missing_payment()` - 缺少付款方式錯誤
+- [ ] `test_multi_items_text_different_payments()` - 不同付款方式拒絕
+- [ ] 模擬 LINE webhook 請求
+- [ ] 驗證 webhook 發送次數和內容
+- [ ] 驗證回覆訊息格式
+
+---
+
+### T302 [P] [US2]: 整合測試（圖片訊息）
+
+**優先級**：P1
+**狀態**：⏳ 待執行
+**預估時間**：1 小時
+**依賴**：Phase 2 完成
+**檔案**：`tests/test_integration.py`
+
+**描述**：
+更新 `tests/test_integration.py` 新增圖片訊息的端到端測試。
+
+**驗收標準**：
+- [ ] `test_end_to_end_receipt_image()` - 端到端收據圖片識別
+- [ ] `test_receipt_image_download_failure()` - 圖片下載失敗
+- [ ] `test_receipt_image_vision_api_failure()` - Vision API 失敗
+- [ ] `test_receipt_image_not_receipt()` - 非收據圖片
+- [ ] `test_receipt_image_unsupported_currency()` - 非台幣收據
+- [ ] Mock 圖片下載和 Vision API 回應
+- [ ] 驗證錯誤訊息正確
+
+---
+
+### T303: 執行所有單元測試
+
+**優先級**：P1
+**狀態**：⏳ 待執行
+**預估時間**：15 分鐘
+**依賴**：T107, T108, T211
+
+**描述**：
+執行所有單元測試並確保通過。
+
+**驗收標準**：
+- [ ] `pytest tests/test_gpt_processor.py -v` 全部通過
+- [ ] `pytest tests/test_webhook_sender.py -v` 全部通過
+- [ ] `pytest tests/test_image_handler.py -v` 全部通過
+- [ ] 無失敗案例
+
+---
+
+### T304: 執行所有整合測試
+
+**優先級**：P1
+**狀態**：⏳ 待執行
+**預估時間**：15 分鐘
+**依賴**：T301, T302
+
+**描述**：
+執行所有整合測試並確保通過。
+
+**驗收標準**：
+- [ ] `pytest tests/test_integration.py -v` 全部通過
+- [ ] 無失敗案例
+
+---
+
+### T305: 執行完整測試套件並檢查覆蓋率
+
+**優先級**：P1
+**狀態**：⏳ 待執行
+**預估時間**：15 分鐘
+**依賴**：T303, T304
+
+**描述**：
+執行完整測試套件並驗證測試覆蓋率。
+
+**驗收標準**：
+- [ ] `pytest tests/ -v --cov=app` 執行成功
+- [ ] 測試覆蓋率 > 80%
+- [ ] 所有測試通過
+
+**Checkpoint 3.1**: 所有自動化測試通過，覆蓋率達標
+
+---
+
+## Phase 4: 部署準備
+
+**目的**：準備部署到 Vercel
+
+---
+
+### T401 [P]: 更新依賴套件
+
+**優先級**：P1
+**狀態**：⏳ 待執行
+**預估時間**：15 分鐘
+**依賴**：Phase 3 完成
+**檔案**：`requirements.txt`
+
+**描述**：
+更新 `requirements.txt` 確認所有依賴版本正確。
+
+**驗收標準**：
+- [ ] 確認 `openai>=1.12.0` 版本支援 Vision API
+- [ ] 確認所有依賴版本正確
+- [ ] 執行 `pip install -r requirements.txt` 無錯誤
+
+---
+
+### T402 [P]: 驗證 Vercel 配置
+
+**優先級**：P1
+**狀態**：⏳ 待執行
+**預估時間**：10 分鐘
+**依賴**：Phase 3 完成
+**檔案**：`vercel.json`
+
+**描述**：
+驗證 `vercel.json` 配置正確。
+
+**驗收標準**：
+- [ ] Python 版本設定正確（3.11）
+- [ ] 路由設定正確（`/api/webhook`）
+- [ ] builds 配置正確
+
+---
+
+### T403: 設定 Vercel 環境變數
+
+**優先級**：P1
+**狀態**：⏳ 待執行
+**預估時間**：10 分鐘
+**依賴**：T209
+
+**描述**：
+在 Vercel Dashboard 設定 v1.5.0 環境變數。
+
+**驗收標準**：
+- [ ] 在 Vercel Dashboard → Settings → Environment Variables
+- [ ] 新增 `GPT_VISION_MODEL=gpt-4o`
+- [ ] 驗證所有必要環境變數存在（LINE, OpenAI, Webhook）
+
+---
+
+### T404: 部署到 Vercel
+
+**優先級**：P1
+**狀態**：⏳ 待執行
+**預估時間**：20 分鐘
+**依賴**：T401, T402, T403
+
+**描述**：
+部署 v1.5.0 到 Vercel 並驗證部署成功。
+
+**驗收標準**：
+- [ ] 推送所有變更到 GitHub 分支
+- [ ] Vercel 自動偵測並開始部署
+- [ ] 部署成功（無錯誤）
+- [ ] 取得部署 URL（`https://<app>.vercel.app`）
+- [ ] 驗證 Function 正常運作
+
+---
+
+### T405: 驗證 Webhook 連線
+
+**優先級**：P1
+**狀態**：⏳ 待執行
+**預估時間**：10 分鐘
+**依賴**：T404
+
+**描述**：
+驗證 LINE Bot Webhook 連線正常。
+
+**驗收標準**：
+- [ ] LINE Developers Console → Webhook URL 正確設定
+- [ ] URL: `https://<app>.vercel.app/api/webhook`
+- [ ] 啟用 "Use webhook"
+- [ ] 執行 Webhook 驗證（回應 200 OK）
+
+**Checkpoint 4.1**: 部署完成，準備進行手動測試
+
+---
+
+## Phase 5: 手動驗證
+
+**目的**：實際在 LINE 中測試所有功能
+
+**總測試案例**：20 個
+
+---
+
+### 5.1 多項目文字支出測試（7 個案例）
+
+**T501**: 測試「早餐80元，午餐150元，現金」
+
+- [ ] 發送訊息
+- [ ] 驗證：記錄兩個項目
+- [ ] 驗證：Make.com 接收兩個 webhook，共用交易ID
+- [ ] 驗證：確認訊息列出所有項目，標註「付款方式：現金（共用）」
+
+**T502**: 測試「咖啡50，三明治35，用狗卡」
+
+- [ ] 發送訊息
+- [ ] 驗證：正確識別「台新狗卡」
+- [ ] 驗證：兩個項目共用付款方式
+
+**T503**: 測試「早餐三明治35，飲料30，現金」
+
+- [ ] 發送訊息
+- [ ] 驗證：正確處理項目中包含品項名稱的情況
+
+**T504**: 錯誤測試「早餐80元，午餐買了便當，現金」
+
+- [ ] 發送訊息（第二項缺少金額）
+- [ ] 驗證：回覆「第二個項目缺少金額，請提供完整資訊」
+- [ ] 驗證：不觸發 webhook
+
+**T505**: 錯誤測試「早餐80元，午餐150元」
+
+- [ ] 發送訊息（缺少付款方式）
+- [ ] 驗證：回覆「請提供付款方式」
+- [ ] 驗證：不觸發 webhook
+
+**T506**: 錯誤測試「三明治和咖啡80元現金」
+
+- [ ] 發送訊息（模糊情況）
+- [ ] 驗證：回覆「無法確定是一個項目還是多個項目」
+- [ ] 驗證：不觸發 webhook
+
+**T507**: 錯誤測試「早餐80元現金，午餐150元刷卡」
+
+- [ ] 發送訊息（不同付款方式）
+- [ ] 驗證：回覆「偵測到不同付款方式，請分開記帳」
+- [ ] 驗證：不觸發 webhook
+
+---
+
+### 5.2 收據圖片測試（5 個案例）
+
+**T508**: 測試上傳清晰台幣收據（單項目）
+
+- [ ] 上傳收據圖片
+- [ ] 驗證：正確識別品項、金額、付款方式
+- [ ] 驗證：Make.com 接收 webhook
+- [ ] 驗證：確認訊息正確
+
+**T509**: 測試上傳清晰台幣收據（多項目）
+
+- [ ] 上傳多項目收據圖片（如超商收據）
+- [ ] 驗證：識別所有項目
+- [ ] 驗證：Make.com 接收多個 webhook，共用交易ID
+
+**T510**: 測試上傳模糊收據
+
+- [ ] 上傳模糊收據圖片
+- [ ] 驗證：回覆「收據圖片不清晰，請用文字描述」
+- [ ] 驗證：不觸發 webhook
+
+**T511**: 測試上傳非收據圖片
+
+- [ ] 上傳風景照或人物照
+- [ ] 驗證：回覆「無法從圖片中識別收據資訊」
+- [ ] 驗證：不觸發 webhook
+
+**T512**: 測試上傳日幣收據
+
+- [ ] 上傳日幣或其他外幣收據
+- [ ] 驗證：回覆「v1.5.0 僅支援台幣」
+- [ ] 驗證：不觸發 webhook
+
+---
+
+### 5.3 效能與錯誤處理驗證（3 個案例）
+
+**T513**: 驗證回應時間
+
+- [ ] 文字訊息（多項目）：< 4 秒
+- [ ] 圖片訊息：< 7 秒
+- [ ] 記錄實際回應時間
+
+**T514**: 驗證錯誤處理
+
+- [ ] 模擬 GPT API 失敗（暫時關閉網路）
+- [ ] 驗證：回覆友善錯誤訊息
+- [ ] 模擬 Webhook 失敗（錯誤 URL）
+- [ ] 驗證：回覆錯誤訊息
+
+**T515**: 驗證向後相容性（v1 MVP 功能）
+
+- [ ] 測試單筆記帳「午餐120元現金」
+- [ ] 驗證：正常運作（向後相容）
+- [ ] 驗證：Make.com 接收 webhook
+- [ ] 驗證：確認訊息格式正確
+
+**Checkpoint 5.1**: 所有手動測試通過，v1.5.0 功能完整驗證
+
+---
+
+## Phase 6: 文件更新
+
+**目的**：更新專案文件
+
+---
+
+### T601 [P]: 更新 README.md
+
+**優先級**：P2
+**狀態**：⏳ 待執行
+**預估時間**：30 分鐘
+**依賴**：Phase 5 完成
+**檔案**：`README.md`
+
+**描述**：
+更新 `README.md` 新增 v1.5.0 功能說明。
+
+**驗收標準**：
+- [ ] 新增 v1.5.0 功能說明章節
+- [ ] 新增多項目支出使用範例
+- [ ] 新增圖片識別使用說明
+- [ ] 更新環境變數說明（GPT_VISION_MODEL）
+- [ ] 新增範例截圖（可選）
+
+---
+
+### T602 [P]: 最終檢查 .env.example
+
+**優先級**：P2
+**狀態**：⏳ 待執行
+**預估時間**：10 分鐘
+**依賴**：T210
+**檔案**：`.env.example`
+
+**描述**：
+最終檢查 `.env.example` 包含所有必要變數。
+
+**驗收標準**：
+- [ ] 所有 v1.5.0 環境變數都有說明
+- [ ] 範例值正確
+- [ ] 註解清楚
+
+**Checkpoint 6.1**: 文件更新完成，v1.5.0 開發全部完成
+
+---
+
+## 執行策略
+
+### 推薦執行順序（單人開發）
+
+```
+Phase 0 (已完成)
+    ↓
+Phase 1: 多項目支出 (6-8 小時)
+    T101 [P], T102 [P], T105 [P] ← 平行執行
+    ↓
+    T103 ← 依賴 T101, T102
+    ↓
+    T104 ← 依賴 T103
+    ↓
+    T106 ← 依賴 T104, T105
+    ↓
+    T107 [P], T108 [P] ← 平行執行測試
+    ↓
+Phase 2: 圖片識別 (6-8 小時)
+    T201 [P], T202 [P], T203 [P], T205 [P], T209 [P], T210 [P] ← 平行執行
+    ↓
+    T204 ← 依賴 T201, T203, T205
+    ↓
+    T206 ← 依賴 T201, T102
+    ↓
+    T207 ← 依賴 T202, T204, T206
+    ↓
+    T208 ← 依賴 T207
+    ↓
+    T211 ← 測試
+    ↓
+Phase 3: 整合測試 (2-3 小時)
+    T301 [P], T302 [P] ← 平行執行
+    ↓
+    T303, T304, T305 ← 依序執行
+    ↓
+Phase 4: 部署 (1-2 小時)
+    T401 [P], T402 [P] ← 平行執行
+    ↓
+    T403, T404, T405 ← 依序執行
+    ↓
+Phase 5: 手動驗證 (2-3 小時)
+    T501-T515 ← 依序測試
+    ↓
+Phase 6: 文件 (1 小時)
+    T601 [P], T602 [P] ← 平行執行
+```
+
+### 平行團隊策略（雙人開發）
+
+```
+開發者 A: Phase 1 (多項目支出)
+開發者 B: Phase 2 (圖片識別)
+
+完成後會合 → Phase 3-6 一起完成
+```
+
+---
+
+## 提交策略
+
+### 建議的 Git Commit 節奏
+
+**Phase 1**:
+- Commit 1: `feat(prompt): add multi-expense prompt` (T101)
+- Commit 2: `feat(gpt): add multi-expense data structures` (T102)
+- Commit 3: `feat(gpt): implement process_multi_expense` (T103)
+- Commit 4: `feat(line): update text handler for multi-expense` (T104)
+- Commit 5: `feat(webhook): implement batch webhook sender` (T105)
+- Commit 6: `feat(line): update confirmation message format` (T106)
+- Commit 7: `test(gpt): add multi-expense unit tests` (T107, T108)
+
+**Phase 2**:
+- Commit 8: `feat(image): add image handler module` (T201-T203)
+- Commit 9: `feat(image): implement receipt vision processing` (T204)
+- Commit 10: `feat(prompt): add receipt vision prompt` (T205)
+- Commit 11: `feat(gpt): implement receipt data processing` (T206)
+- Commit 12: `feat(line): implement image message handler` (T207-T208)
+- Commit 13: `feat(config): add vision model environment variable` (T209-T210)
+- Commit 14: `test(image): add image handler unit tests` (T211)
+
+**Phase 3**:
+- Commit 15: `test(integration): add multi-expense integration tests` (T301-T302)
+- Commit 16: `test: run full test suite and verify coverage` (T303-T305)
+
+**Phase 4**:
+- Commit 17: `chore(deps): update requirements for v1.5.0` (T401-T402)
+- Commit 18: `deploy: configure v1.5.0 deployment` (T403-T405)
+
+**Phase 6**:
+- Commit 19: `docs: update README for v1.5.0` (T601-T602)
+
+---
+
+## 總結
+
+### 關鍵里程碑
+
+1. **Checkpoint 1.1**: 多項目文字支出功能完成
+2. **Checkpoint 2.1**: 圖片識別功能完成
+3. **Checkpoint 3.1**: 所有自動化測試通過
+4. **Checkpoint 4.1**: 部署到 Vercel 完成
+5. **Checkpoint 5.1**: 所有手動測試通過
+6. **Checkpoint 6.1**: v1.5.0 開發全部完成 🎉
+
+### 時間預估
+
+- **Phase 0**: 已完成
+- **Phase 1**: 6-8 小時
+- **Phase 2**: 6-8 小時
+- **Phase 3**: 2-3 小時
+- **Phase 4**: 1-2 小時
+- **Phase 5**: 2-3 小時
+- **Phase 6**: 1 小時
+
+**總計**: 18-25 小時（2-3 個工作天）
+
+### 下一步
+
+執行 `/speckit.implement` 開始實作 v1.5.0！
 
 ---
 
 **版本歷史**：
-- v1.0.0 (2025-11-12) - 初版任務清單完成
+- v1.5.0-tasks (2025-11-14) - v1.5.0 任務清單完成

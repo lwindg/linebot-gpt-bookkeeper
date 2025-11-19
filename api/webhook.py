@@ -21,10 +21,16 @@ import logging
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage
+from linebot.models import MessageEvent, TextMessage, ImageMessage
+from linebot.v3.messaging import (
+    Configuration,
+    ApiClient,
+    MessagingApi,
+    MessagingApiBlob
+)
 
 from app.config import LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET
-from app.line_handler import handle_text_message
+from app.line_handler import handle_text_message, handle_image_message
 
 # Configure logging
 logging.basicConfig(
@@ -38,6 +44,7 @@ app = Flask(__name__)
 
 # Global variables for lazy initialization (Vercel serverless requirement)
 _line_bot_api = None
+_messaging_api_blob = None
 _handler = None
 _handler_registered = False
 
@@ -51,6 +58,17 @@ def get_line_bot_api():
     return _line_bot_api
 
 
+def get_messaging_api_blob():
+    """Get or initialize LINE Messaging API Blob client (lazy initialization for v1.5.0)"""
+    global _messaging_api_blob
+    if _messaging_api_blob is None:
+        logger.info("Initializing MessagingApiBlob")
+        configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
+        api_client = ApiClient(configuration)
+        _messaging_api_blob = MessagingApiBlob(api_client)
+    return _messaging_api_blob
+
+
 def get_handler():
     """Get or initialize Webhook Handler (lazy initialization)"""
     global _handler, _handler_registered
@@ -58,7 +76,7 @@ def get_handler():
         logger.info("Initializing WebhookHandler")
         _handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
-        # Register event handler
+        # Register event handlers
         if not _handler_registered:
             @_handler.add(MessageEvent, message=TextMessage)
             def message_text(event):
@@ -68,8 +86,16 @@ def get_handler():
                 except Exception as e:
                     logger.error(f"Error in message_text handler: {e}")
 
+            @_handler.add(MessageEvent, message=ImageMessage)
+            def message_image(event):
+                """Handle image message events (v1.5.0 新增)"""
+                try:
+                    handle_image_message(event, get_messaging_api_blob(), get_line_bot_api())
+                except Exception as e:
+                    logger.error(f"Error in message_image handler: {e}")
+
             _handler_registered = True
-            logger.info("Event handler registered")
+            logger.info("Event handlers registered (text + image)")
 
     return _handler
 

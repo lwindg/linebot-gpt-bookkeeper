@@ -10,14 +10,14 @@ GPT 處理器模組
 
 import json
 import logging
-from dataclasses import dataclass
-from typing import Literal, Optional
+from dataclasses import dataclass, field
+from typing import Literal, Optional, List
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from openai import OpenAI
 
 from app.config import OPENAI_API_KEY, GPT_MODEL
-from app.prompts import SYSTEM_PROMPT
+from app.prompts import MULTI_EXPENSE_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,25 @@ class BookkeepingEntry:
     附註: Optional[str] = ""
 
     # 對話欄位（若 intent == "conversation" 則必填）
+    response_text: Optional[str] = None
+
+
+@dataclass
+class MultiExpenseResult:
+    """多項目支出處理結果（v1.5.0 新增）"""
+
+    intent: Literal["multi_bookkeeping", "conversation", "error", "update_last_entry"]
+
+    # 記帳項目列表（若 intent == "multi_bookkeeping" 則必填）
+    entries: List[BookkeepingEntry] = field(default_factory=list)
+
+    # 修改上一筆的欄位（若 intent == "update_last_entry" 則必填）
+    fields_to_update: Optional[dict] = None
+
+    # 錯誤訊息（若 intent == "error" 則必填）
+    error_message: Optional[str] = None
+
+    # 對話回應（若 intent == "conversation" 則必填）
     response_text: Optional[str] = None
 
 
@@ -189,34 +208,93 @@ def generate_transaction_id(date_str: str, time_str: Optional[str] = None, item:
 
 def process_message(user_message: str) -> BookkeepingEntry:
     """
-    處理使用者訊息並回傳結構化結果
+    處理使用者訊息並回傳結構化結果（v1 向後相容接口）
 
-    流程：
-    1. 構建 GPT messages（system + user）
-    2. 呼叫 OpenAI API
-    3. 解析回應（判斷 intent）
-    4. 若為記帳 → 驗證必要欄位、生成交易ID、補充預設值
-    5. 回傳 BookkeepingEntry
+    **注意**：此函式內部調用 process_multi_expense，已統一使用 v1.5.0 prompt。
+    單項目記帳會自動轉換為 v1 格式回傳。
 
     Args:
         user_message: 使用者訊息文字
 
     Returns:
-        BookkeepingEntry: 處理後的結果
+        BookkeepingEntry: 處理後的結果（v1 格式）
 
     Raises:
-        Exception: OpenAI API 呼叫失敗
-        ValueError: JSON 解析失敗或必要欄位缺失
+        Exception: 處理失敗
+    """
+    # 內部調用 v1.5.0 處理函式
+    result = process_multi_expense(user_message)
+
+    # 轉換回 v1 格式
+    if result.intent == "multi_bookkeeping":
+        # 單項目：直接回傳第一個 entry
+        if len(result.entries) == 1:
+            return result.entries[0]
+        # 多項目：回傳第一個 entry（v1 不支援多項目）
+        else:
+            logger.warning(f"v1 API called with multi-item message, returning first item only")
+            return result.entries[0]
+
+    elif result.intent == "conversation":
+        # 對話意圖：轉換為 v1 格式
+        return BookkeepingEntry(
+            intent="conversation",
+            response_text=result.response_text
+        )
+
+    elif result.intent == "error":
+        # 錯誤意圖：轉換為對話回應
+        return BookkeepingEntry(
+            intent="conversation",
+            response_text=result.error_message
+        )
+
+    else:
+        raise ValueError(f"Unknown intent from process_multi_expense: {result.intent}")
+
+
+def process_multi_expense(user_message: str) -> MultiExpenseResult:
+    """
+    處理單一訊息的多項目支出（v1.5.0 新功能）
+
+    流程：
+    1. 構建 GPT messages（使用 MULTI_EXPENSE_PROMPT）
+    2. 呼叫 OpenAI API
+    3. 解析回應（判斷 intent）
+    4. 若為多項記帳 → 驗證所有項目、生成共用交易ID、補充預設值
+    5. 回傳 MultiExpenseResult
+
+    Args:
+        user_message: 使用者訊息文字
+
+    Returns:
+        MultiExpenseResult: 處理後的結果
+
+    支援的 intent：
+        - multi_bookkeeping: 多項目或單項目記帳（items 陣列）
+        - conversation: 一般對話
+        - error: 資訊不完整或包含多種付款方式
+
+    Examples:
+        >>> result = process_multi_expense("早餐80元，午餐150元，現金")
+        >>> result.intent
+        'multi_bookkeeping'
+        >>> len(result.entries)
+        2
+        >>> result.entries[0].付款方式
+        '現金'
+        >>> result.entries[1].付款方式
+        '現金'
     """
     try:
         # 初始化 OpenAI client
         client = OpenAI(api_key=OPENAI_API_KEY)
 
-        # 呼叫 Chat Completions API
+        # 呼叫 Chat Completions API（使用 MULTI_EXPENSE_PROMPT）
         completion = client.chat.completions.create(
             model=GPT_MODEL,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": MULTI_EXPENSE_PROMPT},
                 {"role": "user", "content": user_message}
             ],
             response_format={"type": "json_object"}  # 確保 JSON 輸出
@@ -224,84 +302,358 @@ def process_message(user_message: str) -> BookkeepingEntry:
 
         # 取得回應並解析 JSON
         response_text = completion.choices[0].message.content
-        logger.info(f"GPT response: {response_text}")
+        logger.info(f"GPT multi-expense response: {response_text}")
 
         data = json.loads(response_text)
         intent = data.get("intent")
 
-        if intent == "bookkeeping":
-            # 記帳意圖：提取資料並驗證
-            entry_data = data.get("data", {})
+        if intent == "multi_bookkeeping":
+            # 多項目記帳意圖：提取資料並驗證
+            payment_method = data.get("payment_method")
+            items = data.get("items", [])
 
             # 驗證必要欄位
-            required_fields = ["品項", "原幣金額", "付款方式"]
-            for field in required_fields:
-                if not entry_data.get(field):
-                    raise ValueError(f"Missing required field: {field}")
+            if not payment_method:
+                return MultiExpenseResult(
+                    intent="error",
+                    error_message="缺少付款方式，請提供完整資訊"
+                )
 
-            # 補充日期預設值（在生成交易ID之前）
+            if not items:
+                return MultiExpenseResult(
+                    intent="error",
+                    error_message="未識別到任何記帳項目"
+                )
+
+            # 生成共用交易ID（時間戳記格式）
             taipei_tz = ZoneInfo('Asia/Taipei')
+            now = datetime.now(taipei_tz)
 
-            # 處理日期（包括語義化日期轉換）
-            date_value = entry_data.get("日期")
-            user_provided_date = bool(date_value)  # 記錄用戶是否提供日期
-
-            if date_value:
-                # 處理語義化日期和標準日期格式
-                date_str = parse_semantic_date(date_value, taipei_tz)
-                entry_data["日期"] = date_str
+            # 補充共用日期：優先使用 GPT 提取的日期，否則使用今天
+            date_str = data.get("date")
+            if date_str:
+                try:
+                    shared_date = parse_semantic_date(date_str, taipei_tz)
+                    logger.info(f"使用提取的日期：{date_str} → {shared_date}")
+                except Exception as e:
+                    logger.warning(f"日期解析失敗，使用今天：{date_str}, error: {e}")
+                    shared_date = now.strftime("%Y-%m-%d")
             else:
-                # 無日期，使用今天
-                entry_data["日期"] = datetime.now(taipei_tz).strftime("%Y-%m-%d")
+                shared_date = now.strftime("%Y-%m-%d")
 
-            # 提取時間和品項用於生成交易ID
-            time_str = entry_data.get("時間")  # GPT可能會返回時間（可選）
-            item = entry_data.get("品項")
-            date_str = entry_data.get("日期")
+            # 生成共用交易ID（使用 generate_transaction_id 支援日期和品項）
+            first_item = items[0].get("品項") if items else None
+            use_current_time = not date_str  # 若未提供日期，使用當前時間
+            shared_transaction_id = generate_transaction_id(
+                shared_date,
+                None,  # 暫不支援時間提取
+                first_item,
+                use_current_time
+            )
 
-            # 判斷是否為今天且無明確時間（用戶沒提供日期，應使用當前時間）
-            use_current_time = not user_provided_date and not time_str
+            # 處理每個項目
+            entries = []
+            for idx, item_data in enumerate(items, start=1):
+                # 驗證必要欄位
+                品項 = item_data.get("品項")
+                原幣金額 = item_data.get("原幣金額")
 
-            # 生成交易ID（根據日期、時間、品項智能推測時間戳記）
-            entry_data["交易ID"] = generate_transaction_id(date_str, time_str, item, use_current_time)
+                if not 品項:
+                    return MultiExpenseResult(
+                        intent="error",
+                        error_message=f"第{idx}個項目缺少品項名稱，請提供完整資訊"
+                    )
 
-            # 移除時間欄位（不應發送到webhook）
-            if "時間" in entry_data:
-                del entry_data["時間"]
+                if 原幣金額 is None:
+                    return MultiExpenseResult(
+                        intent="error",
+                        error_message=f"第{idx}個項目缺少金額，請提供完整資訊"
+                    )
 
-            # 確保數值型別正確
-            if "原幣金額" in entry_data:
-                entry_data["原幣金額"] = float(entry_data["原幣金額"])
-            if "匯率" in entry_data:
-                entry_data["匯率"] = float(entry_data["匯率"])
-            else:
-                entry_data["匯率"] = 1.0
+                # 補充預設值和共用欄位
+                entry = BookkeepingEntry(
+                    intent="bookkeeping",
+                    日期=shared_date,
+                    品項=品項,
+                    原幣別="TWD",
+                    原幣金額=float(原幣金額),
+                    匯率=1.0,
+                    付款方式=payment_method,
+                    交易ID=shared_transaction_id,
+                    明細說明=item_data.get("明細說明", ""),
+                    分類=item_data.get("分類", ""),
+                    專案="日常",
+                    必要性=item_data.get("必要性", "必要日常支出"),
+                    代墊狀態=item_data.get("代墊狀態", "無"),
+                    收款支付對象=item_data.get("收款支付對象", ""),
+                    附註=f"多項目支出 {idx}/{len(items)}"
+                )
 
-            # 確保必要欄位有預設值
-            entry_data.setdefault("原幣別", "TWD")
-            entry_data.setdefault("專案", "日常")
-            entry_data.setdefault("代墊狀態", "無")
-            entry_data.setdefault("明細說明", "")
-            entry_data.setdefault("收款支付對象", "")
-            entry_data.setdefault("附註", "")
+                entries.append(entry)
 
-            return BookkeepingEntry(intent="bookkeeping", **entry_data)
+            return MultiExpenseResult(
+                intent="multi_bookkeeping",
+                entries=entries
+            )
+
+        elif intent == "update_last_entry":
+            # 修改上一筆記帳：提取要更新的欄位
+            fields_to_update = data.get("fields_to_update", {})
+
+            if not fields_to_update:
+                return MultiExpenseResult(
+                    intent="error",
+                    error_message="未識別到要更新的欄位"
+                )
+
+            return MultiExpenseResult(
+                intent="update_last_entry",
+                fields_to_update=fields_to_update
+            )
 
         elif intent == "conversation":
             # 一般對話：提取回應文字
             response = data.get("response", "")
-            return BookkeepingEntry(
+            return MultiExpenseResult(
                 intent="conversation",
                 response_text=response
             )
 
+        elif intent == "error":
+            # 錯誤：提取錯誤訊息
+            error_msg = data.get("message", "無法處理您的訊息，請檢查輸入格式")
+            return MultiExpenseResult(
+                intent="error",
+                error_message=error_msg
+            )
+
         else:
-            raise ValueError(f"Unknown intent: {intent}")
+            # 未知意圖
+            return MultiExpenseResult(
+                intent="error",
+                error_message=f"無法識別意圖：{intent}"
+            )
 
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse GPT JSON response: {e}")
-        raise ValueError(f"Invalid JSON response from GPT: {e}")
+        return MultiExpenseResult(
+            intent="error",
+            error_message="系統處理訊息時發生錯誤，請重試"
+        )
 
     except Exception as e:
-        logger.error(f"GPT API error: {e}")
-        raise
+        logger.error(f"GPT API error in process_multi_expense: {e}")
+        return MultiExpenseResult(
+            intent="error",
+            error_message="系統處理訊息時發生錯誤，請重試"
+        )
+
+
+def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None) -> MultiExpenseResult:
+    """
+    將收據資料轉換為記帳項目（v1.5.0 圖片識別）
+
+    流程：
+    1. 接收從 Vision API 提取的收據項目（List[ReceiptItem]）
+    2. 為每個項目補充預設值
+    3. 生成共用交易ID（時間戳記格式）
+    4. 回傳 MultiExpenseResult
+
+    Args:
+        receipt_items: 從圖片識別出的收據項目列表（ReceiptItem 物件）
+        receipt_date: 收據上的日期（YYYY-MM-DD），若無則使用當前日期
+
+    Returns:
+        MultiExpenseResult: 包含完整記帳資料的結果
+
+    Examples:
+        >>> from app.image_handler import ReceiptItem
+        >>> items = [
+        ...     ReceiptItem(品項="咖啡", 原幣金額=50, 付款方式="現金"),
+        ...     ReceiptItem(品項="三明治", 原幣金額=80, 付款方式="現金")
+        ... ]
+        >>> result = process_receipt_data(items)
+        >>> result.intent
+        'multi_bookkeeping'
+        >>> len(result.entries)
+        2
+    """
+    try:
+        if not receipt_items:
+            return MultiExpenseResult(
+                intent="error",
+                error_message="未識別到任何收據項目"
+            )
+
+        # 生成共用交易ID（時間戳記格式）
+        taipei_tz = ZoneInfo('Asia/Taipei')
+        now = datetime.now(taipei_tz)
+        shared_transaction_id = now.strftime("%Y%m%d-%H%M%S")
+
+        # 使用收據日期或當前日期
+        if receipt_date:
+            shared_date = receipt_date
+        else:
+            shared_date = now.strftime("%Y-%m-%d")
+
+        # 取得共用付款方式（第一個項目的付款方式）
+        # 如果 Vision API 無法識別，預設為「現金」（最常見情況）
+        payment_method = receipt_items[0].付款方式 if receipt_items[0].付款方式 else "現金"
+        payment_method_is_default = not receipt_items[0].付款方式  # 標記是否使用預設值
+
+        # 處理每個項目
+        entries = []
+        for idx, receipt_item in enumerate(receipt_items, start=1):
+            # 分類處理：優先使用 Vision API 提供的分類，沒有則用 GPT 推斷
+            品項 = receipt_item.品項
+            if receipt_item.分類:
+                # Vision API 已提供分類
+                分類 = receipt_item.分類
+                logger.info(f"使用 Vision API 分類：{品項} → {分類}")
+            else:
+                # Vision API 未提供分類，使用 GPT 推斷
+                分類 = _infer_category(品項)
+                logger.info(f"使用 GPT 推斷分類：{品項} → {分類}")
+
+            # 補充預設值和共用欄位
+            # 如果付款方式是預設值，在附註中標記
+            附註_內容 = f"收據圖片識別 {idx}/{len(receipt_items)}"
+            if payment_method_is_default:
+                附註_內容 += "；付款方式預設為現金"
+
+            entry = BookkeepingEntry(
+                intent="bookkeeping",
+                日期=shared_date,
+                品項=品項,
+                原幣別="TWD",
+                原幣金額=float(receipt_item.原幣金額),
+                匯率=1.0,
+                付款方式=payment_method,
+                交易ID=shared_transaction_id,
+                明細說明=f"收據識別 {idx}/{len(receipt_items)}",
+                分類=分類,
+                專案="日常",
+                必要性="必要日常支出",
+                代墊狀態="無",
+                收款支付對象="",
+                附註=附註_內容
+            )
+
+            entries.append(entry)
+
+        result = MultiExpenseResult(
+            intent="multi_bookkeeping",
+            entries=entries
+        )
+
+        # 如果付款方式是預設值，在 response_text 中加入提醒
+        if payment_method_is_default:
+            result.response_text = "⚠️ 未從收據識別到付款方式，已預設為「現金」"
+
+        return result
+
+    except Exception as e:
+        logger.error(f"處理收據資料時發生錯誤: {e}")
+        return MultiExpenseResult(
+            intent="error",
+            error_message="處理收據資料時發生錯誤，請重試"
+        )
+
+
+def _infer_category(品項: str) -> str:
+    """
+    使用 GPT 進行智能分類推斷
+
+    Args:
+        品項: 品項名稱
+
+    Returns:
+        str: 推斷的分類
+
+    Note:
+        使用 GPT 根據品項名稱和完整的分類規則進行智能判斷。
+        確保分類符合 CLASSIFICATION_RULES 定義的標準。
+    """
+    from app.prompts import CLASSIFICATION_RULES
+
+    try:
+        client = OpenAI(api_key=OPENAI_API_KEY)
+
+        # 簡化的分類 prompt
+        classification_prompt = f"""請根據品項名稱判斷最合適的分類。
+
+{CLASSIFICATION_RULES}
+
+**任務**：
+- 品項：「{品項}」
+- 請從上述分類列表中選擇**最合適**的分類
+- 必須使用「大類／子類」或「大類／子類／細類」格式
+- 只能使用已定義的分類，不可自創
+
+**輸出格式**：
+只回傳分類名稱，不要有其他文字。
+
+範例：
+- 輸入：咖啡 → 輸出：家庭／飲品
+- 輸入：面紙 → 輸出：家庭／用品／雜項
+- 輸入：早餐 → 輸出：家庭／餐飲／早餐
+- 輸入：火車票 → 輸出：交通／接駁
+"""
+
+        response = client.chat.completions.create(
+            model=GPT_MODEL,
+            messages=[
+                {"role": "user", "content": classification_prompt}
+            ],
+            max_tokens=50,
+            temperature=0.3  # 較低的 temperature 確保穩定輸出
+        )
+
+        分類 = response.choices[0].message.content.strip()
+        logger.info(f"GPT 分類推斷：{品項} → {分類}")
+
+        return 分類
+
+    except Exception as e:
+        logger.error(f"GPT 分類推斷失敗：{e}")
+        # 失敗時回退到簡單關鍵字匹配
+        return _simple_category_fallback(品項)
+
+
+def _simple_category_fallback(品項: str) -> str:
+    """
+    簡單的分類推斷（作為 GPT 分類失敗時的備選方案）
+
+    Args:
+        品項: 品項名稱
+
+    Returns:
+        str: 推斷的分類
+    """
+    品項_lower = 品項.lower()
+
+    # 餐飲類別
+    if any(keyword in 品項_lower for keyword in ["早餐", "三明治", "蛋餅", "豆漿", "漢堡"]):
+        return "家庭／餐飲／早餐"
+    elif any(keyword in 品項_lower for keyword in ["午餐", "便當", "麵", "飯"]):
+        return "家庭／餐飲／午餐"
+    elif any(keyword in 品項_lower for keyword in ["晚餐", "火鍋"]):
+        return "家庭／餐飲／晚餐"
+    elif any(keyword in 品項_lower for keyword in ["咖啡", "茶", "飲料", "果汁", "冰沙", "奶茶"]):
+        return "家庭／飲品"
+    elif any(keyword in 品項_lower for keyword in ["點心", "蛋糕", "甜點", "餅乾", "糖果", "巧克力"]):
+        return "家庭／點心"
+
+    # 家庭用品
+    elif any(keyword in 品項_lower for keyword in ["面紙", "衛生紙", "紙巾", "棉條", "衛生棉"]):
+        return "家庭／用品／雜項"
+
+    # 交通類別
+    elif any(keyword in 品項_lower for keyword in ["計程車", "uber", "高鐵", "火車", "捷運", "公車"]):
+        return "交通／接駁"
+    elif any(keyword in 品項_lower for keyword in ["加油", "汽油", "柴油"]):
+        return "交通／加油"
+
+    # 預設分類
+    else:
+        return "家庭支出"
