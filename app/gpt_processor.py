@@ -328,10 +328,28 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
             # 生成共用交易ID（時間戳記格式）
             taipei_tz = ZoneInfo('Asia/Taipei')
             now = datetime.now(taipei_tz)
-            shared_transaction_id = now.strftime("%Y%m%d-%H%M%S")
 
-            # 補充共用日期
-            shared_date = now.strftime("%Y-%m-%d")
+            # 補充共用日期：優先使用 GPT 提取的日期，否則使用今天
+            date_str = data.get("date")
+            if date_str:
+                try:
+                    shared_date = parse_semantic_date(date_str, taipei_tz)
+                    logger.info(f"使用提取的日期：{date_str} → {shared_date}")
+                except Exception as e:
+                    logger.warning(f"日期解析失敗，使用今天：{date_str}, error: {e}")
+                    shared_date = now.strftime("%Y-%m-%d")
+            else:
+                shared_date = now.strftime("%Y-%m-%d")
+
+            # 生成共用交易ID（使用 generate_transaction_id 支援日期和品項）
+            first_item = items[0].get("品項") if items else None
+            use_current_time = not date_str  # 若未提供日期，使用當前時間
+            shared_transaction_id = generate_transaction_id(
+                shared_date,
+                None,  # 暫不支援時間提取
+                first_item,
+                use_current_time
+            )
 
             # 處理每個項目
             entries = []
