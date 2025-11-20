@@ -33,10 +33,10 @@ def print_result(entry, show_json=False):
     else:
         print(f"📝 意圖: 記帳")
         print(f"📅 日期: {entry.日期}")
-        print(f"🛍️  品項: {entry.品項}")
+        print(f"🛍️ 品項: {entry.品項}")
         print(f"💰 金額: {entry.原幣別} {entry.原幣金額}")
         print(f"💳 付款: {entry.付款方式}")
-        print(f"🏷️  分類: {entry.分類}")
+        print(f"🏷️ 分類: {entry.分類}")
         print(f"📊 必要性: {entry.必要性}")
         print(f"🆔 交易ID: {entry.交易ID}")
         if entry.明細說明:
@@ -111,9 +111,9 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
             # 列出所有項目
             for idx, entry in enumerate(entries, start=1):
                 print(f"--- 項目 #{idx} ---")
-                print(f"  🛍️  品項: {entry.品項}")
+                print(f"  🛍️ 品項: {entry.品項}")
                 print(f"  💰 金額: {entry.原幣別} {entry.原幣金額}")
-                print(f"  🏷️  分類: {entry.分類}")
+                print(f"  🏷️ 分類: {entry.分類}")
                 print(f"  📊 必要性: {entry.必要性}")
                 if entry.明細說明:
                     print(f"  📝 明細: {entry.明細說明}")
