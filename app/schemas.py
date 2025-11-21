@@ -38,7 +38,7 @@ MULTI_BOOKKEEPING_SCHEMA = {
                         "原幣別": {
                             "type": "string",
                             "enum": ["TWD", "USD", "EUR", "JPY", "GBP", "AUD", "CAD", "CNY"],
-                            "description": "Currency code (ISO 4217), default TWD"
+                            "description": "Currency code (ISO 4217). MUST identify currency keywords: 美元/美金→USD, 歐元→EUR, 日圓/日幣→JPY, etc. Default TWD only when NO currency keyword present."
                         },
                         "原幣金額": {
                             "type": "number",

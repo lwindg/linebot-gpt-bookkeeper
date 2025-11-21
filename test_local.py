@@ -42,7 +42,16 @@ def print_result(entry, show_json=False):
         print(f"📝 意圖: 記帳")
         print(f"📅 日期: {entry.日期}")
         print(f"🛍️ 品項: {entry.品項}")
-        print(f"💰 金額: {entry.原幣別} {entry.原幣金額}")
+
+        # Display currency info (v003-multi-currency)
+        if entry.原幣別 != "TWD":
+            twd_amount = entry.原幣金額 * entry.匯率
+            print(f"💰 原幣金額: {entry.原幣金額} {entry.原幣別}")
+            print(f"💱 匯率: {entry.匯率}")
+            print(f"💵 新台幣: {twd_amount:.2f} TWD")
+        else:
+            print(f"💰 金額: {entry.原幣金額} {entry.原幣別}")
+
         print(f"💳 付款: {entry.付款方式}")
         print(f"🏷️ 分類: {entry.分類}")
         print(f"📊 必要性: {entry.必要性}")
@@ -120,7 +129,16 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
             for idx, entry in enumerate(entries, start=1):
                 print(f"--- 項目 #{idx} ---")
                 print(f"  🛍️ 品項: {entry.品項}")
-                print(f"  💰 金額: {entry.原幣別} {entry.原幣金額}")
+
+                # Display currency info (v003-multi-currency)
+                if entry.原幣別 != "TWD":
+                    twd_amount = entry.原幣金額 * entry.匯率
+                    print(f"  💰 原幣金額: {entry.原幣金額} {entry.原幣別}")
+                    print(f"  💱 匯率: {entry.匯率}")
+                    print(f"  💵 新台幣: {twd_amount:.2f} TWD")
+                else:
+                    print(f"  💰 金額: {entry.原幣金額} TWD")
+
                 print(f"  🏷️ 分類: {entry.分類}")
                 print(f"  📊 必要性: {entry.必要性}")
                 if entry.明細說明:
