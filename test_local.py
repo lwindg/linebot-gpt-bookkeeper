@@ -62,6 +62,8 @@ def print_result(entry, show_json=False):
             print(f"📂 專案: {entry.專案}")
         if entry.代墊狀態 != "無":
             print(f"💸 代墊: {entry.代墊狀態}")
+            if entry.收款支付對象:
+                print(f"👤 對象: {entry.收款支付對象}")
 
     if show_json:
         print("\n📄 完整 JSON:")
@@ -143,6 +145,10 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
                 print(f"  📊 必要性: {entry.必要性}")
                 if entry.明細說明:
                     print(f"  📝 明細: {entry.明細說明}")
+                if entry.代墊狀態 != "無":
+                    print(f"  💸 代墊: {entry.代墊狀態}")
+                    if entry.收款支付對象:
+                        print(f"  👤 對象: {entry.收款支付對象}")
                 if idx < total_items:
                     print()
 
