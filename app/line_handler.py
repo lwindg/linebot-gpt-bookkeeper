@@ -36,8 +36,20 @@ def format_confirmation_message(entry: BookkeepingEntry) -> str:
 
     message = f"""✅ 記帳成功！
 
-📋 {entry.品項}
-💰 金額：{twd_amount:.0f} 元 TWD
+📋 {entry.品項}"""
+
+    # Display currency info (v003-multi-currency)
+    if entry.原幣別 != "TWD":
+        # Foreign currency: show original amount, rate, and TWD amount
+        message += f"""
+💰 原幣金額：{entry.原幣金額:.2f} {entry.原幣別}
+💱 匯率：{entry.匯率:.4f}
+💵 新台幣：{twd_amount:.2f} 元"""
+    else:
+        # TWD: show amount only
+        message += f"\n💰 金額：{twd_amount:.0f} 元"
+
+    message += f"""
 💳 付款方式：{entry.付款方式}
 📂 分類：{entry.分類}
 ⭐ 必要性：{entry.必要性}"""
@@ -96,7 +108,16 @@ def format_multi_confirmation_message(result: MultiExpenseResult, success_count:
         twd_amount = entry.原幣金額 * entry.匯率
 
         message += f"\n📋 #{idx} {entry.品項}"
-        message += f"\n💰 {twd_amount:.0f} 元"
+
+        # Display currency info (v003-multi-currency)
+        if entry.原幣別 != "TWD":
+            # Foreign currency: show original amount, rate, and TWD amount
+            message += f"\n💰 {entry.原幣金額:.2f} {entry.原幣別} (匯率: {entry.匯率:.4f})"
+            message += f"\n💵 {twd_amount:.2f} 元 TWD"
+        else:
+            # TWD: show amount only
+            message += f"\n💰 {twd_amount:.0f} 元"
+
         message += f"\n📂 {entry.分類}"
         message += f"\n⭐ {entry.必要性}"
 

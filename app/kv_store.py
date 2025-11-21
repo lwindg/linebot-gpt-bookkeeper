@@ -15,6 +15,71 @@ from app.config import REDIS_URL, KV_ENABLED, LAST_TRANSACTION_TTL
 logger = logging.getLogger(__name__)
 
 
+class KVStore:
+    """
+    KV Store wrapper for Redis operations
+
+    Provides simple get/set interface for caching data with TTL support.
+    """
+
+    def __init__(self, client: Optional[Redis] = None):
+        """
+        Initialize KV store
+
+        Args:
+            client: Redis client instance (if None, will try to create one)
+        """
+        self.client = client or get_kv_client()
+
+    def get(self, key: str) -> Optional[Any]:
+        """
+        Get value from KV store
+
+        Args:
+            key: Cache key
+
+        Returns:
+            Cached value (dict) or None if not found
+        """
+        if not self.client:
+            return None
+
+        try:
+            value = self.client.get(key)
+            if not value:
+                return None
+
+            return json.loads(value)
+
+        except Exception as e:
+            logger.error(f"Failed to get key {key}: {e}")
+            return None
+
+    def set(self, key: str, value: Dict[str, Any], ttl: int = 3600) -> bool:
+        """
+        Set value in KV store with TTL
+
+        Args:
+            key: Cache key
+            value: Value to cache (dict)
+            ttl: Time to live in seconds (default: 3600 = 1 hour)
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        if not self.client:
+            return False
+
+        try:
+            json_value = json.dumps(value, ensure_ascii=False)
+            self.client.setex(key, ttl, json_value)
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to set key {key}: {e}")
+            return False
+
+
 def get_kv_client() -> Optional[Redis]:
     """
     取得 Redis 客戶端

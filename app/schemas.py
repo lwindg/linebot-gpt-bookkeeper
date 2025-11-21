@@ -35,6 +35,11 @@ MULTI_BOOKKEEPING_SCHEMA = {
                             "type": "string",
                             "description": "Item name"
                         },
+                        "原幣別": {
+                            "type": "string",
+                            "enum": ["TWD", "USD", "EUR", "JPY", "GBP", "AUD", "CAD", "CNY"],
+                            "description": "Currency code (ISO 4217), default TWD"
+                        },
                         "原幣金額": {
                             "type": "number",
                             "description": "Amount in original currency"
@@ -62,7 +67,7 @@ MULTI_BOOKKEEPING_SCHEMA = {
                             "description": "Person to receive or pay"
                         }
                     },
-                    "required": ["品項", "原幣金額", "明細說明", "分類", "必要性", "代墊狀態", "收款支付對象"],
+                    "required": ["品項", "原幣別", "原幣金額", "明細說明", "分類", "必要性", "代墊狀態", "收款支付對象"],
                     "additionalProperties": False
                 }
             },

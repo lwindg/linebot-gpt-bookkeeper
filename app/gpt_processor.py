@@ -19,6 +19,8 @@ from openai import OpenAI
 from app.config import OPENAI_API_KEY, GPT_MODEL
 from app.prompts import MULTI_EXPENSE_PROMPT
 from app.schemas import MULTI_BOOKKEEPING_SCHEMA
+from app.exchange_rate import ExchangeRateService
+from app.kv_store import KVStore
 
 logger = logging.getLogger(__name__)
 
@@ -291,6 +293,10 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
         # 初始化 OpenAI client
         client = OpenAI(api_key=OPENAI_API_KEY)
 
+        # 初始化 ExchangeRateService (v003-multi-currency)
+        kv_store = KVStore()
+        exchange_rate_service = ExchangeRateService(kv_store)
+
         # 呼叫 Chat Completions API（使用 MULTI_EXPENSE_PROMPT + Structured Output）
         completion = client.chat.completions.create(
             model=GPT_MODEL,
@@ -374,14 +380,32 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
                         error_message=f"第{idx}個項目缺少金額，請提供完整資訊"
                     )
 
+                # 取得幣別（v003-multi-currency）
+                原幣別 = item_data.get("原幣別", "TWD")
+                匯率 = 1.0
+
+                # 若為外幣，查詢匯率（v003-multi-currency）
+                if 原幣別 != "TWD":
+                    rate = exchange_rate_service.get_rate(原幣別)
+                    if rate is not None:
+                        匯率 = rate
+                        logger.info(f"Got exchange rate for {原幣別}: {匯率}")
+                    else:
+                        # 匯率查詢失敗，回傳錯誤
+                        logger.error(f"Failed to get exchange rate for {原幣別}")
+                        return MultiExpenseResult(
+                            intent="error",
+                            error_message=f"無法取得 {原幣別} 匯率，請稍後再試或改用新台幣記帳"
+                        )
+
                 # 補充預設值和共用欄位
                 entry = BookkeepingEntry(
                     intent="bookkeeping",
                     日期=shared_date,
                     品項=品項,
-                    原幣別="TWD",
+                    原幣別=原幣別,
                     原幣金額=float(原幣金額),
-                    匯率=1.0,
+                    匯率=匯率,
                     付款方式=payment_method,
                     交易ID=shared_transaction_id,
                     明細說明=item_data.get("明細說明", ""),
