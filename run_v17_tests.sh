@@ -73,8 +73,17 @@ extract_field() {
             echo "$output" | grep "🛍️  品項:" | head -1 | sed 's/.*🛍️  品項: //' | xargs
             ;;
         "amount")
-            # 提取金額（單項目格式）
-            echo "$output" | grep "💰 金額:" | head -1 | sed 's/.*💰 金額: TWD //' | xargs
+            # Support both TWD and foreign currency formats
+            # TWD format: 💰 金額: 80.0 TWD
+            # Foreign format: 💰 原幣金額: 4.99 USD
+            local amount=$(echo "$output" | grep -E "💰 (金額|原幣金額):" | head -1)
+            if echo "$amount" | grep -q "原幣金額"; then
+                # Foreign currency - extract just the number (ignore currency code)
+                echo "$amount" | sed 's/.*💰 原幣金額: //' | awk '{print $1}' | xargs
+            else
+                # TWD - extract amount
+                echo "$amount" | sed 's/.*💰 金額: //' | awk '{print $1}' | xargs
+            fi
             ;;
         "payment")
             # 提取付款方式（單項目格式）
