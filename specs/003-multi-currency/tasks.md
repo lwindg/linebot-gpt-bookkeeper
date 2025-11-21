@@ -65,9 +65,9 @@
 - [x] T024 [US1] 在 tests/test_gpt_processor.py 新增外幣消費解析測試案例（測試「WSJ 4.99美元 大戶」識別為 USD, 4.99）
 - [x] T025 [P] [US1] 在 tests/test_gpt_processor.py 新增幣別同義詞測試案例（測試「10美金」識別為 USD, 10）
 - [x] T026 [P] [US1] 在 tests/test_gpt_processor.py 新增歐元消費測試案例（測試「290.97歐元」識別為 EUR, 290.97）
-- [ ] T027 [US1] 建立 tests/test_multi_currency.py 並實作單筆外幣消費端對端整合測試（測試完整流程：訊息解析 → 匯率查詢 → webhook 發送）
-- [ ] T028 [US1] 在 test_local.py 新增外幣消費手動測試案例（用於本地開發驗證）
-- [ ] T029 [US1] 執行所有 User Story 1 相關測試並確保通過（uv run pytest tests/test_exchange_rate.py tests/test_gpt_processor.py tests/test_multi_currency.py -v）
+- [x] T027 [US1] 建立 tests/test_multi_currency.py 並實作單筆外幣消費端對端整合測試（測試完整流程：訊息解析 → 匯率查詢 → webhook 發送）
+- [x] T028 [US1] 在 test_local.py 新增外幣消費手動測試案例（用於本地開發驗證）
+- [x] T029 [US1] 執行所有 User Story 1 相關測試並確保通過（uv run pytest tests/test_exchange_rate.py tests/test_gpt_processor.py tests/test_multi_currency.py -v）
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 

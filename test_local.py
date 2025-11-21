@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-本地測試工具 - 直接測試 GPT 解析功能（v1 & v1.5.0）
+本地測試工具 - 直接測試 GPT 解析功能（v1 & v1.5.0 & v003-multi-currency）
 
 使用方式：
   python test_local.py                      # 互動模式（推薦，預設 v1.5.0）
@@ -17,6 +17,14 @@
 版本差異：
   - v1: 單項目記帳（process_message）
   - v1.5.0: 多項目記帳（process_multi_expense）- 預設
+  - v003-multi-currency: 多幣別記帳（已整合至 v1.5.0）
+
+外幣消費測試案例（v003-multi-currency）：
+  python test_local.py 'WSJ 4.99美元 大戶'
+  python test_local.py 'Netflix 15.99USD 信用卡'
+  python test_local.py '飯店住宿 290.97歐元 信用卡'
+  python test_local.py '便當 80 現金' # TWD (default)
+  python test_local.py '咖啡 10美金 現金' # 測試同義詞
 """
 
 import sys
