@@ -358,3 +358,9 @@ Sequential-thinking **不應該**用於：
 ---
 
 **版本**：2.0.0 | **最後更新**：2025-11-18
+
+## Active Technologies
+- Vercel KV (現有，用於匯率快取和備用匯率儲存) (003-multi-currency)
+
+## Recent Changes
+- 003-multi-currency: Added Python 3.11+
