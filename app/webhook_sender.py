@@ -139,8 +139,8 @@ def send_multiple_webhooks(entries: List[BookkeepingEntry], user_id: Optional[st
     for idx, entry in enumerate(entries, start=1):
         logger.info(f"Sending webhook {idx}/{len(entries)}: {entry.品項} - {entry.原幣金額} TWD")
 
-        # 只儲存第一筆到 KV（代表整個多項目交易）
-        user_id_for_kv = user_id if idx == 1 else None
+        # 只儲存最後一筆到 KV（代表最近的記帳項目，用於「修改上一筆」功能）
+        user_id_for_kv = user_id if idx == len(entries) else None
 
         if send_to_webhook(entry, user_id_for_kv):
             success_count += 1
