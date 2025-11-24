@@ -136,13 +136,29 @@ def send_multiple_webhooks(entries: List[BookkeepingEntry], user_id: Optional[st
 
     logger.info(f"Sending {len(entries)} webhooks for multi-item transaction (delay={delay_seconds}s)")
 
+    # 記錄交易項目數量（用於 UPDATE webhook 批次更新）
+    item_count = len(entries)
+
     for idx, entry in enumerate(entries, start=1):
         logger.info(f"Sending webhook {idx}/{len(entries)}: {entry.品項} - {entry.原幣金額} TWD")
 
         # 只儲存最後一筆到 KV（代表最近的記帳項目，用於「修改上一筆」功能）
-        user_id_for_kv = user_id if idx == len(entries) else None
+        # v1.8.1: 改為儲存最後一筆（而非第一筆），符合使用者的心理模型
+        if idx == len(entries) and user_id:
+            # 儲存交易資訊，包含項目數量（用於批次更新）
+            transaction_data = {
+                "交易ID": entry.交易ID,
+                "品項": entry.品項,
+                "原幣金額": entry.原幣金額,
+                "付款方式": entry.付款方式,
+                "分類": entry.分類,
+                "日期": entry.日期,
+                "item_count": item_count,  # 記錄項目數量
+            }
+            save_last_transaction(user_id, transaction_data)
+            logger.info(f"Saved multi-item transaction to KV: {entry.交易ID} with {item_count} items")
 
-        if send_to_webhook(entry, user_id_for_kv):
+        if send_to_webhook(entry, user_id=None):  # 不在 send_to_webhook 中儲存，已經在上面儲存
             success_count += 1
             logger.info(f"Webhook {idx}/{len(entries)} sent successfully")
         else:
@@ -159,22 +175,29 @@ def send_multiple_webhooks(entries: List[BookkeepingEntry], user_id: Optional[st
     return (success_count, failure_count)
 
 
-def send_update_webhook(user_id: str, transaction_id: str, fields_to_update: dict) -> bool:
+def send_update_webhook(user_id: str, transaction_id: str, fields_to_update: dict, item_count: int = 1) -> bool:
     """
     發送 UPDATE webhook 到 Make.com（v1.5.0 新功能）
 
     用於「修改上一筆」功能，發送 UPDATE 操作到 Make.com Router。
+    支援多項目交易批次更新（相同交易ID的所有項目）。
 
     Args:
         user_id: LINE 使用者 ID
         transaction_id: 要更新的交易 ID
         fields_to_update: 要更新的欄位（dict）
+        item_count: 項目數量（預設為 1，多項目交易時傳入實際數量）
 
     Returns:
         bool: 成功回傳 True，失敗回傳 False
 
-    Example:
-        >>> send_update_webhook("U1234567890abcdef", "20251115-143052", {"付款方式": "Line 轉帳"})
+    Examples:
+        >>> # 單筆更新
+        >>> send_update_webhook("U1234567890abcdef", "20251115-143052", {"付款方式": "Line 轉帳"}, 1)
+        True
+
+        >>> # 多項目批次更新（5 個項目共享同一交易ID）
+        >>> send_update_webhook("U1234567890abcdef", "20251116-143027", {"付款方式": "Line 轉帳"}, 5)
         True
     """
     # Check if webhook URL is configured
@@ -187,11 +210,12 @@ def send_update_webhook(user_id: str, transaction_id: str, fields_to_update: dic
         "operation": "UPDATE",
         "user_id": user_id,
         "transaction_id": transaction_id,
-        "fields_to_update": fields_to_update
+        "fields_to_update": fields_to_update,
+        "item_count": item_count  # 告訴 Make.com 需要更新幾筆記錄
     }
 
     try:
-        logger.info(f"Sending UPDATE webhook for transaction {transaction_id}")
+        logger.info(f"Sending UPDATE webhook for transaction {transaction_id} ({item_count} item(s))")
         logger.info(f"Fields to update: {fields_to_update}")
 
         response = requests.post(
