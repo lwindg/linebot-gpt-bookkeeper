@@ -7,6 +7,7 @@ This module sends bookkeeping data to Make.com webhook.
 
 import requests
 import logging
+import time
 from typing import List, Tuple, Optional
 from app.config import WEBHOOK_URL, WEBHOOK_TIMEOUT
 from app.gpt_processor import BookkeepingEntry
@@ -101,16 +102,19 @@ def send_to_webhook(entry: BookkeepingEntry, user_id: Optional[str] = None) -> b
         return False
 
 
-def send_multiple_webhooks(entries: List[BookkeepingEntry], user_id: Optional[str] = None) -> Tuple[int, int]:
+def send_multiple_webhooks(entries: List[BookkeepingEntry], user_id: Optional[str] = None, delay_seconds: float = 0.5) -> Tuple[int, int]:
     """
     為多個項目發送 webhook（v1.5.0 新功能）
 
     依序為每個 entry 呼叫 send_to_webhook()，記錄成功/失敗數量。
     即使部分失敗，仍繼續處理剩餘項目。
 
+    **v1.8.1 改進**：加入延遲機制以避免後端並發寫入衝突（HTTP 409 Conflict）
+
     Args:
         entries: BookkeepingEntry 列表（共用交易ID）
         user_id: LINE user ID (optional, for saving to KV)
+        delay_seconds: 每筆 webhook 之間的延遲秒數（預設 0.5 秒）
 
     Returns:
         Tuple[int, int]: (成功數量, 失敗數量)
@@ -122,11 +126,15 @@ def send_multiple_webhooks(entries: List[BookkeepingEntry], user_id: Optional[st
         3
         >>> failure
         0
+
+    Note:
+        延遲機制可避免 Google Sheets 等後端系統的並發寫入衝突。
+        例如：4 筆記錄耗時約 2 秒（含 0.5s 延遲），但能確保全部成功寫入。
     """
     success_count = 0
     failure_count = 0
 
-    logger.info(f"Sending {len(entries)} webhooks for multi-item transaction")
+    logger.info(f"Sending {len(entries)} webhooks for multi-item transaction (delay={delay_seconds}s)")
 
     for idx, entry in enumerate(entries, start=1):
         logger.info(f"Sending webhook {idx}/{len(entries)}: {entry.品項} - {entry.原幣金額} TWD")
@@ -140,6 +148,11 @@ def send_multiple_webhooks(entries: List[BookkeepingEntry], user_id: Optional[st
         else:
             failure_count += 1
             logger.error(f"Webhook {idx}/{len(entries)} failed")
+
+        # 在非最後一筆時加入延遲，避免後端並發寫入衝突
+        if idx < len(entries):
+            logger.debug(f"Waiting {delay_seconds}s before next webhook...")
+            time.sleep(delay_seconds)
 
     logger.info(f"Multi-webhook batch complete: {success_count} success, {failure_count} failure")
 
