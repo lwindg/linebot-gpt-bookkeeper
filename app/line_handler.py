@@ -332,9 +332,8 @@ def handle_image_message(event: MessageEvent, messaging_api_blob: MessagingApiBl
             logger.info(f"收據識別成功，共 {len(receipt_items)} 個項目")
 
             # 4. 轉換為 BookkeepingEntry 列表
-            # 提取收據日期（若 Vision API 有回傳）
-            receipt_date = None  # TODO: 從 process_receipt_image 回傳值取得日期
-            result = process_receipt_data(receipt_items, receipt_date)
+            # process_receipt_data 會自動處理每個項目的日期（v1.8.1）
+            result = process_receipt_data(receipt_items, receipt_date=None)
 
             if result.intent == "multi_bookkeeping":
                 # 成功轉換為記帳項目

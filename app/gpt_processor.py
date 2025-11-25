@@ -479,17 +479,17 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
 
 def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None) -> MultiExpenseResult:
     """
-    將收據資料轉換為記帳項目（v1.5.0 圖片識別）
+    將收據資料轉換為記帳項目（v1.5.0 圖片識別，v1.8.1 支援多日期）
 
     流程：
-    1. 接收從 Vision API 提取的收據項目（List[ReceiptItem]）
-    2. 為每個項目補充預設值
-    3. 生成共用交易ID（時間戳記格式）
+    1. 接收從 Vision API 提取的收據項目（List[ReceiptItem]，可能包含日期）
+    2. 為每個項目補充預設值（日期優先使用項目自帶的日期）
+    3. 為每個項目生成獨立交易ID（基於各自的日期）
     4. 回傳 MultiExpenseResult
 
     Args:
-        receipt_items: 從圖片識別出的收據項目列表（ReceiptItem 物件）
-        receipt_date: 收據上的日期（YYYY-MM-DD），若無則使用當前日期
+        receipt_items: 從圖片識別出的收據項目列表（ReceiptItem 物件，可能包含日期）
+        receipt_date: 收據的整體日期（YYYY-MM-DD），作為 fallback
 
     Returns:
         MultiExpenseResult: 包含完整記帳資料的結果
@@ -497,8 +497,8 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
     Examples:
         >>> from app.image_handler import ReceiptItem
         >>> items = [
-        ...     ReceiptItem(品項="咖啡", 原幣金額=50, 付款方式="現金"),
-        ...     ReceiptItem(品項="三明治", 原幣金額=80, 付款方式="現金")
+        ...     ReceiptItem(品項="咖啡", 原幣金額=50, 付款方式="現金", 日期="2025-11-15"),
+        ...     ReceiptItem(品項="三明治", 原幣金額=80, 付款方式="現金", 日期="2025-11-15")
         ... ]
         >>> result = process_receipt_data(items)
         >>> result.intent
@@ -513,16 +513,10 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
                 error_message="未識別到任何收據項目"
             )
 
-        # 生成共用交易ID（時間戳記格式）
+        # 台北時區
         taipei_tz = ZoneInfo('Asia/Taipei')
         now = datetime.now(taipei_tz)
-        shared_transaction_id = now.strftime("%Y%m%d-%H%M%S")
-
-        # 使用收據日期或當前日期
-        if receipt_date:
-            shared_date = receipt_date
-        else:
-            shared_date = now.strftime("%Y-%m-%d")
+        current_date = now.strftime("%Y-%m-%d")
 
         # 取得共用付款方式（第一個項目的付款方式）
         # 如果 Vision API 無法識別，預設為「現金」（最常見情況）
@@ -532,6 +526,26 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
         # 處理每個項目
         entries = []
         for idx, receipt_item in enumerate(receipt_items, start=1):
+            # 日期選擇策略（混合模式，三層 fallback）
+            # 優先級：項目日期 → 收據整體日期 → 當前日期
+            if receipt_item.日期:
+                item_date = receipt_item.日期
+                logger.info(f"項目 {idx} 使用 Vision API 辨識的日期：{item_date}")
+            elif receipt_date:
+                item_date = receipt_date
+                logger.info(f"項目 {idx} 使用收據整體日期（fallback）：{item_date}")
+            else:
+                item_date = current_date
+                logger.info(f"項目 {idx} 使用當前日期（fallback）：{item_date}")
+
+            # 為每個項目生成獨立交易ID（基於各自的日期）
+            transaction_id = generate_transaction_id(
+                item_date,
+                None,  # 暫不支援時間提取
+                receipt_item.品項,
+                use_current_time=(item_date == current_date)  # 只有使用當前日期時才用當前時間
+            )
+
             # 分類處理：優先使用 Vision API 提供的分類，沒有則用 GPT 推斷
             品項 = receipt_item.品項
             if receipt_item.分類:
@@ -551,13 +565,13 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
 
             entry = BookkeepingEntry(
                 intent="bookkeeping",
-                日期=shared_date,
+                日期=item_date,  # 使用項目自己的日期
                 品項=品項,
                 原幣別="TWD",
                 原幣金額=float(receipt_item.原幣金額),
                 匯率=1.0,
                 付款方式=payment_method,
-                交易ID=shared_transaction_id,
+                交易ID=transaction_id,  # 使用獨立的交易ID
                 明細說明=f"收據識別 {idx}/{len(receipt_items)}",
                 分類=分類,
                 專案="日常",

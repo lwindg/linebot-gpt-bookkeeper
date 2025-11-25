@@ -171,13 +171,18 @@ def main():
             payment_method = result.get("payment_method")
 
             # 轉換為 ReceiptItem 列表
+            fallback_date = result.get("date")  # 最外層日期作為 fallback
             receipt_items = []
             for item in items_data:
+                # 提取項目日期，若無則使用 fallback
+                item_date = item.get("日期") or fallback_date
+
                 receipt_items.append(ReceiptItem(
                     品項=item["品項"],
                     原幣金額=float(item["金額"]),
                     付款方式=payment_method,
-                    分類=item.get("分類")  # Vision API 提供的分類（可選）
+                    分類=item.get("分類"),  # Vision API 提供的分類（可選）
+                    日期=item_date  # Vision API 提供的日期（可選）
                 ))
 
             error_code = None
@@ -238,6 +243,8 @@ def main():
                     print(f"📋 #{idx} {entry.品項}")
                     print(f"💰 {twd_amount:.0f} 元")
                     print(f"📂 {entry.分類}")
+                    print(f"📅 日期：{entry.日期}")  # 顯示每個項目的獨立日期
+                    print(f"🔖 交易ID：{entry.交易ID}")  # 顯示每個項目的獨立交易ID
                     print(f"⭐ {entry.必要性}")
 
                     if entry.明細說明:
@@ -249,8 +256,6 @@ def main():
 
                 # 顯示共用資訊
                 print(f"\n💳 付款方式：{entries[0].付款方式}")
-                print(f"🔖 交易ID：{entries[0].交易ID}")
-                print(f"📅 日期：{entries[0].日期}")
 
                 # 如果有警告訊息（例如付款方式預設為現金）
                 if result.response_text:

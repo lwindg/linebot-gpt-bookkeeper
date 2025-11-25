@@ -31,6 +31,7 @@ class ReceiptItem:
     原幣金額: float
     付款方式: Optional[str] = None
     分類: Optional[str] = None
+    日期: Optional[str] = None  # YYYY-MM-DD 格式
 
 
 class ImageDownloadError(Exception):
@@ -283,15 +284,20 @@ def process_receipt_image(
             # 成功識別收據
             items_data = result.get("items", [])
             payment_method = result.get("payment_method")
+            fallback_date = result.get("date")  # 最外層日期作為 fallback
 
             # 轉換為 ReceiptItem 列表
             receipt_items = []
             for item in items_data:
+                # 提取項目日期，若無則使用 fallback
+                item_date = item.get("日期") or fallback_date
+
                 receipt_items.append(ReceiptItem(
                     品項=item["品項"],
                     原幣金額=float(item["金額"]),
                     付款方式=payment_method,
-                    分類=item.get("分類")  # Vision API 提供的分類（可選）
+                    分類=item.get("分類"),  # Vision API 提供的分類（可選）
+                    日期=item_date  # Vision API 提供的日期（可選）
                 ))
 
             logger.info(f"成功識別 {len(receipt_items)} 個收據項目")
