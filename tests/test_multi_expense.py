@@ -313,15 +313,23 @@ class TestMultiExpenseSharedValidation:
 
         result = process_multi_expense("早餐80元，午餐150元，現金")
 
-        # 驗證交易ID格式 YYYYMMDD-HHMMSS
-        assert result.entries[0].交易ID == result.entries[1].交易ID
-        assert "-" in result.entries[0].交易ID
+        # v1.9.0: 驗證每個項目有獨立的交易ID（批次ID + 序號）
+        assert result.entries[0].交易ID != result.entries[1].交易ID
+        assert result.entries[0].交易ID.endswith("-01")
+        assert result.entries[1].交易ID.endswith("-02")
 
-        # 驗證交易ID格式
+        # 驗證批次ID相同（去掉序號部分）
+        batch_id_1 = result.entries[0].交易ID.rsplit('-', 1)[0]
+        batch_id_2 = result.entries[1].交易ID.rsplit('-', 1)[0]
+        assert batch_id_1 == batch_id_2
+
+        # 驗證交易ID格式 YYYYMMDD-HHMMSS-NN
         transaction_id = result.entries[0].交易ID
-        date_part, time_part = transaction_id.split("-")
-        assert len(date_part) == 8  # YYYYMMDD
-        assert len(time_part) == 6  # HHMMSS
+        parts = transaction_id.split("-")
+        assert len(parts) == 3  # 日期-時間-序號
+        assert len(parts[0]) == 8  # YYYYMMDD
+        assert len(parts[1]) == 6  # HHMMSS
+        assert len(parts[2]) == 2  # NN (序號)
 
     @patch('app.gpt_processor.OpenAI')
     def test_shared_date(self, mock_openai):
@@ -372,9 +380,11 @@ class TestMultiExpenseSharedValidation:
 
         result = process_multi_expense("早餐80元，午餐150元，現金")
 
-        # 驗證附註標記
+        # v1.9.0: 驗證附註標記（包含批次ID）
         assert "多項目支出 1/2" in result.entries[0].附註
         assert "多項目支出 2/2" in result.entries[1].附註
+        assert "批次ID:" in result.entries[0].附註
+        assert "批次ID:" in result.entries[1].附註
 
 
 class TestMultiExpenseErrorHandling:

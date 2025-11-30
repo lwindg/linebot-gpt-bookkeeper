@@ -236,6 +236,10 @@ def main():
                 # 使用統一的多項目格式顯示
                 print(f"✅ 記帳成功！已記錄 {total_items} 個項目：\n")
 
+                # 檢查是否所有項目的日期相同
+                all_dates = [entry.日期 for entry in entries]
+                dates_differ = len(set(all_dates)) > 1
+
                 # 列出所有項目
                 for idx, entry in enumerate(entries, start=1):
                     twd_amount = entry.原幣金額 * entry.匯率
@@ -243,8 +247,12 @@ def main():
                     print(f"📋 #{idx} {entry.品項}")
                     print(f"💰 {twd_amount:.0f} 元")
                     print(f"📂 {entry.分類}")
-                    print(f"📅 日期：{entry.日期}")  # 顯示每個項目的獨立日期
-                    print(f"🔖 交易ID：{entry.交易ID}")  # 顯示每個項目的獨立交易ID
+
+                    # 只有當日期不同時才顯示每個項目的日期
+                    if dates_differ:
+                        print(f"📅 日期：{entry.日期}")
+
+                    print(f"🔖 交易ID：{entry.交易ID}")
                     print(f"⭐ {entry.必要性}")
 
                     if entry.明細說明:
@@ -257,9 +265,113 @@ def main():
                 # 顯示共用資訊
                 print(f"\n💳 付款方式：{entries[0].付款方式}")
 
+                # 如果所有項目日期相同，在這裡統一顯示
+                if not dates_differ:
+                    print(f"📅 日期：{entries[0].日期}")
+
                 # 如果有警告訊息（例如付款方式預設為現金）
                 if result.response_text:
                     print(f"\n{result.response_text}")
+
+                # ========================================
+                # 模擬 KV 儲存和 Webhook 發送
+                # ========================================
+                print("\n" + "=" * 60)
+                print("🗄️  模擬 KV 儲存（用於「修改上一筆」功能）")
+                print("=" * 60)
+
+                # 提取批次ID和交易ID列表
+                transaction_ids = [entry.交易ID for entry in entries]
+
+                # v1.9.0: 從附註中提取批次時間戳
+                import re
+                if total_items > 1 and entries[0].附註:
+                    match = re.search(r'批次[ID]*[:：]\s*(\d{8}-\d{6})', entries[0].附註)
+                    if match:
+                        batch_id = match.group(1)
+                    else:
+                        batch_id = entries[0].交易ID.rsplit('-', 1)[0] if '-' in entries[0].交易ID else entries[0].交易ID
+                else:
+                    batch_id = entries[0].交易ID
+
+                kv_data = {
+                    "batch_id": batch_id,
+                    "transaction_ids": transaction_ids,
+                    "品項": entries[-1].品項,  # 最後一筆的品項
+                    "原幣金額": entries[-1].原幣金額,
+                    "付款方式": entries[-1].付款方式,
+                    "分類": entries[-1].分類,
+                    "日期": entries[-1].日期,
+                    "item_count": total_items,
+                }
+
+                print("\n儲存的資料結構：")
+                print(json.dumps(kv_data, indent=2, ensure_ascii=False))
+                print(f"\nKV Key: last_transaction:<user_id>")
+                print(f"TTL: 600 秒（10 分鐘）")
+
+                print("\n" + "=" * 60)
+                print("📤 模擬 Webhook 發送")
+                print("=" * 60)
+
+                print(f"\n將發送 {total_items} 筆 CREATE webhook：\n")
+
+                for idx, entry in enumerate(entries, start=1):
+                    webhook_payload = {
+                        "operation": "CREATE",
+                        "日期": entry.日期,
+                        "品項": entry.品項,
+                        "原幣別": entry.原幣別,
+                        "原幣金額": entry.原幣金額,
+                        "匯率": entry.匯率,
+                        "付款方式": entry.付款方式,
+                        "交易ID": entry.交易ID,
+                        "明細說明": entry.明細說明,
+                        "分類": entry.分類,
+                        "專案": entry.專案,
+                        "必要性": entry.必要性,
+                        "代墊狀態": entry.代墊狀態,
+                        "收款支付對象": entry.收款支付對象,
+                        "附註": entry.附註,
+                    }
+
+                    print(f"Webhook #{idx}:")
+                    print(json.dumps(webhook_payload, indent=2, ensure_ascii=False))
+
+                    if idx < total_items:
+                        print(f"\n⏱️  延遲 0.5 秒...\n")
+
+                print("\n" + "=" * 60)
+                print("🔄 模擬「修改上一筆」功能")
+                print("=" * 60)
+
+                print("\n假設使用者說：「改成Line轉帳」\n")
+
+                print(f"系統會從 KV 讀取：")
+                print(f"  - batch_id: {batch_id}")
+                print(f"  - transaction_ids: {transaction_ids}")
+                print(f"  - item_count: {total_items}")
+
+                print(f"\n然後發送 {total_items} 筆 UPDATE webhook：\n")
+
+                for idx, txn_id in enumerate(transaction_ids, start=1):
+                    update_payload = {
+                        "operation": "UPDATE",
+                        "user_id": "<user_id>",
+                        "transaction_id": txn_id,
+                        "fields_to_update": {
+                            "付款方式": "Line 轉帳"
+                        },
+                        "item_count": 1  # 每筆 UPDATE 只更新一個記錄
+                    }
+
+                    print(f"UPDATE Webhook #{idx}:")
+                    print(json.dumps(update_payload, indent=2, ensure_ascii=False))
+
+                    if idx < total_items:
+                        print(f"\n⏱️  延遲 0.1 秒...\n")
+
+                print("\n✅ 所有 {0} 筆記錄的付款方式都會被更新為「Line 轉帳」".format(total_items))
             else:
                 print(f"❌ 轉換失敗: {result.error_message}")
 

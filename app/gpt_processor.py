@@ -351,10 +351,10 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
             else:
                 shared_date = now.strftime("%Y-%m-%d")
 
-            # 生成共用交易ID（使用 generate_transaction_id 支援日期和品項）
+            # 生成批次ID（作為基礎時間戳）
             first_item = items[0].get("品項") if items else None
             use_current_time = not date_str  # 若未提供日期，使用當前時間
-            shared_transaction_id = generate_transaction_id(
+            batch_id = generate_transaction_id(
                 shared_date,
                 None,  # 暫不支援時間提取
                 first_item,
@@ -398,6 +398,14 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
                             error_message=f"無法取得 {原幣別} 匯率，請稍後再試或改用新台幣記帳"
                         )
 
+                # 生成獨立的交易ID（批次ID + 序號）
+                if len(items) > 1:
+                    # 多項目：批次ID-序號（例如：20251125-143027-01）
+                    transaction_id = f"{batch_id}-{idx:02d}"
+                else:
+                    # 單項目：直接使用批次ID
+                    transaction_id = batch_id
+
                 # 補充預設值和共用欄位
                 entry = BookkeepingEntry(
                     intent="bookkeeping",
@@ -407,14 +415,14 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
                     原幣金額=float(原幣金額),
                     匯率=匯率,
                     付款方式=payment_method,
-                    交易ID=shared_transaction_id,
+                    交易ID=transaction_id,
                     明細說明=item_data.get("明細說明", ""),
                     分類=item_data.get("分類", ""),
                     專案="日常",
                     必要性=item_data.get("必要性", "必要日常支出"),
                     代墊狀態=item_data.get("代墊狀態", "無"),
                     收款支付對象=item_data.get("收款支付對象", ""),
-                    附註=f"多項目支出 {idx}/{len(items)}" if len(items) > 1 else ""
+                    附註=f"多項目支出 {idx}/{len(items)} (批次ID: {batch_id})" if len(items) > 1 else ""
                 )
 
                 entries.append(entry)
@@ -523,8 +531,15 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
         payment_method = receipt_items[0].付款方式 if receipt_items[0].付款方式 else "現金"
         payment_method_is_default = not receipt_items[0].付款方式  # 標記是否使用預設值
 
-        # 處理每個項目
+        # v1.9.0: 生成批次時間戳（用於識別同一批次的項目）
+        # 使用當前時間作為批次識別符
+        batch_timestamp = now.strftime("%Y%m%d-%H%M%S")
+        logger.info(f"批次時間戳：{batch_timestamp}")
+
+        # 第一步：為每個項目生成基礎交易ID（基於實際日期）
         entries = []
+        base_transaction_ids = []  # 儲存基礎交易ID（用於檢測重複）
+
         for idx, receipt_item in enumerate(receipt_items, start=1):
             # 日期選擇策略（混合模式，三層 fallback）
             # 優先級：項目日期 → 收據整體日期 → 當前日期
@@ -538,13 +553,48 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
                 item_date = current_date
                 logger.info(f"項目 {idx} 使用當前日期（fallback）：{item_date}")
 
-            # 為每個項目生成獨立交易ID（基於各自的日期）
-            transaction_id = generate_transaction_id(
+            # 生成基礎交易ID（使用實際日期）
+            base_id = generate_transaction_id(
                 item_date,
                 None,  # 暫不支援時間提取
                 receipt_item.品項,
-                use_current_time=(item_date == current_date)  # 只有使用當前日期時才用當前時間
+                use_current_time=False  # 收據識別不使用當前時間
             )
+
+            base_transaction_ids.append(base_id)
+
+        # 第二步：處理重複的交易ID，為重複者加上序號
+        transaction_id_counter = {}
+        final_transaction_ids = []
+
+        for base_id in base_transaction_ids:
+            count = base_transaction_ids.count(base_id)
+            if count > 1:
+                # 有重複：加上序號
+                if base_id not in transaction_id_counter:
+                    transaction_id_counter[base_id] = 1
+                else:
+                    transaction_id_counter[base_id] += 1
+
+                seq = transaction_id_counter[base_id]
+                transaction_id = f"{base_id}-{seq:02d}"
+            else:
+                # 無重複：直接使用
+                transaction_id = base_id
+
+            final_transaction_ids.append(transaction_id)
+
+        # 第三步：建立 BookkeepingEntry 物件
+        for idx, receipt_item in enumerate(receipt_items, start=1):
+            # 取得對應的日期和交易ID
+            if receipt_item.日期:
+                item_date = receipt_item.日期
+            elif receipt_date:
+                item_date = receipt_date
+            else:
+                item_date = current_date
+
+            transaction_id = final_transaction_ids[idx - 1]
 
             # 分類處理：優先使用 Vision API 提供的分類，沒有則用 GPT 推斷
             品項 = receipt_item.品項
@@ -558,8 +608,8 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
                 logger.info(f"使用 GPT 推斷分類：{品項} → {分類}")
 
             # 補充預設值和共用欄位
-            # 如果付款方式是預設值，在附註中標記
-            附註_內容 = f"收據圖片識別 {idx}/{len(receipt_items)}"
+            # 附註包含批次時間戳（用於識別同一批次）
+            附註_內容 = f"收據圖片識別 {idx}/{len(receipt_items)} (批次: {batch_timestamp})"
             if payment_method_is_default:
                 附註_內容 += "；付款方式預設為現金"
 
@@ -571,7 +621,7 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
                 原幣金額=float(receipt_item.原幣金額),
                 匯率=1.0,
                 付款方式=payment_method,
-                交易ID=transaction_id,  # 使用獨立的交易ID
+                交易ID=transaction_id,  # 使用實際日期的交易ID
                 明細說明=f"收據識別 {idx}/{len(receipt_items)}",
                 分類=分類,
                 專案="日常",

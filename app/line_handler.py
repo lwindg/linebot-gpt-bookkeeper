@@ -11,7 +11,7 @@ from linebot import LineBotApi
 from linebot.v3.messaging import MessagingApiBlob
 
 from app.gpt_processor import process_multi_expense, process_receipt_data, MultiExpenseResult, BookkeepingEntry
-from app.webhook_sender import send_multiple_webhooks, send_update_webhook
+from app.webhook_sender import send_multiple_webhooks, send_update_webhook_batch
 from app.image_handler import download_image, process_receipt_image, ImageDownloadError, ImageTooLargeError, VisionAPIError
 from app.kv_store import get_last_transaction, delete_last_transaction
 
@@ -184,7 +184,7 @@ def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
             reply_text = format_multi_confirmation_message(result, success_count, failure_count)
 
         elif result.intent == "update_last_entry":
-            # 修改上一筆記帳（v1.5.0 新功能）
+            # 修改上一筆記帳（v1.9.0 改進：支援批次更新多個獨立交易ID）
             logger.info(f"Update last entry request from user {user_id}")
 
             # 從 KV 取得最後一筆交易
@@ -194,25 +194,34 @@ def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
                 reply_text = "❌ 找不到最近的記帳記錄\n\n可能原因：\n1. 超過 10 分鐘（記錄已過期）\n2. 尚未進行過記帳\n\n請直接輸入完整記帳資訊。"
                 logger.warning(f"No last transaction found for user {user_id}")
             else:
-                # 取得交易 ID、要更新的欄位和項目數量
-                transaction_id = last_transaction.get("交易ID")
+                # 取得批次ID、交易ID列表、要更新的欄位和項目數量
+                batch_id = last_transaction.get("batch_id")
+                transaction_ids = last_transaction.get("transaction_ids", [])
                 fields_to_update = result.fields_to_update
-                item_count = last_transaction.get("item_count", 1)  # 預設為 1（單筆）
+                item_count = last_transaction.get("item_count", 1)
 
-                logger.info(f"Updating transaction {transaction_id} with {item_count} item(s)")
+                # 向後相容：如果沒有 transaction_ids，使用舊的 交易ID 欄位
+                if not transaction_ids and "交易ID" in last_transaction:
+                    transaction_ids = [last_transaction["交易ID"]]
+
+                logger.info(f"Updating batch {batch_id} with {item_count} item(s)")
+                logger.info(f"Transaction IDs: {transaction_ids}")
                 logger.info(f"Fields to update: {fields_to_update}")
 
-                # 發送 UPDATE webhook（包含項目數量以支援多項目批次更新）
-                success = send_update_webhook(user_id, transaction_id, fields_to_update, item_count)
+                # 發送批次 UPDATE webhook（v1.9.0：逐一更新每個交易ID）
+                success_count, failure_count = send_update_webhook_batch(user_id, transaction_ids, fields_to_update)
 
-                if success:
-                    # 更新成功
+                if success_count > 0:
+                    # 至少有部分更新成功
                     if item_count > 1:
-                        reply_text = f"✅ 已更新上一筆記帳（共 {item_count} 個項目）\n\n"
+                        if failure_count == 0:
+                            reply_text = f"✅ 已更新上一筆記帳（共 {item_count} 個項目）\n\n"
+                        else:
+                            reply_text = f"⚠️ 部分更新成功（{success_count}/{item_count} 個項目）\n\n"
                     else:
                         reply_text = "✅ 已更新上一筆記帳\n\n"
 
-                    reply_text += f"🔖 交易ID：{transaction_id}\n"
+                    reply_text += f"🔖 批次ID：{batch_id}\n"
                     reply_text += f"📝 原品項：{last_transaction.get('品項', '未知')}"
                     if item_count > 1:
                         reply_text += f" 等 {item_count} 項\n"
@@ -226,14 +235,14 @@ def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
                         reply_text += f"• {field_name}：{old_value} → {new_value}\n"
 
                     if item_count > 1:
-                        reply_text += f"\n💡 已同時更新相同交易ID的所有 {item_count} 筆記錄"
+                        reply_text += f"\n💡 已同時更新所有 {success_count} 筆記錄"
 
                     # 刪除 KV 記錄（防止重複修改）
                     delete_last_transaction(user_id)
                     logger.info(f"Deleted last transaction from KV for user {user_id}")
                 else:
                     reply_text = "❌ 更新失敗\n\n請稍後再試，或直接輸入完整記帳資訊。"
-                    logger.error(f"Failed to send UPDATE webhook for user {user_id}")
+                    logger.error(f"Failed to send UPDATE webhooks for user {user_id}")
 
         elif result.intent == "conversation":
             # Conversation: return GPT response
