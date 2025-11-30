@@ -358,3 +358,10 @@ Sequential-thinking **不應該**用於：
 ---
 
 **版本**：2.0.0 | **最後更新**：2025-11-18
+
+## Active Technologies
+- Python 3.11+ + Flask 3.0+, line-bot-sdk 3.8.0, redis 5.0+, openai 1.12+ (001-edit-last-transaction)
+- Vercel KV (Redis) - 現有架構已使用，TTL 為 1 小時 (001-edit-last-transaction)
+
+## Recent Changes
+- 001-edit-last-transaction: Added Python 3.11+ + Flask 3.0+, line-bot-sdk 3.8.0, redis 5.0+, openai 1.12+
