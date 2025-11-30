@@ -997,5 +997,229 @@ class TestMultiItemWithAdvance:
         assert result.entries[1].收款支付對象 == "同事"
 
 
+class TestCompactFormatRecognition:
+    """測試連寫格式識別（修復無空格格式問題）"""
+
+    @patch('app.gpt_processor.OpenAI')
+    def test_item_dollar_amount_payment_compact(self, mock_openai):
+        """TC-COMPACT-001: 品項+$+金額+付款方式（無空格）"""
+        mock_client = Mock()
+        mock_openai.return_value = mock_client
+
+        mock_response = Mock()
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message.content = '''
+{
+  "intent": "multi_bookkeeping",
+  "payment_method": "現金",
+  "items": [
+    {
+      "品項": "魚",
+      "原幣金額": 395,
+      "分類": "家庭/食材",
+      "必要性": "必要日常支出",
+      "代墊狀態": "無",
+      "收款支付對象": "",
+      "明細說明": ""
+    }
+  ]
+}
+'''
+        mock_client.chat.completions.create.return_value = mock_response
+
+        result = process_multi_expense("魚$395現金")
+
+        assert result.intent == "multi_bookkeeping"
+        assert len(result.entries) == 1
+        assert result.entries[0].品項 == "魚"
+        assert result.entries[0].原幣金額 == 395
+        assert result.entries[0].付款方式 == "現金"
+
+    @patch('app.gpt_processor.OpenAI')
+    def test_item_amount_payment_fully_compact(self, mock_openai):
+        """TC-COMPACT-002: 品項+金額+付款方式（完全連寫）"""
+        mock_client = Mock()
+        mock_openai.return_value = mock_client
+
+        mock_response = Mock()
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message.content = '''
+{
+  "intent": "multi_bookkeeping",
+  "payment_method": "現金",
+  "items": [
+    {
+      "品項": "豬肉",
+      "原幣金額": 1430,
+      "分類": "家庭/食材",
+      "必要性": "必要日常支出",
+      "代墊狀態": "無",
+      "收款支付對象": "",
+      "明細說明": ""
+    }
+  ]
+}
+'''
+        mock_client.chat.completions.create.return_value = mock_response
+
+        result = process_multi_expense("豬肉1430現金")
+
+        assert result.intent == "multi_bookkeeping"
+        assert len(result.entries) == 1
+        assert result.entries[0].品項 == "豬肉"
+        assert result.entries[0].原幣金額 == 1430
+        assert result.entries[0].付款方式 == "現金"
+
+    @patch('app.gpt_processor.OpenAI')
+    def test_item_space_amount_payment_compact(self, mock_openai):
+        """TC-COMPACT-003: 品項+空格+金額付款連寫"""
+        mock_client = Mock()
+        mock_openai.return_value = mock_client
+
+        mock_response = Mock()
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message.content = '''
+{
+  "intent": "multi_bookkeeping",
+  "payment_method": "現金",
+  "items": [
+    {
+      "品項": "菇",
+      "原幣金額": 240,
+      "分類": "家庭/食材",
+      "必要性": "必要日常支出",
+      "代墊狀態": "無",
+      "收款支付對象": "",
+      "明細說明": ""
+    }
+  ]
+}
+'''
+        mock_client.chat.completions.create.return_value = mock_response
+
+        result = process_multi_expense("菇 240現金")
+
+        assert result.intent == "multi_bookkeeping"
+        assert len(result.entries) == 1
+        assert result.entries[0].品項 == "菇"
+        assert result.entries[0].原幣金額 == 240
+        assert result.entries[0].付款方式 == "現金"
+
+    @patch('app.gpt_processor.OpenAI')
+    def test_long_item_dollar_amount_payment_compact(self, mock_openai):
+        """TC-COMPACT-004: 長品項+$+金額+付款方式"""
+        mock_client = Mock()
+        mock_openai.return_value = mock_client
+
+        mock_response = Mock()
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message.content = '''
+{
+  "intent": "multi_bookkeeping",
+  "payment_method": "現金",
+  "items": [
+    {
+      "品項": "蔬果菇類",
+      "原幣金額": 240,
+      "分類": "家庭/食材",
+      "必要性": "必要日常支出",
+      "代墊狀態": "無",
+      "收款支付對象": "",
+      "明細說明": ""
+    }
+  ]
+}
+'''
+        mock_client.chat.completions.create.return_value = mock_response
+
+        result = process_multi_expense("蔬果菇類$240現金")
+
+        assert result.intent == "multi_bookkeeping"
+        assert len(result.entries) == 1
+        assert result.entries[0].品項 == "蔬果菇類"
+        assert result.entries[0].原幣金額 == 240
+        assert result.entries[0].付款方式 == "現金"
+
+    @patch('app.gpt_processor.OpenAI')
+    def test_compact_format_with_nickname(self, mock_openai):
+        """TC-COMPACT-005: 連寫格式+付款方式暱稱"""
+        mock_client = Mock()
+        mock_openai.return_value = mock_client
+
+        mock_response = Mock()
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message.content = '''
+{
+  "intent": "multi_bookkeeping",
+  "payment_method": "台新狗卡",
+  "items": [
+    {
+      "品項": "食材",
+      "原幣金額": 500,
+      "分類": "家庭/食材",
+      "必要性": "必要日常支出",
+      "代墊狀態": "無",
+      "收款支付對象": "",
+      "明細說明": ""
+    }
+  ]
+}
+'''
+        mock_client.chat.completions.create.return_value = mock_response
+
+        result = process_multi_expense("食材$500狗卡")
+
+        assert result.intent == "multi_bookkeeping"
+        assert len(result.entries) == 1
+        assert result.entries[0].品項 == "食材"
+        assert result.entries[0].原幣金額 == 500
+        assert result.entries[0].付款方式 == "台新狗卡"
+
+    @patch('app.gpt_processor.OpenAI')
+    def test_all_six_failing_formats(self, mock_openai):
+        """TC-COMPACT-006: 驗證原始 6 種失敗格式"""
+        test_cases = [
+            ("魚$395現金", "魚", 395, "現金"),
+            ("豬肉1430現金", "豬肉", 1430, "現金"),
+            ("雞肉$770現金", "雞肉", 770, "現金"),
+            ("菇 240現金", "菇", 240, "現金"),
+            ("蔬果菇類$240現金", "蔬果菇類", 240, "現金"),
+            ("菇類240現金", "菇類", 240, "現金"),
+        ]
+
+        mock_client = Mock()
+        mock_openai.return_value = mock_client
+
+        for user_input, expected_item, expected_amount, expected_payment in test_cases:
+            mock_response = Mock()
+            mock_response.choices = [Mock()]
+            mock_response.choices[0].message.content = f'''
+{{
+  "intent": "multi_bookkeeping",
+  "payment_method": "{expected_payment}",
+  "items": [
+    {{
+      "品項": "{expected_item}",
+      "原幣金額": {expected_amount},
+      "分類": "家庭/食材",
+      "必要性": "必要日常支出",
+      "代墊狀態": "無",
+      "收款支付對象": "",
+      "明細說明": ""
+    }}
+  ]
+}}
+'''
+            mock_client.chat.completions.create.return_value = mock_response
+
+            result = process_multi_expense(user_input)
+
+            assert result.intent == "multi_bookkeeping", f"Failed for: {user_input}"
+            assert len(result.entries) == 1, f"Failed for: {user_input}"
+            assert result.entries[0].品項 == expected_item, f"Failed for: {user_input}"
+            assert result.entries[0].原幣金額 == expected_amount, f"Failed for: {user_input}"
+            assert result.entries[0].付款方式 == expected_payment, f"Failed for: {user_input}"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])
