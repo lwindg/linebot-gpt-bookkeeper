@@ -11,9 +11,9 @@ from linebot import LineBotApi
 from linebot.v3.messaging import MessagingApiBlob
 
 from app.gpt_processor import process_multi_expense, process_receipt_data, MultiExpenseResult, BookkeepingEntry
-from app.webhook_sender import send_multiple_webhooks
+from app.webhook_sender import send_multiple_webhooks, send_update_webhook_batch
 from app.image_handler import download_image, process_receipt_image, ImageDownloadError, ImageTooLargeError, VisionAPIError
-from app.kv_store import KVStore
+from app.kv_store import KVStore, delete_last_transaction
 from app.config import LAST_TRANSACTION_TTL
 
 logger = logging.getLogger(__name__)
@@ -216,20 +216,55 @@ def handle_update_last_entry(user_id: str, fields_to_update: dict) -> str:
         logger.warning(f"Transaction ID mismatch for user {user_id}: expected {target_id}, got {current_id}")
         return "❌ 交易已變更，請重新操作\n\n系統偵測到並發修改，請重新輸入修改指令。"
 
-    # Step 7: Write updated transaction back to KV with TTL
-    success = kv_store.set(key, updated_tx, ttl=LAST_TRANSACTION_TTL)
+    # Step 7: Get transaction IDs for webhook batch update
+    transaction_ids = original_tx.get("transaction_ids", [])
+    item_count = original_tx.get("item_count", 1)
 
-    if not success:
-        logger.error(f"Failed to save updated transaction for user {user_id}")
-        return "❌ 儲存失敗，請稍後再試\n\n系統暫時無法儲存變更。"
+    # Backward compatibility: if no transaction_ids, use single 交易ID
+    if not transaction_ids and "交易ID" in original_tx:
+        transaction_ids = [original_tx["交易ID"]]
 
-    # Step 8: Format success message
+    if not transaction_ids:
+        logger.error(f"No transaction IDs found for user {user_id}")
+        return "❌ 交易記錄格式錯誤\n\n請重新記帳。"
+
+    # Step 8: Send UPDATE webhooks to Make (batch update all items)
+    logger.info(f"Sending UPDATE webhooks for {len(transaction_ids)} transaction(s)")
+    success_count, failure_count = send_update_webhook_batch(user_id, transaction_ids, fields_to_update)
+
+    if success_count == 0:
+        logger.error(f"All UPDATE webhooks failed for user {user_id}")
+        return "❌ 更新失敗\n\n請稍後再試，或直接輸入完整記帳資訊。"
+
+    # Step 9: Delete KV record to prevent duplicate modifications
+    delete_last_transaction(user_id)
+    logger.info(f"Deleted last transaction from KV for user {user_id}")
+
+    # Step 10: Format success message
     logger.info(f"Transaction {target_id} updated successfully for user {user_id}")
 
-    message = "✅ 修改成功！\n\n已更新："
+    if item_count > 1:
+        if failure_count == 0:
+            message = f"✅ 已更新上一筆記帳（共 {item_count} 個項目）\n\n"
+        else:
+            message = f"⚠️ 部分更新成功（{success_count}/{item_count} 個項目）\n\n"
+    else:
+        message = "✅ 修改成功！\n\n"
+
+    message += f"🔖 批次ID：{target_id}\n"
+    message += f"📝 原品項：{original_tx.get('品項', '未知')}"
+    if item_count > 1:
+        message += f" 等 {item_count} 項\n"
+    else:
+        message += "\n"
+
+    message += "已更新："
     for field_name, new_value in fields_to_update.items():
         old_value = original_tx.get(field_name, "未設定")
         message += f"\n• {field_name}：{old_value} → {new_value}"
+
+    if item_count > 1 and failure_count == 0:
+        message += f"\n\n💡 已同時更新所有 {success_count} 筆記錄"
 
     return message
 

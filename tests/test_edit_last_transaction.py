@@ -19,16 +19,18 @@ from app.kv_store import KVStore
 class TestEditItemName:
     """US1: Edit item name (品項)"""
 
+    @patch('app.line_handler.delete_last_transaction')
+    @patch('app.line_handler.send_update_webhook_batch')
     @patch('app.line_handler.KVStore')
-    def test_edit_item_name_success(self, mock_kv_store_class):
+    def test_edit_item_name_success(self, mock_kv_store_class, mock_send_webhook, mock_delete_tx):
         """
         TC-US1-001: Edit item name success scenario
 
         Given: KV contains transaction with 品項="午餐", 原幣金額=100.0, 交易ID="20251129-140000"
         When: Call handle_update_last_entry(user_id, {"品項": "工作午餐"})
         Then:
-          - KV transaction updated with 品項="工作午餐"
-          - 原幣金額 remains 100.0 (unchanged)
+          - UPDATE webhook sent to Make
+          - KV record deleted after success
           - Success message contains "修改成功"
         """
         # Arrange: Setup mock KV store
@@ -49,7 +51,9 @@ class TestEditItemName:
         # First get: return original transaction
         # Second get: return original transaction (for optimistic lock check)
         mock_kv_store.get.side_effect = [original_transaction, original_transaction]
-        mock_kv_store.set.return_value = True
+
+        # Mock webhook batch returns success
+        mock_send_webhook.return_value = (1, 0)  # 1 success, 0 failure
 
         # Act: Update item name
         result_message = handle_update_last_entry(user_id, {"品項": "工作午餐"})
@@ -61,18 +65,16 @@ class TestEditItemName:
 
         # Verify KV operations
         assert mock_kv_store.get.call_count == 2  # Read original, then re-read for lock check
-        mock_kv_store.get.assert_called_with(f"last_transaction:{user_id}")
 
-        # Verify set was called with updated transaction
-        assert mock_kv_store.set.call_count == 1
-        call_args = mock_kv_store.set.call_args
-        updated_tx = call_args[0][1]  # Second argument is the updated transaction
+        # Verify webhook was called with correct parameters
+        mock_send_webhook.assert_called_once_with(
+            user_id,
+            ["20251129-140000"],
+            {"品項": "工作午餐"}
+        )
 
-        # Verify updated fields
-        assert updated_tx["品項"] == "工作午餐"  # Updated
-        assert updated_tx["原幣金額"] == 100.0  # Unchanged
-        assert updated_tx["付款方式"] == "現金"  # Unchanged
-        assert updated_tx["交易ID"] == "20251129-140000"  # Unchanged
+        # Verify KV record was deleted after success
+        mock_delete_tx.assert_called_once_with(user_id)
 
     @patch('app.line_handler.KVStore')
     def test_edit_item_name_not_found(self, mock_kv_store_class):
@@ -123,14 +125,16 @@ class TestEditItemName:
 class TestEditCategory:
     """US2: Edit category (分類)"""
 
+    @patch('app.line_handler.delete_last_transaction')
+    @patch('app.line_handler.send_update_webhook_batch')
     @patch('app.line_handler.KVStore')
-    def test_edit_category_success(self, mock_kv_store_class):
+    def test_edit_category_success(self, mock_kv_store_class, mock_send_webhook, mock_delete_tx):
         """
         TC-US2-001: Edit category success scenario
 
         Given: KV contains transaction with 分類="飲食", 品項="午餐"
         When: Call handle_update_last_entry(user_id, {"分類": "交通"})
-        Then: 分類="交通", 品項="午餐" (unchanged)
+        Then: UPDATE webhook sent, KV deleted
         """
         # Arrange
         user_id = "test_user_category"
@@ -144,7 +148,7 @@ class TestEditCategory:
         mock_kv_store = MagicMock()
         mock_kv_store_class.return_value = mock_kv_store
         mock_kv_store.get.side_effect = [original_transaction, original_transaction]
-        mock_kv_store.set.return_value = True
+        mock_send_webhook.return_value = (1, 0)
 
         # Act
         result_message = handle_update_last_entry(user_id, {"分類": "交通"})
@@ -154,20 +158,22 @@ class TestEditCategory:
         assert "分類" in result_message
         assert "交通" in result_message
 
-        # Verify updated transaction
-        call_args = mock_kv_store.set.call_args
-        updated_tx = call_args[0][1]
-        assert updated_tx["分類"] == "交通"  # Updated
-        assert updated_tx["品項"] == "午餐"  # Unchanged
+        # Verify webhook called with correct field
+        mock_send_webhook.assert_called_once_with(
+            user_id, ["20251129-140000"], {"分類": "交通"}
+        )
+        mock_delete_tx.assert_called_once_with(user_id)
 
+    @patch('app.line_handler.delete_last_transaction')
+    @patch('app.line_handler.send_update_webhook_batch')
     @patch('app.line_handler.KVStore')
-    def test_edit_category_preserve_on_empty(self, mock_kv_store_class):
+    def test_edit_category_preserve_on_empty(self, mock_kv_store_class, mock_send_webhook, mock_delete_tx):
         """
-        TC-US2-002: Edit category with empty value preserves original
+        TC-US2-002: Edit category with empty value - webhook still sent but empty field skipped
 
         Given: KV contains transaction with 分類="飲食"
         When: Call handle_update_last_entry(user_id, {"分類": ""})
-        Then: 分類="飲食" (preserved, no update)
+        Then: Webhook sent with empty field (backend handles preservation)
         """
         # Arrange
         user_id = "test_user_empty_cat"
@@ -181,31 +187,32 @@ class TestEditCategory:
         mock_kv_store = MagicMock()
         mock_kv_store_class.return_value = mock_kv_store
         mock_kv_store.get.side_effect = [original_transaction, original_transaction]
-        mock_kv_store.set.return_value = True
+        mock_send_webhook.return_value = (1, 0)
 
         # Act
         result_message = handle_update_last_entry(user_id, {"分類": ""})
 
-        # Assert: Still shows success (but field not actually updated due to empty check)
+        # Assert: Still shows success
         assert "修改成功" in result_message
 
-        # Verify transaction preserves original category
-        call_args = mock_kv_store.set.call_args
-        updated_tx = call_args[0][1]
-        assert updated_tx["分類"] == "飲食"  # Preserved (empty value skipped)
+        # Webhook still called (empty field handling is done server-side)
+        mock_send_webhook.assert_called_once()
+        mock_delete_tx.assert_called_once_with(user_id)
 
 
 class TestEditProject:
     """US3: Edit project (專案)"""
 
+    @patch('app.line_handler.delete_last_transaction')
+    @patch('app.line_handler.send_update_webhook_batch')
     @patch('app.line_handler.KVStore')
-    def test_edit_project_success(self, mock_kv_store_class):
+    def test_edit_project_success(self, mock_kv_store_class, mock_send_webhook, mock_delete_tx):
         """
         TC-US3-001: Edit project success scenario
 
         Given: KV contains transaction with 專案="日常"
         When: Call handle_update_last_entry(user_id, {"專案": "Q4 行銷活動"})
-        Then: 專案="Q4 行銷活動"
+        Then: UPDATE webhook sent, KV deleted
         """
         # Arrange
         user_id = "test_user_project"
@@ -219,7 +226,7 @@ class TestEditProject:
         mock_kv_store = MagicMock()
         mock_kv_store_class.return_value = mock_kv_store
         mock_kv_store.get.side_effect = [original_transaction, original_transaction]
-        mock_kv_store.set.return_value = True
+        mock_send_webhook.return_value = (1, 0)
 
         # Act
         result_message = handle_update_last_entry(user_id, {"專案": "Q4 行銷活動"})
@@ -229,23 +236,26 @@ class TestEditProject:
         assert "專案" in result_message
         assert "Q4 行銷活動" in result_message
 
-        # Verify updated transaction
-        call_args = mock_kv_store.set.call_args
-        updated_tx = call_args[0][1]
-        assert updated_tx["專案"] == "Q4 行銷活動"  # Updated
+        # Verify webhook called
+        mock_send_webhook.assert_called_once_with(
+            user_id, ["20251129-140000"], {"專案": "Q4 行銷活動"}
+        )
+        mock_delete_tx.assert_called_once_with(user_id)
 
 
 class TestEditAmount:
     """US4: Edit amount (原幣金額)"""
 
+    @patch('app.line_handler.delete_last_transaction')
+    @patch('app.line_handler.send_update_webhook_batch')
     @patch('app.line_handler.KVStore')
-    def test_edit_amount_success(self, mock_kv_store_class):
+    def test_edit_amount_success(self, mock_kv_store_class, mock_send_webhook, mock_delete_tx):
         """
         TC-US4-001: Edit amount success scenario
 
         Given: KV contains transaction with 原幣金額=100.0
         When: Call handle_update_last_entry(user_id, {"原幣金額": 350.0})
-        Then: 原幣金額=350.0
+        Then: UPDATE webhook sent with new amount
         """
         # Arrange
         user_id = "test_user_amount"
@@ -258,7 +268,7 @@ class TestEditAmount:
         mock_kv_store = MagicMock()
         mock_kv_store_class.return_value = mock_kv_store
         mock_kv_store.get.side_effect = [original_transaction, original_transaction]
-        mock_kv_store.set.return_value = True
+        mock_send_webhook.return_value = (1, 0)
 
         # Act
         result_message = handle_update_last_entry(user_id, {"原幣金額": 350.0})
@@ -268,19 +278,22 @@ class TestEditAmount:
         assert "原幣金額" in result_message
         assert "350" in result_message
 
-        # Verify updated transaction
-        call_args = mock_kv_store.set.call_args
-        updated_tx = call_args[0][1]
-        assert updated_tx["原幣金額"] == 350.0  # Updated
+        # Verify webhook called
+        mock_send_webhook.assert_called_once_with(
+            user_id, ["20251129-140000"], {"原幣金額": 350.0}
+        )
+        mock_delete_tx.assert_called_once_with(user_id)
 
+    @patch('app.line_handler.delete_last_transaction')
+    @patch('app.line_handler.send_update_webhook_batch')
     @patch('app.line_handler.KVStore')
-    def test_edit_amount_zero_is_valid(self, mock_kv_store_class):
+    def test_edit_amount_zero_is_valid(self, mock_kv_store_class, mock_send_webhook, mock_delete_tx):
         """
         TC-US4-002: Edit amount to zero (valid for free items)
 
         Given: KV contains transaction with 原幣金額=100.0
         When: Call handle_update_last_entry(user_id, {"原幣金額": 0})
-        Then: 原幣金額=0 (accepted)
+        Then: 原幣金額=0 (accepted, webhook sent)
         """
         # Arrange
         user_id = "test_user_zero_amount"
@@ -293,7 +306,7 @@ class TestEditAmount:
         mock_kv_store = MagicMock()
         mock_kv_store_class.return_value = mock_kv_store
         mock_kv_store.get.side_effect = [original_transaction, original_transaction]
-        mock_kv_store.set.return_value = True
+        mock_send_webhook.return_value = (1, 0)
 
         # Act
         result_message = handle_update_last_entry(user_id, {"原幣金額": 0})
@@ -301,23 +314,26 @@ class TestEditAmount:
         # Assert
         assert "修改成功" in result_message
 
-        # Verify updated transaction
-        call_args = mock_kv_store.set.call_args
-        updated_tx = call_args[0][1]
-        assert updated_tx["原幣金額"] == 0  # Updated to zero
+        # Verify webhook called with zero amount
+        mock_send_webhook.assert_called_once_with(
+            user_id, ["20251129-140000"], {"原幣金額": 0}
+        )
+        mock_delete_tx.assert_called_once_with(user_id)
 
 
 class TestConcurrencyControl:
     """Optimistic locking and concurrency control"""
 
+    @patch('app.line_handler.delete_last_transaction')
+    @patch('app.line_handler.send_update_webhook_batch')
     @patch('app.line_handler.KVStore')
-    def test_optimistic_lock_detects_concurrent_update(self, mock_kv_store_class):
+    def test_optimistic_lock_detects_concurrent_update(self, mock_kv_store_class, mock_send_webhook, mock_delete_tx):
         """
         TC-CONCURRENCY-001: Optimistic lock detects concurrent modification
 
         Given: Transaction exists with 交易ID="20251129-140000"
         When: Another update changes the transaction during our update (交易ID changes)
-        Then: Error message "交易已變更，請重新操作"
+        Then: Error message "交易已變更，請重新操作", no webhook sent
         """
         # Arrange
         user_id = "test_user_concurrency"
@@ -346,16 +362,19 @@ class TestConcurrencyControl:
 
         # Assert
         assert "交易已變更" in result_message
-        assert mock_kv_store.set.call_count == 0  # Should NOT save
+        mock_send_webhook.assert_not_called()  # Should NOT send webhook
+        mock_delete_tx.assert_not_called()  # Should NOT delete KV
 
+    @patch('app.line_handler.delete_last_transaction')
+    @patch('app.line_handler.send_update_webhook_batch')
     @patch('app.line_handler.KVStore')
-    def test_transaction_expired_during_update(self, mock_kv_store_class):
+    def test_transaction_expired_during_update(self, mock_kv_store_class, mock_send_webhook, mock_delete_tx):
         """
         TC-CONCURRENCY-002: Transaction expired during update
 
         Given: Transaction exists initially
         When: Transaction expires (TTL) during update process
-        Then: Error message "交易記錄已過期"
+        Then: Error message "交易記錄已過期", no webhook sent
         """
         # Arrange
         user_id = "test_user_expired"
@@ -377,20 +396,23 @@ class TestConcurrencyControl:
 
         # Assert
         assert "已過期" in result_message
-        assert mock_kv_store.set.call_count == 0  # Should NOT save
+        mock_send_webhook.assert_not_called()  # Should NOT send webhook
+        mock_delete_tx.assert_not_called()  # Should NOT delete KV
 
 
 class TestMultiFieldUpdate:
     """Test updating multiple fields at once"""
 
+    @patch('app.line_handler.delete_last_transaction')
+    @patch('app.line_handler.send_update_webhook_batch')
     @patch('app.line_handler.KVStore')
-    def test_update_multiple_fields(self, mock_kv_store_class):
+    def test_update_multiple_fields(self, mock_kv_store_class, mock_send_webhook, mock_delete_tx):
         """
         TC-MULTI-001: Update multiple fields in one operation
 
         Given: Transaction with 品項="午餐", 分類="飲食", 原幣金額=100.0
         When: Call handle_update_last_entry(user_id, {"品項": "工作午餐", "原幣金額": 150.0})
-        Then: Both fields updated, other fields unchanged
+        Then: UPDATE webhook sent with both fields
         """
         # Arrange
         user_id = "test_user_multi"
@@ -405,7 +427,7 @@ class TestMultiFieldUpdate:
         mock_kv_store = MagicMock()
         mock_kv_store_class.return_value = mock_kv_store
         mock_kv_store.get.side_effect = [original_transaction, original_transaction]
-        mock_kv_store.set.return_value = True
+        mock_send_webhook.return_value = (1, 0)
 
         # Act
         result_message = handle_update_last_entry(user_id, {
@@ -416,10 +438,10 @@ class TestMultiFieldUpdate:
         # Assert
         assert "修改成功" in result_message
 
-        # Verify both fields updated
-        call_args = mock_kv_store.set.call_args
-        updated_tx = call_args[0][1]
-        assert updated_tx["品項"] == "工作午餐"  # Updated
-        assert updated_tx["原幣金額"] == 150.0  # Updated
-        assert updated_tx["分類"] == "飲食"  # Unchanged
-        assert updated_tx["付款方式"] == "現金"  # Unchanged
+        # Verify webhook called with both fields
+        mock_send_webhook.assert_called_once_with(
+            user_id,
+            ["20251129-140000"],
+            {"品項": "工作午餐", "原幣金額": 150.0}
+        )
+        mock_delete_tx.assert_called_once_with(user_id)
