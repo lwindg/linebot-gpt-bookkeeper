@@ -11,9 +11,10 @@ from linebot import LineBotApi
 from linebot.v3.messaging import MessagingApiBlob
 
 from app.gpt_processor import process_multi_expense, process_receipt_data, MultiExpenseResult, BookkeepingEntry
-from app.webhook_sender import send_multiple_webhooks, send_update_webhook_batch
+from app.webhook_sender import send_multiple_webhooks
 from app.image_handler import download_image, process_receipt_image, ImageDownloadError, ImageTooLargeError, VisionAPIError
-from app.kv_store import get_last_transaction, delete_last_transaction
+from app.kv_store import KVStore
+from app.config import LAST_TRANSACTION_TTL
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +146,94 @@ def format_multi_confirmation_message(result: MultiExpenseResult, success_count:
     return message
 
 
+def handle_update_last_entry(user_id: str, fields_to_update: dict) -> str:
+    """
+    Update last transaction with optimistic locking (v1.10.0 新增)
+
+    Implements optimistic locking strategy:
+    1. Read original transaction from KV
+    2. Record target transaction ID
+    3. Update target fields
+    4. Re-read KV and verify transaction ID matches (concurrency check)
+    5. Write updated transaction back to KV
+
+    Args:
+        user_id: LINE user ID
+        fields_to_update: Fields to update (dict with keys: 品項, 分類, 專案, 原幣金額)
+
+    Returns:
+        str: Success or error message for LINE user
+
+    Examples:
+        >>> handle_update_last_entry("U123456", {"品項": "工作午餐"})
+        "✅ 修改成功！\n已更新：品項: 工作午餐"
+
+        >>> handle_update_last_entry("U123456", {"原幣金額": 350.0})
+        "✅ 修改成功！\n已更新：原幣金額: 350.0"
+    """
+    # Step 1: Validate fields_to_update is not empty
+    if not fields_to_update:
+        logger.warning(f"Empty fields_to_update for user {user_id}")
+        return "❌ 無法修改：未指定要更新的欄位\n\n請指定要修改的欄位，例如：\n• 品項\n• 分類\n• 專案\n• 金額"
+
+    # Step 2: Read original transaction from KV
+    key = f"last_transaction:{user_id}"
+    kv_store = KVStore()
+
+    original_tx = kv_store.get(key)
+
+    # Step 3: Return error if transaction not found
+    if not original_tx:
+        logger.warning(f"No last transaction found for user {user_id}")
+        return "❌ 找不到最近的記帳記錄\n\n可能原因：\n1. 超過 10 分鐘（記錄已過期）\n2. 尚未進行過記帳\n\n請直接輸入完整記帳資訊。"
+
+    # Step 4: Record target transaction ID (optimistic lock)
+    target_id = original_tx.get("交易ID") or original_tx.get("batch_id")
+    if not target_id:
+        logger.error(f"Transaction ID not found in KV for user {user_id}")
+        return "❌ 交易記錄格式錯誤\n\n請重新記帳。"
+
+    logger.info(f"Updating transaction {target_id} for user {user_id}")
+    logger.info(f"Original transaction: {original_tx}")
+    logger.info(f"Fields to update: {fields_to_update}")
+
+    # Step 5: Update target fields in transaction dict (skip empty/None values)
+    updated_tx = original_tx.copy()
+    for field_name, new_value in fields_to_update.items():
+        if new_value is not None and new_value != "":
+            updated_tx[field_name] = new_value
+            logger.info(f"Updated field {field_name}: {original_tx.get(field_name)} -> {new_value}")
+
+    # Step 6: Re-read KV and verify transaction ID matches (concurrency check)
+    current_tx = kv_store.get(key)
+
+    if not current_tx:
+        logger.warning(f"Transaction expired during update for user {user_id}")
+        return "❌ 交易記錄已過期（超過 10 分鐘）\n\n請重新記帳。"
+
+    current_id = current_tx.get("交易ID") or current_tx.get("batch_id")
+    if current_id != target_id:
+        logger.warning(f"Transaction ID mismatch for user {user_id}: expected {target_id}, got {current_id}")
+        return "❌ 交易已變更，請重新操作\n\n系統偵測到並發修改，請重新輸入修改指令。"
+
+    # Step 7: Write updated transaction back to KV with TTL
+    success = kv_store.set(key, updated_tx, ttl=LAST_TRANSACTION_TTL)
+
+    if not success:
+        logger.error(f"Failed to save updated transaction for user {user_id}")
+        return "❌ 儲存失敗，請稍後再試\n\n系統暫時無法儲存變更。"
+
+    # Step 8: Format success message
+    logger.info(f"Transaction {target_id} updated successfully for user {user_id}")
+
+    message = "✅ 修改成功！\n\n已更新："
+    for field_name, new_value in fields_to_update.items():
+        old_value = original_tx.get(field_name, "未設定")
+        message += f"\n• {field_name}：{old_value} → {new_value}"
+
+    return message
+
+
 def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
     """
     Handle text message main flow (v1.5.0 更新：支援多項目支出)
@@ -184,65 +273,9 @@ def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
             reply_text = format_multi_confirmation_message(result, success_count, failure_count)
 
         elif result.intent == "update_last_entry":
-            # 修改上一筆記帳（v1.9.0 改進：支援批次更新多個獨立交易ID）
+            # 修改上一筆記帳（v1.10.0：使用 optimistic locking）
             logger.info(f"Update last entry request from user {user_id}")
-
-            # 從 KV 取得最後一筆交易
-            last_transaction = get_last_transaction(user_id)
-
-            if not last_transaction:
-                reply_text = "❌ 找不到最近的記帳記錄\n\n可能原因：\n1. 超過 10 分鐘（記錄已過期）\n2. 尚未進行過記帳\n\n請直接輸入完整記帳資訊。"
-                logger.warning(f"No last transaction found for user {user_id}")
-            else:
-                # 取得批次ID、交易ID列表、要更新的欄位和項目數量
-                batch_id = last_transaction.get("batch_id")
-                transaction_ids = last_transaction.get("transaction_ids", [])
-                fields_to_update = result.fields_to_update
-                item_count = last_transaction.get("item_count", 1)
-
-                # 向後相容：如果沒有 transaction_ids，使用舊的 交易ID 欄位
-                if not transaction_ids and "交易ID" in last_transaction:
-                    transaction_ids = [last_transaction["交易ID"]]
-
-                logger.info(f"Updating batch {batch_id} with {item_count} item(s)")
-                logger.info(f"Transaction IDs: {transaction_ids}")
-                logger.info(f"Fields to update: {fields_to_update}")
-
-                # 發送批次 UPDATE webhook（v1.9.0：逐一更新每個交易ID）
-                success_count, failure_count = send_update_webhook_batch(user_id, transaction_ids, fields_to_update)
-
-                if success_count > 0:
-                    # 至少有部分更新成功
-                    if item_count > 1:
-                        if failure_count == 0:
-                            reply_text = f"✅ 已更新上一筆記帳（共 {item_count} 個項目）\n\n"
-                        else:
-                            reply_text = f"⚠️ 部分更新成功（{success_count}/{item_count} 個項目）\n\n"
-                    else:
-                        reply_text = "✅ 已更新上一筆記帳\n\n"
-
-                    reply_text += f"🔖 批次ID：{batch_id}\n"
-                    reply_text += f"📝 原品項：{last_transaction.get('品項', '未知')}"
-                    if item_count > 1:
-                        reply_text += f" 等 {item_count} 項\n"
-                    else:
-                        reply_text += "\n"
-                    reply_text += f"💰 原金額：{last_transaction.get('原幣金額', 0)} 元\n\n"
-                    reply_text += "更新內容：\n"
-
-                    for field_name, new_value in fields_to_update.items():
-                        old_value = last_transaction.get(field_name, "未設定")
-                        reply_text += f"• {field_name}：{old_value} → {new_value}\n"
-
-                    if item_count > 1:
-                        reply_text += f"\n💡 已同時更新所有 {success_count} 筆記錄"
-
-                    # 刪除 KV 記錄（防止重複修改）
-                    delete_last_transaction(user_id)
-                    logger.info(f"Deleted last transaction from KV for user {user_id}")
-                else:
-                    reply_text = "❌ 更新失敗\n\n請稍後再試，或直接輸入完整記帳資訊。"
-                    logger.error(f"Failed to send UPDATE webhooks for user {user_id}")
+            reply_text = handle_update_last_entry(user_id, result.fields_to_update)
 
         elif result.intent == "conversation":
             # Conversation: return GPT response

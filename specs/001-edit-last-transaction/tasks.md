@@ -61,7 +61,7 @@ Phase 7 (Polish - After all US tests pass)
 
 **Goal**: Verify environment and prerequisites
 
-- [ ] **T001** Verify development environment and dependencies
+- [X] **T001** Verify development environment and dependencies
   - Confirm Python 3.11+, uv package manager installed
   - Verify Redis connection (local or Vercel KV)
   - Check environment variables: `OPENAI_API_KEY`, `REDIS_URL`, `KV_ENABLED=true`
@@ -76,7 +76,7 @@ Phase 7 (Polish - After all US tests pass)
 
 **Goal**: Extend GPT and schema infrastructure to support update_last_entry intent
 
-- [ ] **T002** [P] Extend MULTI_EXPENSE_PROMPT in app/prompts.py with update_last_entry intent
+- [X] **T002** [P] Extend MULTI_EXPENSE_PROMPT in app/prompts.py with update_last_entry intent
   - Add intent type 4 documentation: `update_last_entry`
   - Define trigger conditions: keywords "修改", "改", "更新", "上一筆", "最後一筆"
   - Define response format: `{"intent": "update_last_entry", "fields_to_update": {...}}`
@@ -86,7 +86,7 @@ Phase 7 (Polish - After all US tests pass)
   - Files: `app/prompts.py`
   - **Acceptance**: Prompt includes all intent rules and examples from contracts/gpt-api.md
 
-- [ ] **T003** [P] Update MULTI_BOOKKEEPING_SCHEMA in app/schemas.py with fields_to_update
+- [X] **T003** [P] Update MULTI_BOOKKEEPING_SCHEMA in app/schemas.py with fields_to_update
   - Add "update_last_entry" to intent enum list
   - Add `fields_to_update` property (type: object)
   - Define fields_to_update properties: 品項 (string), 分類 (string), 專案 (string), 原幣金額 (number, minimum: 0)
@@ -94,7 +94,7 @@ Phase 7 (Polish - After all US tests pass)
   - Files: `app/schemas.py`
   - **Acceptance**: Schema matches structure in contracts/gpt-api.md:154-210
 
-- [ ] **T004** [P] Update MultiExpenseResult dataclass in app/gpt_processor.py
+- [X] **T004** [P] Update MultiExpenseResult dataclass in app/gpt_processor.py
   - Add "update_last_entry" to intent Literal type
   - Add `fields_to_update: Optional[dict] = None` field
   - Files: `app/gpt_processor.py:55-72`

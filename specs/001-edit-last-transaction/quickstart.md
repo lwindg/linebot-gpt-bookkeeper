@@ -38,7 +38,7 @@ REDIS_URL=redis://localhost:6379  # 本地開發
 
 # KV Configuration
 KV_ENABLED=true
-LAST_TRANSACTION_TTL=3600  # 1 hour
+LAST_TRANSACTION_TTL=600  # 10 minutes
 ```
 
 ---
@@ -200,7 +200,7 @@ def handle_update_last_entry(user_id: str, fields_to_update: dict) -> str:
     # Step 1: Read original transaction
     original_tx = kv_store.get(key)
     if not original_tx:
-        return "目前沒有可修改的交易記錄（交易記錄會在 1 小時後自動清除）"
+        return "目前沒有可修改的交易記錄（交易記錄會在 10 分鐘後自動清除）"
 
     target_id = original_tx.get("交易ID")
 
@@ -433,7 +433,7 @@ uv run python test_local.py
 **症狀**: 使用者嘗試修改但返回「無可修改的交易記錄」
 
 **解決方案**:
-1. 檢查距離上次記帳是否超過 1 小時
+1. 檢查距離上次記帳是否超過 10 分鐘
 2. 使用 Redis CLI 檢查 TTL：`TTL user:{user_id}:last_transaction`
 3. 若需要延長 TTL，修改 `.env` 的 `LAST_TRANSACTION_TTL`
 

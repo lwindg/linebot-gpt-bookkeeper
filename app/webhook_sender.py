@@ -136,6 +136,11 @@ def send_multiple_webhooks(entries: List[BookkeepingEntry], user_id: Optional[st
 
     logger.info(f"Sending {len(entries)} webhooks for multi-item transaction (delay={delay_seconds}s)")
 
+    # Handle empty entries list
+    if not entries:
+        logger.warning("No entries to send webhooks for")
+        return (0, 0)
+
     # 記錄交易項目數量和所有交易ID（用於 UPDATE webhook 批次更新）
     item_count = len(entries)
     transaction_ids = [entry.交易ID for entry in entries]
@@ -176,12 +181,17 @@ def send_multiple_webhooks(entries: List[BookkeepingEntry], user_id: Optional[st
             save_last_transaction(user_id, transaction_data)
             logger.info(f"Saved multi-item transaction to KV: batch_id={batch_id}, transaction_ids={transaction_ids}")
 
-        if send_to_webhook(entry, user_id=None):  # 不在 send_to_webhook 中儲存，已經在上面儲存
-            success_count += 1
-            logger.info(f"Webhook {idx}/{len(entries)} sent successfully")
-        else:
+        try:
+            if send_to_webhook(entry, user_id=None):  # 不在 send_to_webhook 中儲存，已經在上面儲存
+                success_count += 1
+                logger.info(f"Webhook {idx}/{len(entries)} sent successfully")
+            else:
+                failure_count += 1
+                logger.error(f"Webhook {idx}/{len(entries)} failed")
+        except Exception as e:
+            # Handle unexpected exceptions gracefully (e.g., network errors, serialization errors)
             failure_count += 1
-            logger.error(f"Webhook {idx}/{len(entries)} failed")
+            logger.error(f"Exception while sending webhook {idx}/{len(entries)}: {e}")
 
         # 在非最後一筆時加入延遲，避免後端並發寫入衝突
         if idx < len(entries):
