@@ -113,6 +113,15 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
         print(f"📝 意圖: 錯誤")
         print(f"💬 錯誤訊息: {result.error_message}")
 
+    elif result.intent == "update_last_entry":
+        print(f"📝 意圖: 修改上一筆")
+        print(f"📋 要更新的欄位:")
+        if result.fields_to_update:
+            for field, value in result.fields_to_update.items():
+                print(f"  • {field}: {value}")
+        else:
+            print(f"  (無)")
+
     elif result.intent == "multi_bookkeeping":
         entries = result.entries
         total_items = len(entries)
@@ -179,6 +188,8 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
             }
         elif result.intent == "conversation":
             data = {"intent": "conversation", "response": result.response_text}
+        elif result.intent == "update_last_entry":
+            data = {"intent": "update_last_entry", "fields_to_update": result.fields_to_update}
         else:  # error
             data = {"intent": "error", "message": result.error_message}
 
