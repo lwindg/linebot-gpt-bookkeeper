@@ -8,10 +8,17 @@
   python test_local.py --v1                 # 互動模式（v1 單項目模式）
   python test_local.py '早餐80元，午餐150元，現金'  # 單次測試
 
+KV 儲存操作：
+  python test_local.py --kv                 # 查看 KV 中儲存的交易記錄
+  python test_local.py --clear              # 清除 KV 中的交易記錄
+  python test_local.py --user=U123456 --kv  # 指定用戶 ID 查看 KV
+
 互動模式指令：
   - 直接輸入記帳訊息進行測試
   - 'v1' / 'v1.5' - 切換測試版本
   - 'json' - 切換 JSON 顯示
+  - 'kv' - 查看 KV 中儲存的交易記錄
+  - 'clear' - 清除 KV 中的交易記錄
   - 'exit' / 'quit' - 離開
 
 版本差異：
@@ -30,6 +37,86 @@
 import sys
 import json
 from app.gpt_processor import process_message, process_multi_expense, MultiExpenseResult, BookkeepingEntry
+from app.kv_store import get_last_transaction, KVStore
+from app.config import KV_ENABLED
+
+# Default test user ID for local testing
+DEFAULT_TEST_USER_ID = "test_local_user"
+
+
+def print_kv_status(user_id: str = DEFAULT_TEST_USER_ID):
+    """顯示 KV 中儲存的最後一筆交易"""
+    print("\n" + "=" * 60)
+    print(f"📦 KV 儲存狀態 (user_id: {user_id})")
+    print("=" * 60)
+
+    if not KV_ENABLED:
+        print("⚠️  KV 未啟用 (KV_ENABLED=false)")
+        print("   請設定環境變數：")
+        print("   export KV_ENABLED=true")
+        print("   export REDIS_URL=redis://localhost:6379")
+        print("=" * 60)
+        return None
+
+    try:
+        transaction = get_last_transaction(user_id)
+
+        if not transaction:
+            print("📭 無儲存的交易記錄")
+            print("   (記錄會在 10 分鐘後自動過期)")
+        else:
+            print("📬 找到儲存的交易記錄：")
+            print()
+
+            # 顯示主要欄位
+            if "batch_id" in transaction:
+                print(f"  🔖 批次ID：{transaction.get('batch_id')}")
+            if "交易ID" in transaction:
+                print(f"  🆔 交易ID：{transaction.get('交易ID')}")
+            if "transaction_ids" in transaction:
+                print(f"  📋 交易ID列表：{transaction.get('transaction_ids')}")
+
+            print(f"  🛍️ 品項：{transaction.get('品項', '未知')}")
+            print(f"  💰 金額：{transaction.get('原幣金額', 0)}")
+            print(f"  💳 付款方式：{transaction.get('付款方式', '未知')}")
+            print(f"  🏷️ 分類：{transaction.get('分類', '未知')}")
+            print(f"  📅 日期：{transaction.get('日期', '未知')}")
+
+            if transaction.get('item_count', 1) > 1:
+                print(f"  📊 項目數量：{transaction.get('item_count')}")
+
+            print()
+            print("📄 完整 JSON:")
+            print(json.dumps(transaction, ensure_ascii=False, indent=2))
+
+        print("=" * 60)
+        return transaction
+
+    except Exception as e:
+        print(f"❌ 讀取 KV 失敗：{e}")
+        print("=" * 60)
+        return None
+
+
+def clear_kv(user_id: str = DEFAULT_TEST_USER_ID):
+    """清除 KV 中的交易記錄"""
+    if not KV_ENABLED:
+        print("⚠️  KV 未啟用")
+        return False
+
+    try:
+        kv_store = KVStore()
+        key = f"last_transaction:{user_id}"
+        if kv_store.client:
+            kv_store.client.delete(key)
+            print(f"✅ 已清除 KV 記錄 (user_id: {user_id})")
+            return True
+        else:
+            print("❌ KV 連線失敗")
+            return False
+    except Exception as e:
+        print(f"❌ 清除 KV 失敗：{e}")
+        return False
 
 def print_result(entry, show_json=False):
     """美化輸出測試結果（v1 單項目格式）"""
@@ -198,7 +285,7 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
     print("=" * 60)
 
 
-def interactive_mode(use_v1=False):
+def interactive_mode(use_v1=False, test_user_id=DEFAULT_TEST_USER_ID):
     """互動模式 - 持續接收輸入並測試"""
     print("=" * 60)
     print("🤖 LINE Bot GPT Bookkeeper - 本地測試工具")
@@ -208,6 +295,8 @@ def interactive_mode(use_v1=False):
     print("  - 'v1' - 切換到 v1 模式（單項目）")
     print("  - 'v1.5' - 切換到 v1.5.0 模式（多項目）")
     print("  - 'json' - 切換 JSON 顯示模式")
+    print("  - 'kv' - 查看 KV 中儲存的交易記錄")
+    print("  - 'clear' - 清除 KV 中的交易記錄")
     print("  - 'exit' / 'quit' - 離開")
     print("  - Ctrl+C - 離開\n")
 
@@ -215,6 +304,11 @@ def interactive_mode(use_v1=False):
     version = "v1" if use_v1 else "v1.5.0"
 
     print(f"🔖 當前版本: {version}")
+    print(f"👤 測試用戶: {test_user_id}")
+    if KV_ENABLED:
+        print(f"📦 KV 狀態: 已啟用")
+    else:
+        print(f"📦 KV 狀態: 未啟用 (設定 KV_ENABLED=true 啟用)")
     print()
 
     while True:
@@ -242,6 +336,14 @@ def interactive_mode(use_v1=False):
             if user_input.lower() in ['v1.5', 'v15']:
                 version = "v1.5.0"
                 print(f"✅ 已切換到 v1.5.0 模式（多項目記帳）")
+                continue
+
+            if user_input.lower() == 'kv':
+                print_kv_status(test_user_id)
+                continue
+
+            if user_input.lower() == 'clear':
+                clear_kv(test_user_id)
                 continue
 
             # 測試處理訊息
@@ -287,6 +389,9 @@ def single_test(message, use_v1=False):
 
 if __name__ == "__main__":
     use_v1 = False
+    test_user_id = DEFAULT_TEST_USER_ID
+    show_kv = False
+    do_clear = False
 
     # 解析參數
     args = sys.argv[1:]
@@ -296,10 +401,43 @@ if __name__ == "__main__":
         use_v1 = True
         args.remove('--v1')
 
+    # 檢查是否有 --kv 參數（顯示 KV 內容）
+    if '--kv' in args:
+        show_kv = True
+        args.remove('--kv')
+
+    # 檢查是否有 --clear 參數（清除 KV）
+    if '--clear' in args:
+        do_clear = True
+        args.remove('--clear')
+
+    # 檢查是否有 --user 參數（指定測試用戶 ID）
+    for i, arg in enumerate(args):
+        if arg.startswith('--user='):
+            test_user_id = arg.split('=', 1)[1]
+            args.remove(arg)
+            break
+        elif arg == '--user' and i + 1 < len(args):
+            test_user_id = args[i + 1]
+            args.remove('--user')
+            args.remove(test_user_id)
+            break
+
+    # 執行 KV 操作
+    if do_clear:
+        clear_kv(test_user_id)
+        if not show_kv and len(args) == 0:
+            sys.exit(0)
+
+    if show_kv:
+        print_kv_status(test_user_id)
+        if len(args) == 0:
+            sys.exit(0)
+
     if len(args) > 0:
         # 單次測試模式
         message = " ".join(args)
         single_test(message, use_v1)
     else:
         # 互動模式
-        interactive_mode(use_v1)
+        interactive_mode(use_v1, test_user_id)
