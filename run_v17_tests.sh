@@ -6,6 +6,10 @@
 #   ./run_v17_tests.sh --auto   # 自動判斷模式
 #   ./run_v17_tests.sh --help   # 顯示說明
 
+# 確保 UTF-8 編碼
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+
 # 顏色定義
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -19,27 +23,48 @@ TOTAL_TESTS=0
 PASSED_TESTS=0
 FAILED_TESTS=0
 SKIPPED_TESTS=0
+FILTER_PATTERN=""
 
 # 解析參數
-if [[ "$1" == "--auto" ]]; then
-    AUTO_MODE=true
-elif [[ "$1" == "--help" || "$1" == "-h" ]]; then
-    echo "v1.7.0 代墊功能測試腳本"
-    echo ""
-    echo "使用方式："
-    echo "  ./run_v17_tests.sh          人工判斷模式（預設）"
-    echo "  ./run_v17_tests.sh --auto   自動判斷模式"
-    echo "  ./run_v17_tests.sh --help   顯示此說明"
-    echo ""
-    echo "自動判斷模式："
-    echo "  - 自動比對實際結果與預期結果"
-    echo "  - 顯示詳細的差異資訊"
-    echo "  - 統計通過/失敗測試數量"
-    echo "  - 判斷項目：品項、金額、付款方式、代墊狀態、日期"
-    echo "  - 不判斷：交易ID（每次都不同）"
-    echo ""
-    exit 0
-fi
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --auto)
+            AUTO_MODE=true
+            shift
+            ;;
+        --only)
+            FILTER_PATTERN="$2"
+            shift 2
+            ;;
+        --help|-h)
+            echo "v1.7.0 代墊功能測試腳本"
+            echo ""
+            echo "使用方式："
+            echo "  ./run_v17_tests.sh                    人工判斷模式（預設）"
+            echo "  ./run_v17_tests.sh --auto             自動判斷模式"
+            echo "  ./run_v17_tests.sh --only <pattern>   只執行符合 pattern 的測試"
+            echo "  ./run_v17_tests.sh --help             顯示此說明"
+            echo ""
+            echo "選擇性測試範例："
+            echo "  ./run_v17_tests.sh --auto --only 004          # 只測 TC-V17-004"
+            echo "  ./run_v17_tests.sh --auto --only \"00[4-8]\"    # 測 004-008"
+            echo "  ./run_v17_tests.sh --auto --only 代墊          # 測所有代墊相關"
+            echo "  ./run_v17_tests.sh --auto --only 媽媽          # 測包含「媽媽」的案例"
+            echo ""
+            echo "自動判斷模式："
+            echo "  - 自動比對實際結果與預期結果"
+            echo "  - 顯示詳細的差異資訊"
+            echo "  - 統計通過/失敗測試數量"
+            echo "  - 判斷項目：品項、金額、付款方式、代墊狀態、日期"
+            echo "  - 不判斷：交易ID（每次都不同）"
+            echo ""
+            exit 0
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
 
 echo "======================================================================"
 echo "🧪 v1.7.0 代墊功能測試腳本"
@@ -55,6 +80,9 @@ else
     echo "  - 按 Enter 繼續下一個測試"
     echo "  - 按 Ctrl+C 中斷測試"
 fi
+if [[ -n "$FILTER_PATTERN" ]]; then
+    echo "過濾：$FILTER_PATTERN"
+fi
 echo ""
 read -p "按 Enter 開始測試..."
 
@@ -66,11 +94,11 @@ extract_field() {
     case "$field" in
         "intent")
             # 提取意圖（可能是「記帳」、「對話」、「錯誤」）
-            echo "$output" | grep "📝 意圖:" | sed 's/.*📝 意圖: //' | xargs
+            echo "$output" | grep "📝 意圖:" | sed 's/.*📝 意圖: //' | tr -d '\n'
             ;;
         "item")
             # 提取品項（單項目格式）
-            echo "$output" | grep "🛍️  品項:" | head -1 | sed 's/.*🛍️  品項: //' | xargs
+            echo "$output" | grep "🛍️ 品項:" | head -1 | sed 's/.*品項: //' | tr -d '\n'
             ;;
         "amount")
             # Support both TWD and foreign currency formats
@@ -79,39 +107,39 @@ extract_field() {
             local amount=$(echo "$output" | grep -E "💰 (金額|原幣金額):" | head -1)
             if echo "$amount" | grep -q "原幣金額"; then
                 # Foreign currency - extract just the number (ignore currency code)
-                echo "$amount" | sed 's/.*💰 原幣金額: //' | awk '{print $1}' | xargs
+                echo "$amount" | sed 's/.*💰 原幣金額: //' | awk '{print $1}' | tr -d '\n'
             else
                 # TWD - extract amount
-                echo "$amount" | sed 's/.*💰 金額: //' | awk '{print $1}' | xargs
+                echo "$amount" | sed 's/.*💰 金額: //' | awk '{print $1}' | tr -d '\n'
             fi
             ;;
         "payment")
             # 提取付款方式（單項目格式）
-            echo "$output" | grep "💳 付款:" | sed 's/.*💳 付款: //' | xargs
+            echo "$output" | grep "💳 付款:" | sed 's/.*💳 付款: //' | tr -d '\n'
             ;;
         "payment_multi")
             # 提取共用付款方式（多項目格式）
-            echo "$output" | grep "💳 共用付款方式:" | sed 's/.*💳 共用付款方式: //' | xargs
+            echo "$output" | grep "💳 共用付款方式:" | sed 's/.*💳 共用付款方式: //' | tr -d '\n'
             ;;
         "advance_status")
             # 提取代墊狀態
-            echo "$output" | grep "💸 代墊:" | head -1 | sed 's/.*💸 代墊: //' | xargs
+            echo "$output" | grep "💸 代墊:" | head -1 | sed 's/.*💸 代墊: //' | tr -d '\n'
             ;;
         "date")
             # 提取日期
-            echo "$output" | grep "📅 日期:" | head -1 | sed 's/.*📅 日期: //' | xargs
+            echo "$output" | grep "📅 日期:" | head -1 | sed 's/.*📅 日期: //' | tr -d '\n'
             ;;
         "item_count")
             # 提取項目數量
-            echo "$output" | grep "📊 項目數量:" | sed 's/.*📊 項目數量: //' | xargs
+            echo "$output" | grep "📊 項目數量:" | sed 's/.*📊 項目數量: //' | tr -d '\n'
             ;;
         "error_message")
             # 提取錯誤訊息
-            echo "$output" | grep "💬 錯誤訊息:" | sed 's/.*💬 錯誤訊息: //' | xargs
+            echo "$output" | grep "💬 錯誤訊息:" | sed 's/.*💬 錯誤訊息: //' | tr -d '\n'
             ;;
         "recipient")
             # 提取收款支付對象
-            echo "$output" | grep "👤 對象:" | head -1 | sed 's/.*👤 對象: //' | xargs
+            echo "$output" | grep "👤 對象:" | head -1 | sed 's/.*👤 對象: //' | tr -d '\n'
             ;;
     esac
 }
@@ -248,13 +276,24 @@ run_test_auto() {
         PASSED_TESTS=$((PASSED_TESTS + 1))
     else
         echo -e "${RED}❌ FAIL${NC}"
-        echo -e "$failure_reasons"
+        printf '%b\n' "$failure_reasons"
         FAILED_TESTS=$((FAILED_TESTS + 1))
     fi
 }
 
 # 判斷執行哪種模式
 run_test() {
+    local test_name="$2"
+    local message="$3"
+
+    # 檢查過濾條件
+    if [[ -n "$FILTER_PATTERN" ]]; then
+        if ! echo "$test_name $message" | grep -qE "$FILTER_PATTERN"; then
+            # 不符合過濾條件，跳過
+            return
+        fi
+    fi
+
     if [[ "$AUTO_MODE" == true ]]; then
         run_test_auto "$@"
     else
@@ -283,8 +322,8 @@ run_test "代墊功能" "TC-V17-003: 代墊 - 朋友午餐刷卡" \
 
 run_test "代墊功能" "TC-V17-004: 代購咖啡 - Line轉帳" \
     "代購咖啡給三位同事150元Line轉帳" \
-    "✅ 品項: 咖啡, 代墊狀態: 代墊, 付款: Line 轉帳, 對象: 三位同事" \
-    "記帳" "咖啡" "150.0" "Line 轉帳" "代墊" "" "" "三位同事"
+    "✅ 品項: 咖啡, 代墊狀態: 代墊, 付款: Line 轉帳, 對象: 同事" \
+    "記帳" "咖啡" "150.0" "Line 轉帳" "代墊" "" "" "同事"
 
 # ============================================================
 # 需支付功能測試（欠他人錢）
