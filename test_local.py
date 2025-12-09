@@ -6,7 +6,17 @@
 使用方式：
   python test_local.py                      # 互動模式（推薦，預設 v1.5.0）
   python test_local.py --v1                 # 互動模式（v1 單項目模式）
-  python test_local.py '早餐80元，午餐150元，現金'  # 單次測試
+  python test_local.py '早餐80元，午餐150元，現金'  # 單次測試（僅 GPT 解析）
+  python test_local.py --full '午餐 100 現金'      # 完整流程測試（GPT + Webhook + KV）
+
+完整流程模式（--full）：
+  python test_local.py --full               # 互動模式，啟用完整流程
+  python test_local.py --full '午餐 100'    # 單次測試，發送 webhook 並儲存 KV
+
+  完整流程包含：
+  - GPT 解析訊息
+  - 記帳時：發送 webhook + 儲存到 KV
+  - 修改時：讀取 KV + 發送 UPDATE webhook + 刪除 KV
 
 KV 儲存操作：
   python test_local.py --kv                 # 查看 KV 中儲存的交易記錄
@@ -15,6 +25,7 @@ KV 儲存操作：
 
 互動模式指令：
   - 直接輸入記帳訊息進行測試
+  - 'full' - 切換完整流程模式（含 webhook + KV）
   - 'v1' / 'v1.5' - 切換測試版本
   - 'json' - 切換 JSON 顯示
   - 'kv' - 查看 KV 中儲存的交易記錄
@@ -39,9 +50,119 @@ import json
 from app.gpt_processor import process_message, process_multi_expense, MultiExpenseResult, BookkeepingEntry
 from app.kv_store import get_last_transaction, KVStore
 from app.config import KV_ENABLED
+from app.webhook_sender import send_multiple_webhooks, build_create_payload, build_update_payload
+from app.line_handler import handle_update_last_entry
 
 # Default test user ID for local testing
 DEFAULT_TEST_USER_ID = "test_local_user"
+
+
+def simulate_full_flow(message: str, user_id: str = DEFAULT_TEST_USER_ID, show_json: bool = True):
+    """
+    模擬完整的 LINE handler 流程
+
+    包含：
+    - GPT 解析
+    - 記帳時：發送 webhook + 儲存 KV
+    - 修改時：讀取 KV + 發送 UPDATE webhook + 刪除 KV
+    """
+    print("\n" + "=" * 60)
+    print(f"🔄 完整流程模擬 (user_id: {user_id})")
+    print(f"💬 訊息: {message}")
+    print("=" * 60)
+
+    # Step 1: GPT 解析
+    print("\n📝 Step 1: GPT 解析...")
+    result = process_multi_expense(message)
+    print(f"   意圖: {result.intent}")
+
+    # Step 2: 根據意圖執行對應操作
+    if result.intent == "multi_bookkeeping":
+        print(f"\n📝 Step 2: 發送 webhook 並儲存 KV...")
+        print(f"   項目數量: {len(result.entries)}")
+
+        for i, entry in enumerate(result.entries, 1):
+            print(f"   [{i}] {entry.品項} - {entry.原幣金額} {entry.原幣別}")
+
+        # 顯示完整的 webhook payload（使用與實際發送相同的函數）
+        print(f"\n📤 Webhook Payloads (CREATE):")
+        for i, entry in enumerate(result.entries, 1):
+            payload = build_create_payload(entry)
+            print(f"\n--- Webhook #{i} ---")
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+        # 發送 webhook（這會同時儲存到 KV）
+        success_count, failure_count = send_multiple_webhooks(result.entries, user_id)
+
+        print(f"\n✅ Webhook 結果: {success_count} 成功, {failure_count} 失敗")
+
+        if success_count > 0:
+            print(f"📦 已儲存到 KV (user_id: {user_id})")
+
+            # 顯示儲存的內容
+            tx = get_last_transaction(user_id)
+            if tx:
+                print(f"   交易ID: {tx.get('交易ID') or tx.get('batch_id')}")
+                print(f"   品項: {tx.get('品項')}")
+
+        # 顯示回覆訊息
+        if len(result.entries) == 1:
+            entry = result.entries[0]
+            reply = f"✅ 記帳成功！\n品項：{entry.品項}\n金額：{entry.原幣金額} {entry.原幣別}\n付款方式：{entry.付款方式}"
+        else:
+            reply = f"✅ 已記錄 {len(result.entries)} 筆支出"
+
+        print(f"\n💬 回覆訊息:\n{reply}")
+
+    elif result.intent == "update_last_entry":
+        print(f"\n📝 Step 2: 執行修改上一筆...")
+        print(f"   要更新的欄位: {result.fields_to_update}")
+
+        # 先讀取 KV 顯示將發送的 UPDATE payload
+        tx = get_last_transaction(user_id)
+        if tx:
+            transaction_ids = tx.get("transaction_ids", [tx.get("交易ID")])
+            print(f"\n📤 Webhook Payloads (UPDATE):")
+            for i, txn_id in enumerate(transaction_ids, 1):
+                payload = build_update_payload(user_id, txn_id, result.fields_to_update, item_count=1)
+                print(f"\n--- Webhook #{i} (txn_id: {txn_id}) ---")
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print(f"\n⚠️ KV 中無交易記錄，無法顯示 UPDATE payload")
+
+        # 呼叫實際的修改函式
+        reply = handle_update_last_entry(user_id, result.fields_to_update)
+
+        print(f"\n💬 回覆訊息:\n{reply}")
+
+    elif result.intent == "conversation":
+        print(f"\n💬 對話回應: {result.response_text}")
+
+    elif result.intent == "error":
+        print(f"\n❌ 錯誤: {result.error_message}")
+
+    if show_json:
+        print("\n📄 GPT 解析結果:")
+        if result.intent == "multi_bookkeeping":
+            data = {
+                "intent": result.intent,
+                "entries_count": len(result.entries),
+                "entries": [
+                    {"品項": e.品項, "原幣金額": e.原幣金額, "付款方式": e.付款方式, "交易ID": e.交易ID}
+                    for e in result.entries
+                ]
+            }
+        elif result.intent == "update_last_entry":
+            data = {"intent": result.intent, "fields_to_update": result.fields_to_update}
+        elif result.intent == "conversation":
+            data = {"intent": result.intent, "response": result.response_text}
+        else:
+            data = {"intent": result.intent, "error": result.error_message}
+
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+
+    print("\n" + "=" * 60)
+    return result
 
 
 def print_kv_status(user_id: str = DEFAULT_TEST_USER_ID):
@@ -285,26 +406,30 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
     print("=" * 60)
 
 
-def interactive_mode(use_v1=False, test_user_id=DEFAULT_TEST_USER_ID):
+def interactive_mode(use_v1=False, test_user_id=DEFAULT_TEST_USER_ID, full_mode=False):
     """互動模式 - 持續接收輸入並測試"""
     print("=" * 60)
     print("🤖 LINE Bot GPT Bookkeeper - 本地測試工具")
     print("=" * 60)
     print("\n指令:")
     print("  - 直接輸入記帳訊息進行測試")
+    print("  - 'full' - 切換完整流程模式（含 webhook + KV）")
     print("  - 'v1' - 切換到 v1 模式（單項目）")
     print("  - 'v1.5' - 切換到 v1.5.0 模式（多項目）")
     print("  - 'json' - 切換 JSON 顯示模式")
     print("  - 'kv' - 查看 KV 中儲存的交易記錄")
     print("  - 'clear' - 清除 KV 中的交易記錄")
-    print("  - 'exit' / 'quit' - 離開")
-    print("  - Ctrl+C - 離開\n")
+    print("  - 'exit' / 'quit' - 離開\n")
 
     show_json = False
     version = "v1" if use_v1 else "v1.5.0"
 
     print(f"🔖 當前版本: {version}")
     print(f"👤 測試用戶: {test_user_id}")
+    if full_mode:
+        print(f"🔄 模式: 完整流程（GPT + Webhook + KV）")
+    else:
+        print(f"🔄 模式: 僅 GPT 解析")
     if KV_ENABLED:
         print(f"📦 KV 狀態: 已啟用")
     else:
@@ -313,7 +438,8 @@ def interactive_mode(use_v1=False, test_user_id=DEFAULT_TEST_USER_ID):
 
     while True:
         try:
-            user_input = input("💬 輸入訊息: ").strip()
+            prompt = "🔄 " if full_mode else "💬 "
+            user_input = input(f"{prompt}輸入訊息: ").strip()
 
             if not user_input:
                 continue
@@ -321,6 +447,14 @@ def interactive_mode(use_v1=False, test_user_id=DEFAULT_TEST_USER_ID):
             if user_input.lower() in ['exit', 'quit', 'q']:
                 print("\n👋 再見！")
                 break
+
+            if user_input.lower() == 'full':
+                full_mode = not full_mode
+                if full_mode:
+                    print("✅ 已切換到完整流程模式（GPT + Webhook + KV）")
+                else:
+                    print("✅ 已切換到僅 GPT 解析模式")
+                continue
 
             if user_input.lower() == 'json':
                 show_json = not show_json
@@ -348,7 +482,10 @@ def interactive_mode(use_v1=False, test_user_id=DEFAULT_TEST_USER_ID):
 
             # 測試處理訊息
             try:
-                if version == "v1":
+                if full_mode:
+                    # 完整流程模式
+                    simulate_full_flow(user_input, test_user_id, show_json)
+                elif version == "v1":
                     result = process_message(user_input)
                     print_result(result, show_json)
                 else:  # v1.5.0
@@ -367,8 +504,21 @@ def interactive_mode(use_v1=False, test_user_id=DEFAULT_TEST_USER_ID):
             break
 
 
-def single_test(message, use_v1=False):
+def single_test(message, use_v1=False, full_mode=False, test_user_id=DEFAULT_TEST_USER_ID):
     """單次測試模式"""
+    if full_mode:
+        print(f"\n🧪 測試訊息: {message}")
+        print(f"🔄 模式: 完整流程（GPT + Webhook + KV）")
+        print(f"👤 用戶: {test_user_id}\n")
+        try:
+            simulate_full_flow(message, test_user_id, show_json=True)
+        except Exception as e:
+            print(f"\n❌ 錯誤: {str(e)}\n")
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
+        return
+
     version = "v1" if use_v1 else "v1.5.0"
     print(f"\n🧪 測試訊息: {message}")
     print(f"🔖 版本: {version}\n")
@@ -389,6 +539,7 @@ def single_test(message, use_v1=False):
 
 if __name__ == "__main__":
     use_v1 = False
+    full_mode = False
     test_user_id = DEFAULT_TEST_USER_ID
     show_kv = False
     do_clear = False
@@ -400,6 +551,11 @@ if __name__ == "__main__":
     if '--v1' in args:
         use_v1 = True
         args.remove('--v1')
+
+    # 檢查是否有 --full 參數（完整流程模式）
+    if '--full' in args:
+        full_mode = True
+        args.remove('--full')
 
     # 檢查是否有 --kv 參數（顯示 KV 內容）
     if '--kv' in args:
@@ -437,7 +593,7 @@ if __name__ == "__main__":
     if len(args) > 0:
         # 單次測試模式
         message = " ".join(args)
-        single_test(message, use_v1)
+        single_test(message, use_v1, full_mode, test_user_id)
     else:
         # 互動模式
-        interactive_mode(use_v1, test_user_id)
+        interactive_mode(use_v1, test_user_id, full_mode)

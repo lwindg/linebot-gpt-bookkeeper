@@ -16,6 +16,57 @@ from app.kv_store import save_last_transaction
 logger = logging.getLogger(__name__)
 
 
+def build_create_payload(entry: BookkeepingEntry) -> dict:
+    """
+    Build webhook payload for CREATE operation.
+
+    Args:
+        entry: BookkeepingEntry object
+
+    Returns:
+        dict: Payload dictionary ready for JSON serialization
+    """
+    return {
+        "operation": "CREATE",  # v1.5.0: 用於 Make.com Router 區分操作類型
+        "日期": entry.日期,
+        "品項": entry.品項,
+        "原幣別": entry.原幣別,
+        "原幣金額": entry.原幣金額,
+        "匯率": entry.匯率,
+        "付款方式": entry.付款方式,
+        "交易ID": entry.交易ID,
+        "明細說明": entry.明細說明,
+        "分類": entry.分類,
+        "專案": entry.專案,
+        "必要性": entry.必要性,
+        "代墊狀態": entry.代墊狀態,
+        "收款支付對象": entry.收款支付對象,
+        "附註": entry.附註,
+    }
+
+
+def build_update_payload(user_id: str, transaction_id: str, fields_to_update: dict, item_count: int = 1) -> dict:
+    """
+    Build webhook payload for UPDATE operation.
+
+    Args:
+        user_id: LINE user ID
+        transaction_id: Transaction ID to update
+        fields_to_update: Fields to update (dict)
+        item_count: Number of items in batch (default 1)
+
+    Returns:
+        dict: Payload dictionary ready for JSON serialization
+    """
+    return {
+        "operation": "UPDATE",
+        "user_id": user_id,
+        "transaction_id": transaction_id,
+        "fields_to_update": fields_to_update,
+        "item_count": item_count  # 告訴 Make.com 需要更新幾筆記錄
+    }
+
+
 def send_to_webhook(entry: BookkeepingEntry, user_id: Optional[str] = None) -> bool:
     """
     Send bookkeeping data to Make.com webhook
@@ -41,23 +92,7 @@ def send_to_webhook(entry: BookkeepingEntry, user_id: Optional[str] = None) -> b
         return True
 
     # Prepare payload for Make.com (using Chinese field names as per spec)
-    payload = {
-        "operation": "CREATE",  # v1.5.0: 用於 Make.com Router 區分操作類型
-        "日期": entry.日期,
-        "品項": entry.品項,
-        "原幣別": entry.原幣別,
-        "原幣金額": entry.原幣金額,
-        "匯率": entry.匯率,
-        "付款方式": entry.付款方式,
-        "交易ID": entry.交易ID,
-        "明細說明": entry.明細說明,
-        "分類": entry.分類,
-        "專案": entry.專案,
-        "必要性": entry.必要性,
-        "代墊狀態": entry.代墊狀態,
-        "收款支付對象": entry.收款支付對象,
-        "附註": entry.附註,
-    }
+    payload = build_create_payload(entry)
     
     try:
         logger.info(f"Sending webhook for transaction {entry.交易ID}")
@@ -281,13 +316,7 @@ def send_update_webhook(user_id: str, transaction_id: str, fields_to_update: dic
         return True
 
     # Prepare UPDATE payload
-    payload = {
-        "operation": "UPDATE",
-        "user_id": user_id,
-        "transaction_id": transaction_id,
-        "fields_to_update": fields_to_update,
-        "item_count": item_count  # 告訴 Make.com 需要更新幾筆記錄
-    }
+    payload = build_update_payload(user_id, transaction_id, fields_to_update, item_count)
 
     try:
         logger.info(f"Sending UPDATE webhook for transaction {transaction_id} ({item_count} item(s))")
