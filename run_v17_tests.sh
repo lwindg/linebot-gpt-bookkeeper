@@ -86,60 +86,76 @@ fi
 echo ""
 read -p "按 Enter 開始測試..."
 
-# 提取欄位值的輔助函數
+# 從輸出提取 JSON
+extract_json() {
+    local output="$1"
+    # 提取 "完整 JSON:" 之後的內容，到 "====" 結束
+    # 使用 sed 替代 head -n -1（macOS 不支援負數）
+    echo "$output" | sed -n '/完整 JSON:/,/====/p' | tail -n +2 | sed '$d'
+}
+
+# 提取欄位值的輔助函數（使用 jq 解析 JSON）
 extract_field() {
     local output="$1"
     local field="$2"
+    local json=$(extract_json "$output")
+
+    # 檢查是否有 entries 陣列（多項目）或直接是物件（單項目）
+    local has_entries=$(echo "$json" | jq -r 'has("entries")' 2>/dev/null)
 
     case "$field" in
         "intent")
-            # 提取意圖（可能是「記帳」、「對話」、「錯誤」）
+            # 從 emoji 輸出提取意圖（JSON 中可能沒有）
             echo "$output" | grep "📝 意圖:" | sed 's/.*📝 意圖: //' | tr -d '\n'
             ;;
         "item")
-            # 提取品項（單項目格式）
-            echo "$output" | grep "🛍️ 品項:" | head -1 | sed 's/.*品項: //' | tr -d '\n'
+            if [[ "$has_entries" == "true" ]]; then
+                echo "$json" | jq -r '.entries[0]["品項"] // empty'
+            else
+                echo "$json" | jq -r '.["品項"] // empty'
+            fi
             ;;
         "amount")
-            # Support both TWD and foreign currency formats
-            # TWD format: 💰 金額: 80.0 TWD
-            # Foreign format: 💰 原幣金額: 4.99 USD
-            local amount=$(echo "$output" | grep -E "💰 (金額|原幣金額):" | head -1)
-            if echo "$amount" | grep -q "原幣金額"; then
-                # Foreign currency - extract just the number (ignore currency code)
-                echo "$amount" | sed 's/.*💰 原幣金額: //' | awk '{print $1}' | tr -d '\n'
+            if [[ "$has_entries" == "true" ]]; then
+                echo "$json" | jq -r '.entries[0]["原幣金額"] // empty'
             else
-                # TWD - extract amount
-                echo "$amount" | sed 's/.*💰 金額: //' | awk '{print $1}' | tr -d '\n'
+                echo "$json" | jq -r '.["原幣金額"] // empty'
             fi
             ;;
         "payment")
-            # 提取付款方式（單項目格式）
-            echo "$output" | grep "💳 付款:" | sed 's/.*💳 付款: //' | tr -d '\n'
-            ;;
-        "payment_multi")
-            # 提取共用付款方式（多項目格式）
-            echo "$output" | grep "💳 共用付款方式:" | sed 's/.*💳 共用付款方式: //' | tr -d '\n'
+            if [[ "$has_entries" == "true" ]]; then
+                echo "$json" | jq -r '.entries[0]["付款方式"] // empty'
+            else
+                echo "$json" | jq -r '.["付款方式"] // empty'
+            fi
             ;;
         "advance_status")
-            # 提取代墊狀態
-            echo "$output" | grep "💸 代墊:" | head -1 | sed 's/.*💸 代墊: //' | tr -d '\n'
+            if [[ "$has_entries" == "true" ]]; then
+                echo "$json" | jq -r '.entries[0]["代墊狀態"] // empty'
+            else
+                echo "$json" | jq -r '.["代墊狀態"] // empty'
+            fi
             ;;
         "date")
-            # 提取日期
-            echo "$output" | grep "📅 日期:" | head -1 | sed 's/.*📅 日期: //' | tr -d '\n'
+            if [[ "$has_entries" == "true" ]]; then
+                echo "$json" | jq -r '.entries[0]["日期"] // empty'
+            else
+                echo "$json" | jq -r '.["日期"] // empty'
+            fi
             ;;
         "item_count")
-            # 提取項目數量
-            echo "$output" | grep "📊 項目數量:" | sed 's/.*📊 項目數量: //' | tr -d '\n'
-            ;;
-        "error_message")
-            # 提取錯誤訊息
-            echo "$output" | grep "💬 錯誤訊息:" | sed 's/.*💬 錯誤訊息: //' | tr -d '\n'
+            if [[ "$has_entries" == "true" ]]; then
+                echo "$json" | jq -r '.entries | length'
+            else
+                echo "1"
+            fi
             ;;
         "recipient")
-            # 提取收款支付對象
-            echo "$output" | grep "👤 對象:" | head -1 | sed 's/.*👤 對象: //' | tr -d '\n'
+            if [[ "$has_entries" == "true" ]]; then
+                echo "$json" | jq -r '.entries[0]["收款支付對象"] // empty'
+            else
+                echo "$json" | jq -r '.["收款支付對象"] // empty'
+            fi
             ;;
     esac
 }
@@ -201,74 +217,29 @@ run_test_auto() {
     # 執行測試
     local output=$(python test_local.py "$message" 2>&1)
 
-    # 提取實際值
+    # 提取實際值（使用 jq 解析 JSON）
     local actual_intent=$(extract_field "$output" "intent")
     local actual_item=$(extract_field "$output" "item")
     local actual_amount=$(extract_field "$output" "amount")
     local actual_payment=$(extract_field "$output" "payment")
-    local actual_payment_multi=$(extract_field "$output" "payment_multi")
     local actual_advance=$(extract_field "$output" "advance_status")
     local actual_date=$(extract_field "$output" "date")
     local actual_item_count=$(extract_field "$output" "item_count")
-    local actual_error=$(extract_field "$output" "error_message")
     local actual_recipient=$(extract_field "$output" "recipient")
 
-    # 使用多項目付款方式（如果單項目付款方式為空）
-    if [[ -z "$actual_payment" ]]; then
-        actual_payment="$actual_payment_multi"
-    fi
-
-    # 判斷結果
+    # 判斷結果並即時輸出（避免編碼問題）
     local test_passed=true
-    local failure_reasons=""
+    local failures=()
 
-    # 檢查意圖
-    if [[ -n "$expected_intent" && "$actual_intent" != "$expected_intent" ]]; then
-        test_passed=false
-        failure_reasons="$failure_reasons\n  ❌ 意圖不符：期望「$expected_intent」，實際「$actual_intent」"
-    fi
-
-    # 檢查品項
-    if [[ -n "$expected_item" && "$actual_item" != "$expected_item" ]]; then
-        test_passed=false
-        failure_reasons="$failure_reasons\n  ❌ 品項不符：期望「$expected_item」，實際「$actual_item」"
-    fi
-
-    # 檢查金額
-    if [[ -n "$expected_amount" && "$actual_amount" != "$expected_amount" ]]; then
-        test_passed=false
-        failure_reasons="$failure_reasons\n  ❌ 金額不符：期望「$expected_amount」，實際「$actual_amount」"
-    fi
-
-    # 檢查付款方式
-    if [[ -n "$expected_payment" && "$actual_payment" != "$expected_payment" ]]; then
-        test_passed=false
-        failure_reasons="$failure_reasons\n  ❌ 付款方式不符：期望「$expected_payment」，實際「$actual_payment」"
-    fi
-
-    # 檢查代墊狀態
-    if [[ -n "$expected_advance" && "$actual_advance" != "$expected_advance" ]]; then
-        test_passed=false
-        failure_reasons="$failure_reasons\n  ❌ 代墊狀態不符：期望「$expected_advance」，實際「$actual_advance」"
-    fi
-
-    # 檢查日期（如果提供）
-    if [[ -n "$expected_date" && "$actual_date" != "$expected_date" ]]; then
-        test_passed=false
-        failure_reasons="$failure_reasons\n  ❌ 日期不符：期望「$expected_date」，實際「$actual_date」"
-    fi
-
-    # 檢查項目數量
-    if [[ -n "$expected_item_count" && "$actual_item_count" != "$expected_item_count" ]]; then
-        test_passed=false
-        failure_reasons="$failure_reasons\n  ❌ 項目數量不符：期望「$expected_item_count」，實際「$actual_item_count」"
-    fi
-
-    # 檢查收款支付對象
-    if [[ -n "$expected_recipient" && "$actual_recipient" != "$expected_recipient" ]]; then
-        test_passed=false
-        failure_reasons="$failure_reasons\n  ❌ 收款支付對象不符：期望「$expected_recipient」，實際「$actual_recipient」"
-    fi
+    # 檢查各欄位
+    [[ -n "$expected_intent" && "$actual_intent" != "$expected_intent" ]] && test_passed=false && failures+=("意圖: $expected_intent → $actual_intent")
+    [[ -n "$expected_item" && "$actual_item" != "$expected_item" ]] && test_passed=false && failures+=("品項: $expected_item → $actual_item")
+    [[ -n "$expected_amount" && "$actual_amount" != "$expected_amount" ]] && test_passed=false && failures+=("金額: $expected_amount → $actual_amount")
+    [[ -n "$expected_payment" && "$actual_payment" != "$expected_payment" ]] && test_passed=false && failures+=("付款: $expected_payment → $actual_payment")
+    [[ -n "$expected_advance" && "$actual_advance" != "$expected_advance" ]] && test_passed=false && failures+=("代墊: $expected_advance → $actual_advance")
+    [[ -n "$expected_date" && "$actual_date" != "$expected_date" ]] && test_passed=false && failures+=("日期: $expected_date → $actual_date")
+    [[ -n "$expected_item_count" && "$actual_item_count" != "$expected_item_count" ]] && test_passed=false && failures+=("數量: $expected_item_count → $actual_item_count")
+    [[ -n "$expected_recipient" && "$actual_recipient" != "$expected_recipient" ]] && test_passed=false && failures+=("對象: $expected_recipient → $actual_recipient")
 
     # 顯示結果
     if [[ "$test_passed" == true ]]; then
@@ -276,7 +247,9 @@ run_test_auto() {
         PASSED_TESTS=$((PASSED_TESTS + 1))
     else
         echo -e "${RED}❌ FAIL${NC}"
-        printf '%b\n' "$failure_reasons"
+        for f in "${failures[@]}"; do
+            echo "  ❌ $f"
+        done
         FAILED_TESTS=$((FAILED_TESTS + 1))
     fi
 }
