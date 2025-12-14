@@ -24,10 +24,10 @@ usage() {
 Unified test runner (functional suites)
 
 Usage:
-  ./run_tests.sh --suite <expense|multi_expense|advance_payment> [--auto|--manual] [--only <pattern>]
+  ./run_tests.sh --suite <expense|multi_expense|advance_payment|date> [--auto|--manual] [--only <pattern>]
 
 Options:
-  --suite <name>    Suite name: expense, multi_expense, advance_payment
+  --suite <name>    Suite name: expense, multi_expense, advance_payment, date
   --auto            Auto-compare expected vs actual (default: manual)
   --manual          Manual mode (default)
   --only <pattern>  Run only tests whose id/name/message matches regex
@@ -94,6 +94,7 @@ suite_path() {
     expense) echo "tests/suites/expense.sh" ;;
     multi_expense) echo "tests/suites/multi_expense.sh" ;;
     advance_payment) echo "tests/suites/advance_payment.sh" ;;
+    date) echo "tests/suites/date.sh" ;;
     *)
       echo "Error: unknown suite: $SUITE" >&2
       exit 2
@@ -156,9 +157,10 @@ extract_fields() {
   local has_entries
   has_entries="$(json_has_entries "$json")"
 
-  local item amount payment category advance_status recipient error_message item_count
+  local item amount payment category advance_status recipient error_message item_count date
   if [[ "$has_entries" == "true" ]]; then
     item="$(json_get "$json" '.entries[0]["品項"] // empty')"
+    date="$(json_get "$json" '.entries[0]["日期"] // empty')"
     amount="$(json_get "$json" '.entries[0]["原幣金額"] // empty')"
     payment="$(json_get "$json" '.entries[0]["付款方式"] // empty')"
     category="$(json_get "$json" '.entries[0]["分類"] // empty')"
@@ -167,6 +169,7 @@ extract_fields() {
     error_message="$(json_get "$json" '.message // empty')"
   else
     item="$(json_get "$json" '.["品項"] // empty')"
+    date="$(json_get "$json" '.["日期"] // empty')"
     amount="$(json_get "$json" '.["原幣金額"] // empty')"
     payment="$(json_get "$json" '.["付款方式"] // empty')"
     category="$(json_get "$json" '.["分類"] // empty')"
@@ -177,8 +180,8 @@ extract_fields() {
   item_count="$(actual_item_count "$json")"
 
   # Tab-separated output for safe parsing (values may contain spaces).
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$item" "$amount" "$payment" "$category" "$advance_status" "$recipient" "$error_message" "$item_count"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$item" "$amount" "$payment" "$category" "$advance_status" "$recipient" "$error_message" "$item_count" "$date"
 }
 
 normalize_amount() {
@@ -216,6 +219,22 @@ compare_category() {
   [[ "$actual" == *"$expected"* ]] || [[ "$expected" == *"$actual"* ]]
 }
 
+normalize_expected_date() {
+  local expected="$1"
+  [[ -z "$expected" ]] && return 0
+  local year
+  year="$(date +%Y)"
+  echo "${expected//\{YEAR\}/$year}"
+}
+
+compare_date() {
+  local actual="$1"
+  local expected="$2"
+  [[ -z "$expected" ]] && return 0
+  expected="$(normalize_expected_date "$expected")"
+  [[ "$actual" == "$expected" ]]
+}
+
 run_case_manual() {
   local group="$1" name="$2" message="$3" expected_desc="$4"
   echo ""
@@ -235,7 +254,7 @@ run_case_auto() {
   local group="$1" name="$2" message="$3"
   local expected_intent="$4" expected_item="$5" expected_amount="$6" expected_payment="$7"
   local expected_category="$8" expected_item_count="$9" expected_advance_status="${10}" expected_recipient="${11}"
-  local expected_error_contains="${12}"
+  local expected_error_contains="${12}" expected_date="${13}"
 
   echo ""
   echo -e "${BLUE}======================================================================${NC}"
@@ -249,8 +268,8 @@ run_case_auto() {
   local actual_intent
   actual_intent="$(extract_intent_text "$output")"
 
-  local item amount payment category advance_status recipient error_message item_count
-  IFS=$'\t' read -r item amount payment category advance_status recipient error_message item_count \
+  local item amount payment category advance_status recipient error_message item_count date
+  IFS=$'\t' read -r item amount payment category advance_status recipient error_message item_count date \
     <<<"$(extract_fields "$output")"
 
   local test_passed=true
@@ -292,6 +311,10 @@ run_case_auto() {
     test_passed=false
     failures+=("error_message: expected[contains $expected_error_contains] actual[${error_message:-}]")
   fi
+  if ! compare_date "${date:-}" "$expected_date"; then
+    test_passed=false
+    failures+=("date: expected[$(normalize_expected_date "$expected_date")] actual[${date:-}]")
+  fi
 
   if [[ "$test_passed" == true ]]; then
     echo -e "${GREEN}✅ PASS${NC}"
@@ -331,8 +354,8 @@ main() {
   # Suite files must define:
   # - SUITE_PY_ARGS: bash array of extra args passed to test_local.py
   # - TEST_CASES: bash array of '|' delimited records
-  # Record format (14 fields):
-  #   id|group|name|message|expected_desc|expected_intent|expected_item|expected_amount|expected_payment|expected_category|expected_item_count|expected_advance_status|expected_recipient|expected_error_contains
+  # Record format (15 fields):
+  #   id|group|name|message|expected_desc|expected_intent|expected_item|expected_amount|expected_payment|expected_category|expected_item_count|expected_advance_status|expected_recipient|expected_error_contains|expected_date
   # (expected_desc is used only in manual mode)
   # shellcheck disable=SC1090
   source "$suite_file"
@@ -360,7 +383,7 @@ main() {
     IFS='|' read -r \
       tc_id tc_group tc_name tc_message \
       expected_desc expected_intent expected_item expected_amount expected_payment \
-      expected_category expected_item_count expected_advance_status expected_recipient expected_error_contains \
+      expected_category expected_item_count expected_advance_status expected_recipient expected_error_contains expected_date \
       <<<"$record"
 
     if [[ -n "$ONLY_PATTERN" ]]; then
@@ -373,7 +396,7 @@ main() {
     run_case "$tc_group" "$tc_id: $tc_name" "$tc_message" "$expected_desc" \
       "$expected_intent" "$expected_item" "$expected_amount" "$expected_payment" \
       "$expected_category" "$expected_item_count" "$expected_advance_status" "$expected_recipient" \
-      "$expected_error_contains"
+      "$expected_error_contains" "$expected_date"
   done
 
   echo ""

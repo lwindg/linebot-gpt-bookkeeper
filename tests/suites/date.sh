@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+# Suite: date (date extraction behaviors)
+
+# Use v1.5 mode (default) so we can include both single-item and multi-item date cases.
+SUITE_PY_ARGS=()
+
+TEST_CASES=(
+  "TC-DATE-001|日期處理|語義化日期 - 今天|今天午餐120元現金||記帳|午餐|120|現金|餐飲|||||||"
+  "TC-DATE-002|日期處理|語義化日期 - 昨天|昨天晚餐200元狗卡||記帳|晚餐|200|台新狗卡|餐飲|||||||"
+
+  "TC-DATE-003|日期處理|數字日期格式 (11/12)|11/12 午餐120元現金||記帳|午餐|120|現金|餐飲||||||{YEAR}-11-12"
+  "TC-DATE-004|日期處理|完整日期格式|2025-11-10 咖啡50元現金||記帳|咖啡|50|現金|飲品||||||2025-11-10"
+
+  "TC-DATE-005|日期處理|多項目 + 日期|11/15 早餐80元，午餐150元，現金||記帳|||現金||2||||{YEAR}-11-15"
+)

@@ -13,11 +13,12 @@
 
 ## 🧩 Suite 分類
 - `expense`：單項/基本欄位（品項、金額、付款方式、分類、意圖/對話）
+- `date`：日期提取（語義化日期、數字日期、完整日期、多項目 + 日期）
 - `multi_expense`：多項目（項目數、共用付款方式、錯誤處理）
 - `advance_payment`：代墊（代墊狀態、對象、付款方式 NA 規則、日期、多項整合）
 
 ## 🖥️ CLI 介面（run_tests.sh）
-- `./run_tests.sh --suite <expense|multi_expense|advance_payment>`
+- `./run_tests.sh --suite <expense|date|multi_expense|advance_payment>`
 - 可選參數：
   - `--auto`：自動判斷（預設關閉）
   - `--manual`：人工判斷（預設）
