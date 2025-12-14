@@ -1,440 +1,51 @@
-#!/bin/bash
-# v1.7.0 代墊功能測試腳本 - 支援自動判斷和人工檢視
-#
-# 使用方式：
-#   ./run_v17_tests.sh          # 人工判斷模式（預設）
-#   ./run_v17_tests.sh --auto   # 自動判斷模式
-#   ./run_v17_tests.sh --help   # 顯示說明
+#!/usr/bin/env bash
+set -euo pipefail
 
-# 確保 UTF-8 編碼
-export LANG=en_US.UTF-8
-export LC_ALL=en_US.UTF-8
+# Legacy shim for v1.7 test script.
+# Delegates to the unified functional-suite runner.
 
-# 顏色定義
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+AUTO=false
+ONLY_PATTERN=""
 
-# 全域變數
-AUTO_MODE=false
-TOTAL_TESTS=0
-PASSED_TESTS=0
-FAILED_TESTS=0
-SKIPPED_TESTS=0
-FILTER_PATTERN=""
-
-# 解析參數
 while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --auto)
-            AUTO_MODE=true
-            shift
-            ;;
-        --only)
-            FILTER_PATTERN="$2"
-            shift 2
-            ;;
-        --help|-h)
-            echo "v1.7.0 代墊功能測試腳本"
-            echo ""
-            echo "使用方式："
-            echo "  ./run_v17_tests.sh                    人工判斷模式（預設）"
-            echo "  ./run_v17_tests.sh --auto             自動判斷模式"
-            echo "  ./run_v17_tests.sh --only <pattern>   只執行符合 pattern 的測試"
-            echo "  ./run_v17_tests.sh --help             顯示此說明"
-            echo ""
-            echo "選擇性測試範例："
-            echo "  ./run_v17_tests.sh --auto --only 004          # 只測 TC-V17-004"
-            echo "  ./run_v17_tests.sh --auto --only \"00[4-8]\"    # 測 004-008"
-            echo "  ./run_v17_tests.sh --auto --only 代墊          # 測所有代墊相關"
-            echo "  ./run_v17_tests.sh --auto --only 媽媽          # 測包含「媽媽」的案例"
-            echo ""
-            echo "自動判斷模式："
-            echo "  - 自動比對實際結果與預期結果"
-            echo "  - 顯示詳細的差異資訊"
-            echo "  - 統計通過/失敗測試數量"
-            echo "  - 判斷項目：品項、金額、付款方式、代墊狀態、日期"
-            echo "  - 不判斷：交易ID（每次都不同）"
-            echo ""
-            exit 0
-            ;;
-        *)
-            shift
-            ;;
-    esac
+  case "$1" in
+    --auto)
+      AUTO=true
+      shift
+      ;;
+    --only)
+      ONLY_PATTERN="${2:-}"
+      shift 2
+      ;;
+    --help|-h)
+      cat <<'EOF'
+Deprecated: use ./run_tests.sh instead.
+
+This script is a shim for backward compatibility.
+
+Usage:
+  ./run_v17_tests.sh [--auto] [--only <pattern>]
+
+Equivalent:
+  ./run_tests.sh --suite advance_payment [--auto] [--only <pattern>]
+EOF
+      exit 0
+      ;;
+    *)
+      shift
+      ;;
+  esac
 done
 
-echo "======================================================================"
-echo "🧪 v1.7.0 代墊功能測試腳本"
-echo "======================================================================"
-echo ""
-if [[ "$AUTO_MODE" == true ]]; then
-    echo "模式：🤖 自動判斷"
+args=(--suite advance_payment)
+if [[ "$AUTO" == true ]]; then
+  args+=(--auto)
 else
-    echo "模式：👤 人工判斷"
-    echo ""
-    echo "使用方式："
-    echo "  - 每個測試案例會顯示測試訊息和結果"
-    echo "  - 按 Enter 繼續下一個測試"
-    echo "  - 按 Ctrl+C 中斷測試"
+  args+=(--manual)
 fi
-if [[ -n "$FILTER_PATTERN" ]]; then
-    echo "過濾：$FILTER_PATTERN"
+if [[ -n "$ONLY_PATTERN" ]]; then
+  args+=(--only "$ONLY_PATTERN")
 fi
-echo ""
-read -p "按 Enter 開始測試..."
 
-# 從輸出提取 JSON
-extract_json() {
-    local output="$1"
-    # 提取 "完整 JSON:" 之後的內容，到 "====" 結束
-    # 使用 sed 替代 head -n -1（macOS 不支援負數）
-    echo "$output" | sed -n '/完整 JSON:/,/====/p' | tail -n +2 | sed '$d'
-}
+./run_tests.sh "${args[@]}"
 
-# 提取欄位值的輔助函數（使用 jq 解析 JSON）
-extract_field() {
-    local output="$1"
-    local field="$2"
-    local json=$(extract_json "$output")
-
-    # 檢查是否有 entries 陣列（多項目）或直接是物件（單項目）
-    local has_entries=$(echo "$json" | jq -r 'has("entries")' 2>/dev/null)
-
-    case "$field" in
-        "intent")
-            # 從 emoji 輸出提取意圖（JSON 中可能沒有）
-            echo "$output" | grep "📝 意圖:" | sed 's/.*📝 意圖: //' | tr -d '\n'
-            ;;
-        "item")
-            if [[ "$has_entries" == "true" ]]; then
-                echo "$json" | jq -r '.entries[0]["品項"] // empty'
-            else
-                echo "$json" | jq -r '.["品項"] // empty'
-            fi
-            ;;
-        "amount")
-            if [[ "$has_entries" == "true" ]]; then
-                echo "$json" | jq -r '.entries[0]["原幣金額"] // empty'
-            else
-                echo "$json" | jq -r '.["原幣金額"] // empty'
-            fi
-            ;;
-        "payment")
-            if [[ "$has_entries" == "true" ]]; then
-                echo "$json" | jq -r '.entries[0]["付款方式"] // empty'
-            else
-                echo "$json" | jq -r '.["付款方式"] // empty'
-            fi
-            ;;
-        "advance_status")
-            if [[ "$has_entries" == "true" ]]; then
-                echo "$json" | jq -r '.entries[0]["代墊狀態"] // empty'
-            else
-                echo "$json" | jq -r '.["代墊狀態"] // empty'
-            fi
-            ;;
-        "date")
-            if [[ "$has_entries" == "true" ]]; then
-                echo "$json" | jq -r '.entries[0]["日期"] // empty'
-            else
-                echo "$json" | jq -r '.["日期"] // empty'
-            fi
-            ;;
-        "item_count")
-            if [[ "$has_entries" == "true" ]]; then
-                echo "$json" | jq -r '.entries | length'
-            else
-                echo "1"
-            fi
-            ;;
-        "recipient")
-            if [[ "$has_entries" == "true" ]]; then
-                echo "$json" | jq -r '.entries[0]["收款支付對象"] // empty'
-            else
-                echo "$json" | jq -r '.["收款支付對象"] // empty'
-            fi
-            ;;
-    esac
-}
-
-# 人工判斷模式
-run_test_manual() {
-    local category="$1"
-    local test_name="$2"
-    local message="$3"
-    local description="$4"
-
-    TOTAL_TESTS=$((TOTAL_TESTS + 1))
-
-    echo ""
-    echo "======================================================================"
-    echo -e "${BLUE}[$category]${NC} $test_name"
-    echo "======================================================================"
-    echo ""
-    echo "📩 測試訊息："
-    echo "   $message"
-    echo ""
-    echo "📝 預期結果："
-    echo "   $description"
-    echo ""
-    echo "🔍 實際結果："
-    echo "----------------------------------------------------------------------"
-
-    # 執行測試
-    python test_local.py "$message" 2>&1 | grep -E "(📝|🛍️|💰|💳|📅|💸|👤|📊|💬)" | head -20
-
-    echo "----------------------------------------------------------------------"
-    echo ""
-    read -p "按 Enter 繼續下一個測試..."
-}
-
-# 自動判斷模式
-run_test_auto() {
-    local category="$1"
-    local test_name="$2"
-    local message="$3"
-    local description="$4"
-    local expected_intent="$5"
-    local expected_item="$6"
-    local expected_amount="$7"
-    local expected_payment="$8"
-    local expected_advance="$9"
-    local expected_date="${10}"
-    local expected_item_count="${11}"
-    local expected_recipient="${12}"
-
-    TOTAL_TESTS=$((TOTAL_TESTS + 1))
-
-    echo ""
-    echo "======================================================================"
-    echo -e "${BLUE}[$category]${NC} $test_name"
-    echo "======================================================================"
-    echo "📩 測試訊息: $message"
-
-    # 執行測試
-    local output=$(python test_local.py "$message" 2>&1)
-
-    # 提取實際值（使用 jq 解析 JSON）
-    local actual_intent=$(extract_field "$output" "intent")
-    local actual_item=$(extract_field "$output" "item")
-    local actual_amount=$(extract_field "$output" "amount")
-    local actual_payment=$(extract_field "$output" "payment")
-    local actual_advance=$(extract_field "$output" "advance_status")
-    local actual_date=$(extract_field "$output" "date")
-    local actual_item_count=$(extract_field "$output" "item_count")
-    local actual_recipient=$(extract_field "$output" "recipient")
-
-    # 判斷結果並即時輸出（避免編碼問題）
-    local test_passed=true
-    local failures=()
-
-    # 檢查各欄位
-    [[ -n "$expected_intent" && "$actual_intent" != "$expected_intent" ]] && test_passed=false && failures+=("意圖: $expected_intent → $actual_intent")
-    [[ -n "$expected_item" && "$actual_item" != "$expected_item" ]] && test_passed=false && failures+=("品項: $expected_item → $actual_item")
-    [[ -n "$expected_amount" && "$actual_amount" != "$expected_amount" ]] && test_passed=false && failures+=("金額: $expected_amount → $actual_amount")
-    [[ -n "$expected_payment" && "$actual_payment" != "$expected_payment" ]] && test_passed=false && failures+=("付款: $expected_payment → $actual_payment")
-    [[ -n "$expected_advance" && "$actual_advance" != "$expected_advance" ]] && test_passed=false && failures+=("代墊: $expected_advance → $actual_advance")
-    [[ -n "$expected_date" && "$actual_date" != "$expected_date" ]] && test_passed=false && failures+=("日期: $expected_date → $actual_date")
-    [[ -n "$expected_item_count" && "$actual_item_count" != "$expected_item_count" ]] && test_passed=false && failures+=("數量: $expected_item_count → $actual_item_count")
-    [[ -n "$expected_recipient" && "$actual_recipient" != "$expected_recipient" ]] && test_passed=false && failures+=("對象: $expected_recipient → $actual_recipient")
-
-    # 顯示結果
-    if [[ "$test_passed" == true ]]; then
-        echo -e "${GREEN}✅ PASS${NC}"
-        PASSED_TESTS=$((PASSED_TESTS + 1))
-    else
-        echo -e "${RED}❌ FAIL${NC}"
-        for f in "${failures[@]}"; do
-            echo "  ❌ $f"
-        done
-        FAILED_TESTS=$((FAILED_TESTS + 1))
-    fi
-}
-
-# 判斷執行哪種模式
-run_test() {
-    local test_name="$2"
-    local message="$3"
-
-    # 檢查過濾條件
-    if [[ -n "$FILTER_PATTERN" ]]; then
-        if ! echo "$test_name $message" | grep -qE "$FILTER_PATTERN"; then
-            # 不符合過濾條件，跳過
-            return
-        fi
-    fi
-
-    if [[ "$AUTO_MODE" == true ]]; then
-        run_test_auto "$@"
-    else
-        run_test_manual "$1" "$2" "$3" "$4"
-    fi
-}
-
-# ============================================================
-# 代墊功能測試（代墊給他人）
-# ============================================================
-
-run_test "代墊功能" "TC-V17-001: 基本代墊 - 妹" \
-    "代妹購買Pizza兌換券979元現金" \
-    "✅ 品項: Pizza兌換券, 代墊狀態: 代墊, 對象: 妹" \
-    "記帳" "Pizza兌換券" "979.0" "現金" "代墊" "" "" "妹"
-
-run_test "代墊功能" "TC-V17-002: 代墊 - 同事計程車費" \
-    "幫同事墊付計程車費100元現金" \
-    "✅ 品項: 計程車費, 代墊狀態: 代墊, 對象: 同事" \
-    "記帳" "計程車費" "100.0" "現金" "代墊" "" "" "同事"
-
-run_test "代墊功能" "TC-V17-003: 代墊 - 朋友午餐刷卡" \
-    "代朋友買午餐120元刷狗卡" \
-    "✅ 品項: 午餐, 代墊狀態: 代墊, 付款: 台新狗卡, 對象: 朋友" \
-    "記帳" "午餐" "120.0" "台新狗卡" "代墊" "" "" "朋友"
-
-run_test "代墊功能" "TC-V17-004: 代購咖啡 - Line轉帳" \
-    "代購咖啡給三位同事150元Line轉帳" \
-    "✅ 品項: 咖啡, 代墊狀態: 代墊, 付款: Line 轉帳, 對象: 同事" \
-    "記帳" "咖啡" "150.0" "Line 轉帳" "代墊" "" "" "同事"
-
-# ============================================================
-# 需支付功能測試（欠他人錢）
-# ============================================================
-
-run_test "需支付功能" "TC-V17-005: 基本需支付 - 弟代訂" \
-    "弟代訂日本白馬房間10000元" \
-    "✅ 品項: 日本白馬房間, 代墊狀態: 需支付, 付款: NA, 對象: 弟" \
-    "記帳" "日本白馬房間" "10000.0" "NA" "需支付" "" "" "弟"
-
-run_test "需支付功能" "TC-V17-006: 朋友幫買演唱會門票" \
-    "朋友幫我買演唱會門票3500元" \
-    "✅ 品項: 演唱會門票, 代墊狀態: 需支付, 付款: NA, 對象: 朋友" \
-    "記帳" "演唱會門票" "3500.0" "NA" "需支付" "" "" "朋友"
-
-run_test "需支付功能" "TC-V17-007: 同事先墊午餐" \
-    "同事先墊午餐費150元" \
-    "✅ 品項: 午餐費, 代墊狀態: 需支付, 對象: 同事" \
-    "記帳" "午餐費" "150.0" "NA" "需支付" "" "" "同事"
-
-# ============================================================
-# 不索取功能測試（代墊但不收錢）
-# ============================================================
-
-run_test "不索取功能" "TC-V17-008: 幫媽媽買藥不用還" \
-    "幫媽媽買藥500元現金，不用還" \
-    "✅ 品項: 藥, 代墊狀態: 不索取, 付款: 現金, 對象: 媽媽" \
-    "記帳" "藥" "500.0" "現金" "不索取" "" "" "媽媽"
-
-run_test "不索取功能" "TC-V17-009: 幫老婆付停車費不索取" \
-    "幫老婆付停車費200元現金不索取" \
-    "✅ 品項: 停車費, 代墊狀態: 不索取, 對象: 老婆" \
-    "記帳" "停車費" "200.0" "現金" "不索取" "" "" "老婆"
-
-# ============================================================
-# 多項目 + 代墊功能整合測試
-# ============================================================
-
-run_test "多項目代墊" "TC-V17-010: 部分項目代墊" \
-    "早餐80元，午餐150元幫同事代墊，現金" \
-    "✅ 2個項目，第2個項目為代墊" \
-    "記帳" "" "" "現金" "" "" "2"
-
-# ============================================================
-# 日期提取功能測試（v1.7.0 修復）
-# ============================================================
-
-run_test "日期提取" "TC-V17-011: MM/DD 格式" \
-    "11/12 午餐120元現金" \
-    "✅ 日期: 2025-11-12, 交易ID: 20251112-120000" \
-    "記帳" "午餐" "120.0" "現金" "" "2025-11-12" ""
-
-run_test "日期提取" "TC-V17-012: 昨天" \
-    "昨天晚餐200元狗卡" \
-    "✅ 日期: 昨天的日期, 交易ID使用晚餐時間(18:00)" \
-    "記帳" "晚餐" "200.0" "台新狗卡" "" "" ""
-
-run_test "日期提取" "TC-V17-013: 多項目 + 日期" \
-    "11/15 早餐80元，午餐150元，現金" \
-    "✅ 日期: 2025-11-15, 2個項目" \
-    "記帳" "" "" "現金" "" "2025-11-15" "2"
-
-run_test "日期提取" "TC-V17-014: 日期 + 代墊" \
-    "11/12 代妹購買Pizza兌換券979元現金" \
-    "✅ 日期: 2025-11-12, 代墊狀態: 代墊, 對象: 妹" \
-    "記帳" "Pizza兌換券" "979.0" "現金" "代墊" "2025-11-12" "" "妹"
-
-# ============================================================
-# 複合品項測試（v1.7.0 修復）
-# ============================================================
-
-run_test "複合品項" "TC-V17-015: 三明治和咖啡" \
-    "三明治和咖啡80元現金" \
-    "✅ 品項保持完整: 三明治和咖啡" \
-    "記帳" "三明治和咖啡" "80.0" "現金" "" "" ""
-
-run_test "複合品項" "TC-V17-016: 蛋糕跟飲料" \
-    "蛋糕跟飲料150元狗卡" \
-    "✅ 品項保持完整: 蛋糕跟飲料" \
-    "記帳" "蛋糕跟飲料" "150.0" "台新狗卡" "" "" ""
-
-run_test "複合品項" "TC-V17-017: 咖啡與三明治" \
-    "咖啡與三明治100元Line" \
-    "✅ 品項保持完整: 咖啡與三明治" \
-    "記帳" "咖啡與三明治" "100.0" "Line 轉帳" "" "" ""
-
-run_test "複合品項" "TC-V17-018: 漢堡加薯條" \
-    "漢堡加薯條120元現金" \
-    "✅ 品項保持完整: 漢堡加薯條" \
-    "記帳" "漢堡加薯條" "120.0" "現金" "" "" ""
-
-# ============================================================
-# 向後相容性測試
-# ============================================================
-
-run_test "向後相容" "TC-V17-019: 一般記帳無代墊" \
-    "午餐120元現金" \
-    "✅ 品項: 午餐, 無代墊狀態" \
-    "記帳" "午餐" "120.0" "現金" "" "" ""
-
-run_test "向後相容" "TC-V17-020: 英文品項" \
-    "WSJ 499 大戶" \
-    "✅ 品項: WSJ, 付款: 大戶信用卡" \
-    "記帳" "WSJ" "499.0" "大戶信用卡" "" "" ""
-
-run_test "向後相容" "TC-V17-021: 金額無貨幣符號" \
-    "早餐 21 大戶" \
-    "✅ 品項: 早餐, 金額: 21" \
-    "記帳" "早餐" "21.0" "大戶信用卡" "" "" ""
-
-# ============================================================
-# 顯示測試統計
-# ============================================================
-
-echo ""
-echo "======================================================================"
-echo "📊 測試統計"
-echo "======================================================================"
-echo "總測試數: $TOTAL_TESTS"
-
-if [[ "$AUTO_MODE" == true ]]; then
-    echo -e "${GREEN}通過: $PASSED_TESTS${NC}"
-    echo -e "${RED}失敗: $FAILED_TESTS${NC}"
-    echo -e "${YELLOW}跳過: $SKIPPED_TESTS${NC}"
-    echo ""
-
-    if [[ $FAILED_TESTS -eq 0 ]]; then
-        echo -e "${GREEN}🎉 所有測試通過！${NC}"
-        exit 0
-    else
-        echo -e "${RED}⚠️  有測試失敗，請檢查上方詳細資訊${NC}"
-        exit 1
-    fi
-else
-    echo ""
-    echo "✅ 測試完成！"
-    echo ""
-    echo "人工判斷模式已完成所有測試。"
-    echo "如需自動判斷結果，請使用："
-    echo "  ./run_v17_tests.sh --auto"
-fi
