@@ -40,6 +40,14 @@
 
 ---
 
+## Git 工作流程
+
+- 分支：`<action>/<description>`（例：`feat/integrate-line`）
+- 提交：`<action>(module): <message>`（例：`fix(linebot): handle empty messages`）
+- actions：`feat` `fix` `refactor` `docs` `test` `style` `chore`
+
+---
+
 ## Spec Kit 流程
 
 **暫時狀態**：Spec Kit 工具目前無法使用，開發期間可暫時跳過 `/speckit.*` 指令與 `specify check`；待工具恢復後再回到以下流程。
@@ -51,19 +59,7 @@
 5. Implement：執行開發（/speckit.implement）
 6. Analyze：驗證一致性與品質（/speckit.analyze）
 
-**恢復後規範**：工具恢復可用時，**必須**在功能視為就緒、提交或合併之前執行 `specify check`。
-
----
-
-## Git 工作流程
-
-- 分支：`<action>/<description>`（例：`feat/integrate-line`）
-- 提交：`<action>(module): <message>`（例：`fix(linebot): handle empty messages`）
-- actions：`feat` `fix` `refactor` `docs` `test` `style` `chore`
-
----
-
-## 快速參考
+### 快速參考
 
 - `/speckit.constitution`：憲章
 - `/speckit.specify`：功能規格
@@ -71,3 +67,6 @@
 - `/speckit.tasks`：任務清單
 - `/speckit.implement`：開發執行
 - `/speckit.analyze`：一致性與品質檢查
+
+**恢復後規範**：工具恢復可用時，**必須**在功能視為就緒、提交或合併之前執行 `specify check`。
+
