@@ -1,76 +1,76 @@
-# Test Script Integration Implementation Plan (Functional Suites)
+# 測試腳本整合實作計畫（功能分類）
 
-## Goals
-- Consolidate the existing version-split scripts (`run_v*_tests.sh`) into a single entrypoint driven by functional suites.
-- Provide a consistent CLI and auto/manual modes to support regression testing during Prompt/Schema refactors.
-- Standardize parsing on JSON via `jq` as a required dependency (fail fast with install instructions if missing).
+## 🎯 目標
+- 將現有 `run_v*_tests.sh`（版本分流）整合成單一入口，改以功能分類 suite 執行。
+- 提供一致的 CLI 介面與自動/人工模式，作為後續 Prompt/Schema 重構的回歸驗證基礎。
+- 解析策略統一：以 `jq` 解析 JSON 為必備依賴；缺少 `jq` 時直接報錯並提示安裝。
 
-## Scope
-- Add: `run_tests.sh` (single entrypoint)
-- Add: suite case files (functional grouping)
-- Change: `run_v1_tests.sh` / `run_v15_tests.sh` / `run_v17_tests.sh` into shims that delegate to `run_tests.sh`
-- Do not change: the existing test cases (messages and expectations remain identical initially to establish a baseline)
+## ✅ 範圍
+- 新增：`run_tests.sh`（統一入口）
+- 新增：suite 案例資料檔（功能分類）
+- 調整：`run_v1_tests.sh` / `run_v15_tests.sh` / `run_v17_tests.sh` 轉為 shim（轉呼叫 `run_tests.sh`）
+- 不改：既有案例內容（訊息與期望值不變，先建立 baseline；後續再依需求調整案例分組）
 
-## Suite Mapping
-- `expense`: single-item / basic fields (item, amount, payment method, category, intent/conversation)
-- `multi_expense`: multi-item behavior (item count, shared payment method, error handling)
-- `advance_payment`: advance-payment behaviors (status, recipient, NA payment rules, date extraction, multi-item integration)
+## 🧩 Suite 分類
+- `expense`：單項/基本欄位（品項、金額、付款方式、分類、意圖/對話）
+- `multi_expense`：多項目（項目數、共用付款方式、錯誤處理）
+- `advance_payment`：代墊（代墊狀態、對象、付款方式 NA 規則、日期、多項整合）
 
-## CLI (run_tests.sh)
+## 🖥️ CLI 介面（run_tests.sh）
 - `./run_tests.sh --suite <expense|multi_expense|advance_payment>`
-- Optional flags:
-  - `--auto` (default: off)
-  - `--manual` (default)
-  - `--only <pattern>` (regex filter on test id/name/message)
-  - `--help`
+- 可選參數：
+  - `--auto`：自動判斷（預設關閉）
+  - `--manual`：人工判斷（預設）
+  - `--only <pattern>`：只執行名稱或訊息符合的測試（regex）
+  - `--help`：顯示說明
 
-## Dependencies & Failure Strategy
-- Required: `jq`
-  - Startup check: if `command -v jq` fails, exit (code 2) with install hints:
-    - macOS: `brew install jq`
-    - Ubuntu/Debian: `sudo apt-get install -y jq`
-- No grep fallback (avoid inconsistent parsing and false positives).
+## 🔧 依賴與失敗策略
+- 必備：`jq`
+  - 啟動時檢查：若 `command -v jq` 不存在 → 直接退出（exit 2），提示：
+    - macOS：`brew install jq`
+    - Ubuntu/Debian：`sudo apt-get install -y jq`
+- 不再提供 grep fallback（避免解析不一致/誤判）。
 
-## Data Layout (Proposed)
+## 🧱 資料結構與檔案佈局（建議）
 - `tests/suites/expense.sh`
 - `tests/suites/multi_expense.sh`
 - `tests/suites/advance_payment.sh`
 
-Each suite file only defines test cases (data), e.g. (concept):
+每個 suite 檔案僅負責「列出案例」，例如（概念）：
 - `TEST_CASES+=("TC-EXP-001|Category|Description|Message|ExpectedIntent|...")`
 
-All parsing/comparison logic lives in `run_tests.sh`, not in suite files.
+由 `run_tests.sh` 解析並執行，不在 suite 檔案中放比較/解析邏輯。
 
-## Unified Field Abstraction & Comparison Rules
-- Common fields:
-  - `intent` (from emoji output, or derived from JSON when available)
-  - `item_count` (entries/items length)
-  - `payment` (shared or single payment)
-  - `item` (single item or entries[0])
-  - `amount` (numeric)
-  - `category` (allow partial match where appropriate)
-  - `advance_status`
-  - `recipient`
-  - `error_message` (substring match)
-- Not compared:
-  - `transaction_id` (non-deterministic)
+## 🧪 欄位抽象與比對規則（統一）
+- 共同抽象欄位：
+  - `intent`：記帳/對話/錯誤（由 emoji 輸出抽取，避免依賴 JSON 欄位形狀）
+  - `item_count`：項目數（多項目為 entries/items 長度）
+  - `payment`：付款方式（共用或單筆）
+  - `item`：品項（單筆或 entries[0]）
+  - `amount`：原幣金額（數字）
+  - `category`：分類（允許部分匹配或規則化比較）
+  - `advance_status`：代墊狀態
+  - `recipient`：收款支付對象
+  - `error_message`：錯誤訊息（包含比對）
+- 不比對：
+  - `transaction_id`（非決定性）
 
-## Legacy Script Shim Strategy
-- Keep filenames to preserve usage patterns, but delegate:
-  - `run_v1_tests.sh` → `./run_tests.sh --suite expense` (translate `--auto`)
+## 🧩 舊腳本 shim 策略
+- 保留原檔名避免使用者習慣斷裂，但內容改為轉呼叫：
+  - `run_v1_tests.sh` → `./run_tests.sh --suite expense`（轉譯 `--auto`）
   - `run_v15_tests.sh` → `./run_tests.sh --suite multi_expense`
-  - `run_v17_tests.sh` → `./run_tests.sh --suite advance_payment` (translate `--only`)
-- Shims should not embed cases or parsing logic.
+  - `run_v17_tests.sh` → `./run_tests.sh --suite advance_payment`（轉譯 `--only`）
+- shim 本身不再內建案例與解析邏輯。
 
-## Baseline Verification
-1) Bring up the new entrypoint with a small smoke subset (1–2 cases per suite) to validate CLI/parsing/stats.
-2) After migrating all cases, run:
+## ✅ 驗證方式（baseline）
+1) 新入口先只跑少量案例（每個 suite 1~2 條）驗證 CLI/解析/統計。
+2) 搬移全部案例後，分別執行：
    - `./run_tests.sh --suite expense --auto`
    - `./run_tests.sh --suite multi_expense --auto`
    - `./run_tests.sh --suite advance_payment --auto --only <pattern>`
-3) Compare against the legacy scripts using the same field abstraction (ignoring transaction ids).
+3) 與舊腳本結果對照（以抽象欄位為準），確保 baseline 一致。
 
-## Risks & Mitigations
-- `jq` missing → fail fast with clear install instructions.
-- Non-deterministic GPT output → only compare stable fields; avoid transaction ids.
-- Output format differences (entries vs single, shared vs single payment) → handle centrally in the abstraction layer.
+## ⚠️ 風險與緩解
+- `jq` 缺失導致無法跑：用啟動檢查與明確安裝指引降低摩擦。
+- GPT 回應非決定性：baseline 先只鎖定可比對欄位，避免比對交易ID等非穩定欄位。
+- 既有輸出格式差異：抽象層集中處理（entries vs 單筆、共用付款 vs 單筆付款）。
