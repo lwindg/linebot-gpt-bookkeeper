@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.env
+.venv/
+site-packages/
+
+# Node / Frontend
+node_modules/
+dist/
+build/
+
+# Go
+bin/
+vendor/
+
+# Logs
+*.log
+*.out
+*.err
+
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Misc
+.DS_Store
+.idea/
+.vscode/
+
+# Examples
+ai-bot.py

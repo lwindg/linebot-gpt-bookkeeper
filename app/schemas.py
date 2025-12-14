@@ -71,13 +71,29 @@ MULTI_BOOKKEEPING_SCHEMA = {
                     "additionalProperties": False
                 }
             },
-            "update_field": {
-                "type": "string",
-                "description": "Field name to update (for update_last_entry)"
-            },
-            "update_value": {
-                "type": "string",
-                "description": "New value for the field (for update_last_entry)"
+            "fields_to_update": {
+                "type": "object",
+                "description": "Fields to update (for update_last_entry)",
+                "properties": {
+                    "品項": {
+                        "type": "string",
+                        "description": "New item name"
+                    },
+                    "分類": {
+                        "type": "string",
+                        "description": "New category"
+                    },
+                    "專案": {
+                        "type": "string",
+                        "description": "New project"
+                    },
+                    "原幣金額": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "New amount (must be >= 0)"
+                    }
+                },
+                "additionalProperties": False
             },
             "response": {
                 "type": "string",

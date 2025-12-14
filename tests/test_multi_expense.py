@@ -36,7 +36,11 @@ class TestMultiExpenseSingleItem:
       "品項": "午餐",
       "原幣金額": 120,
       "分類": "家庭/餐飲/午餐",
-      "必要性": "必要日常支出"
+      "必要性": "必要日常支出",
+      "原幣別": "TWD",
+      "明細說明": "",
+      "代墊狀態": "無",
+      "收款支付對象": ""
     }
   ]
 }
@@ -65,13 +69,17 @@ class TestMultiExpenseSingleItem:
         mock_response.choices[0].message.content = '''
 {
   "intent": "multi_bookkeeping",
+  "payment_method": "台新狗卡",
   "items": [
     {
       "品項": "點心",
+      "原幣別": "TWD",
       "原幣金額": 200,
-      "付款方式": "台新狗卡",
       "分類": "家庭/點心",
-      "必要性": "想吃想買但合理"
+      "必要性": "想吃想買但合理",
+      "明細說明": "",
+      "代墊狀態": "無",
+      "收款支付對象": ""
     }
   ]
 }
@@ -97,13 +105,17 @@ class TestMultiExpenseSingleItem:
         mock_response.choices[0].message.content = '''
 {
   "intent": "multi_bookkeeping",
+  "payment_method": "Line 轉帳",
   "items": [
     {
       "品項": "咖啡",
+      "原幣別": "TWD",
       "原幣金額": 50,
-      "付款方式": "Line 轉帳",
       "分類": "家庭/飲品/咖啡",
-      "必要性": "想吃想買但合理"
+      "必要性": "想吃想買但合理",
+      "明細說明": "",
+      "代墊狀態": "無",
+      "收款支付對象": ""
     }
   ]
 }
@@ -132,20 +144,27 @@ class TestMultiExpenseMultipleItems:
         mock_response.choices[0].message.content = '''
 {
   "intent": "multi_bookkeeping",
+  "payment_method": "現金",
   "items": [
     {
       "品項": "早餐",
+      "原幣別": "TWD",
       "原幣金額": 80,
-      "付款方式": "現金",
       "分類": "家庭/餐飲/早餐",
-      "必要性": "必要日常支出"
+      "必要性": "必要日常支出",
+      "明細說明": "",
+      "代墊狀態": "無",
+      "收款支付對象": ""
     },
     {
       "品項": "午餐",
+      "原幣別": "TWD",
       "原幣金額": 150,
-      "付款方式": "現金",
       "分類": "家庭/餐飲/午餐",
-      "必要性": "必要日常支出"
+      "必要性": "必要日常支出",
+      "明細說明": "",
+      "代墊狀態": "無",
+      "收款支付對象": ""
     }
   ]
 }
@@ -166,9 +185,13 @@ class TestMultiExpenseMultipleItems:
         # 驗證共用付款方式
         assert result.entries[0].付款方式 == result.entries[1].付款方式 == "現金"
 
-        # 驗證共用交易ID
-        assert result.entries[0].交易ID == result.entries[1].交易ID
+        # 驗證獨立交易ID（v1.9.0：每個項目有獨立ID）
+        assert result.entries[0].交易ID != result.entries[1].交易ID
         assert result.entries[0].交易ID is not None
+        assert result.entries[1].交易ID is not None
+        # 驗證交易ID格式（應該有序號後綴）
+        assert result.entries[0].交易ID.endswith('-01')
+        assert result.entries[1].交易ID.endswith('-02')
 
     @patch('app.gpt_processor.OpenAI')
     def test_payment_method_at_beginning(self, mock_openai):
@@ -181,20 +204,27 @@ class TestMultiExpenseMultipleItems:
         mock_response.choices[0].message.content = '''
 {
   "intent": "multi_bookkeeping",
+  "payment_method": "台新狗卡",
   "items": [
     {
       "品項": "咖啡",
+      "原幣別": "TWD",
       "原幣金額": 50,
-      "付款方式": "台新狗卡",
       "分類": "家庭/飲品/咖啡",
-      "必要性": "想吃想買但合理"
+      "必要性": "想吃想買但合理",
+      "明細說明": "",
+      "代墊狀態": "無",
+      "收款支付對象": ""
     },
     {
       "品項": "三明治",
+      "原幣別": "TWD",
       "原幣金額": 35,
-      "付款方式": "台新狗卡",
       "分類": "家庭/餐飲/早餐",
-      "必要性": "必要日常支出"
+      "必要性": "必要日常支出",
+      "明細說明": "",
+      "代墊狀態": "無",
+      "收款支付對象": ""
     }
   ]
 }
@@ -218,27 +248,37 @@ class TestMultiExpenseMultipleItems:
         mock_response.choices[0].message.content = '''
 {
   "intent": "multi_bookkeeping",
+  "payment_method": "現金",
   "items": [
     {
       "品項": "早餐",
       "原幣金額": 50,
-      "付款方式": "現金",
       "分類": "家庭/餐飲/早餐",
-      "必要性": "必要日常支出"
+      "必要性": "必要日常支出",
+      "原幣別": "TWD",
+      "明細說明": "",
+      "代墊狀態": "無",
+      "收款支付對象": ""
     },
     {
       "品項": "午餐",
       "原幣金額": 120,
-      "付款方式": "現金",
       "分類": "家庭/餐飲/午餐",
-      "必要性": "必要日常支出"
+      "必要性": "必要日常支出",
+      "原幣別": "TWD",
+      "明細說明": "",
+      "代墊狀態": "無",
+      "收款支付對象": ""
     },
     {
       "品項": "晚餐",
       "原幣金額": 200,
-      "付款方式": "現金",
       "分類": "家庭/餐飲/晚餐",
-      "必要性": "必要日常支出"
+      "必要性": "必要日常支出",
+      "原幣別": "TWD",
+      "明細說明": "",
+      "代墊狀態": "無",
+      "收款支付對象": ""
     }
   ]
 }
@@ -253,9 +293,10 @@ class TestMultiExpenseMultipleItems:
         # 驗證所有項目共用付款方式
         assert all(e.付款方式 == "現金" for e in result.entries)
 
-        # 驗證所有項目共用交易ID
+        # 驗證獨立交易ID（v1.9.0：每個項目有獨立ID）
         transaction_ids = [e.交易ID for e in result.entries]
-        assert len(set(transaction_ids)) == 1  # 所有ID相同
+        assert len(set(transaction_ids)) == 3  # 每個項目ID不同
+        assert all(tid.endswith(f'-{str(i+1).zfill(2)}') for i, tid in enumerate(transaction_ids))
 
     @patch('app.gpt_processor.OpenAI')
     def test_four_items_or_more(self, mock_openai):
@@ -268,11 +309,12 @@ class TestMultiExpenseMultipleItems:
         mock_response.choices[0].message.content = '''
 {
   "intent": "multi_bookkeeping",
+  "payment_method": "現金",
   "items": [
-    {"品項": "咖啡", "原幣金額": 50, "付款方式": "現金", "分類": "家庭/飲品/咖啡", "必要性": "想吃想買但合理"},
-    {"品項": "三明治", "原幣金額": 35, "付款方式": "現金", "分類": "家庭/餐飲/早餐", "必要性": "必要日常支出"},
-    {"品項": "沙拉", "原幣金額": 80, "付款方式": "現金", "分類": "家庭/餐飲", "必要性": "必要日常支出"},
-    {"品項": "果汁", "原幣金額": 40, "付款方式": "現金", "分類": "家庭/飲品", "必要性": "想吃想買但合理"}
+    {"品項": "咖啡", "原幣別": "TWD", "原幣金額": 50, "分類": "家庭/飲品/咖啡", "必要性": "想吃想買但合理", "明細說明": "", "代墊狀態": "無", "收款支付對象": ""},
+    {"品項": "三明治", "原幣別": "TWD", "原幣金額": 35, "分類": "家庭/餐飲/早餐", "必要性": "必要日常支出", "明細說明": "", "代墊狀態": "無", "收款支付對象": ""},
+    {"品項": "沙拉", "原幣別": "TWD", "原幣金額": 80, "分類": "家庭/餐飲", "必要性": "必要日常支出", "明細說明": "", "代墊狀態": "無", "收款支付對象": ""},
+    {"品項": "果汁", "原幣別": "TWD", "原幣金額": 40, "分類": "家庭/飲品", "必要性": "想吃想買但合理", "明細說明": "", "代墊狀態": "無", "收款支付對象": ""}
   ]
 }
 '''
@@ -284,9 +326,9 @@ class TestMultiExpenseMultipleItems:
         assert len(result.entries) == 4
         assert all(e.付款方式 == "現金" for e in result.entries)
 
-        # 驗證所有項目共用交易ID
+        # 驗證獨立交易ID（v1.9.0：每個項目有獨立ID）
         transaction_ids = [e.交易ID for e in result.entries]
-        assert len(set(transaction_ids)) == 1
+        assert len(set(transaction_ids)) == 4  # 每個項目ID不同
 
 
 class TestMultiExpenseSharedValidation:
@@ -303,9 +345,10 @@ class TestMultiExpenseSharedValidation:
         mock_response.choices[0].message.content = '''
 {
   "intent": "multi_bookkeeping",
+  "payment_method": "現金",
   "items": [
-    {"品項": "早餐", "原幣金額": 80, "付款方式": "現金", "分類": "家庭/餐飲/早餐", "必要性": "必要日常支出"},
-    {"品項": "午餐", "原幣金額": 150, "付款方式": "現金", "分類": "家庭/餐飲/午餐", "必要性": "必要日常支出"}
+    {"品項": "早餐", "原幣別": "TWD", "原幣金額": 80, "分類": "家庭/餐飲/早餐", "必要性": "必要日常支出", "明細說明": "", "代墊狀態": "無", "收款支付對象": ""},
+    {"品項": "午餐", "原幣別": "TWD", "原幣金額": 150, "分類": "家庭/餐飲/午餐", "必要性": "必要日常支出", "明細說明": "", "代墊狀態": "無", "收款支付對象": ""}
   ]
 }
 '''
@@ -313,15 +356,23 @@ class TestMultiExpenseSharedValidation:
 
         result = process_multi_expense("早餐80元，午餐150元，現金")
 
-        # 驗證交易ID格式 YYYYMMDD-HHMMSS
-        assert result.entries[0].交易ID == result.entries[1].交易ID
-        assert "-" in result.entries[0].交易ID
+        # v1.9.0: 驗證每個項目有獨立的交易ID（批次ID + 序號）
+        assert result.entries[0].交易ID != result.entries[1].交易ID
+        assert result.entries[0].交易ID.endswith("-01")
+        assert result.entries[1].交易ID.endswith("-02")
 
-        # 驗證交易ID格式
+        # 驗證批次ID相同（去掉序號部分）
+        batch_id_1 = result.entries[0].交易ID.rsplit('-', 1)[0]
+        batch_id_2 = result.entries[1].交易ID.rsplit('-', 1)[0]
+        assert batch_id_1 == batch_id_2
+
+        # 驗證交易ID格式 YYYYMMDD-HHMMSS-NN
         transaction_id = result.entries[0].交易ID
-        date_part, time_part = transaction_id.split("-")
-        assert len(date_part) == 8  # YYYYMMDD
-        assert len(time_part) == 6  # HHMMSS
+        parts = transaction_id.split("-")
+        assert len(parts) == 3  # 日期-時間-序號
+        assert len(parts[0]) == 8  # YYYYMMDD
+        assert len(parts[1]) == 6  # HHMMSS
+        assert len(parts[2]) == 2  # NN (序號)
 
     @patch('app.gpt_processor.OpenAI')
     def test_shared_date(self, mock_openai):
@@ -334,9 +385,10 @@ class TestMultiExpenseSharedValidation:
         mock_response.choices[0].message.content = '''
 {
   "intent": "multi_bookkeeping",
+  "payment_method": "現金",
   "items": [
-    {"品項": "早餐", "原幣金額": 80, "付款方式": "現金", "分類": "家庭/餐飲/早餐", "必要性": "必要日常支出"},
-    {"品項": "午餐", "原幣金額": 150, "付款方式": "現金", "分類": "家庭/餐飲/午餐", "必要性": "必要日常支出"}
+    {"品項": "早餐", "原幣別": "TWD", "原幣金額": 80, "分類": "家庭/餐飲/早餐", "必要性": "必要日常支出", "明細說明": "", "代墊狀態": "無", "收款支付對象": ""},
+    {"品項": "午餐", "原幣別": "TWD", "原幣金額": 150, "分類": "家庭/餐飲/午餐", "必要性": "必要日常支出", "明細說明": "", "代墊狀態": "無", "收款支付對象": ""}
   ]
 }
 '''
@@ -362,9 +414,10 @@ class TestMultiExpenseSharedValidation:
         mock_response.choices[0].message.content = '''
 {
   "intent": "multi_bookkeeping",
+  "payment_method": "現金",
   "items": [
-    {"品項": "早餐", "原幣金額": 80, "付款方式": "現金", "分類": "家庭/餐飲/早餐", "必要性": "必要日常支出"},
-    {"品項": "午餐", "原幣金額": 150, "付款方式": "現金", "分類": "家庭/餐飲/午餐", "必要性": "必要日常支出"}
+    {"品項": "早餐", "原幣別": "TWD", "原幣金額": 80, "分類": "家庭/餐飲/早餐", "必要性": "必要日常支出", "明細說明": "", "代墊狀態": "無", "收款支付對象": ""},
+    {"品項": "午餐", "原幣別": "TWD", "原幣金額": 150, "分類": "家庭/餐飲/午餐", "必要性": "必要日常支出", "明細說明": "", "代墊狀態": "無", "收款支付對象": ""}
   ]
 }
 '''
@@ -372,9 +425,11 @@ class TestMultiExpenseSharedValidation:
 
         result = process_multi_expense("早餐80元，午餐150元，現金")
 
-        # 驗證附註標記
+        # v1.9.0: 驗證附註標記（包含批次ID）
         assert "多項目支出 1/2" in result.entries[0].附註
         assert "多項目支出 2/2" in result.entries[1].附註
+        assert "批次ID:" in result.entries[0].附註
+        assert "批次ID:" in result.entries[1].附註
 
 
 class TestMultiExpenseErrorHandling:
@@ -433,13 +488,17 @@ class TestMultiExpenseErrorHandling:
         mock_response.choices[0].message.content = '''
 {
   "intent": "multi_bookkeeping",
+  "payment_method": "現金",
   "items": [
     {
       "品項": "早餐",
       "原幣金額": 80,
-      "付款方式": "現金",
       "分類": "家庭/餐飲/早餐",
-      "必要性": "必要日常支出"
+      "必要性": "必要日常支出",
+      "原幣別": "TWD",
+      "明細說明": "",
+      "代墊狀態": "無",
+      "收款支付對象": ""
     }
   ]
 }
@@ -557,22 +616,27 @@ class TestMultiExpenseComplexScenarios:
         mock_response.choices[0].message.content = '''
 {
   "intent": "multi_bookkeeping",
+  "payment_method": "現金",
   "items": [
     {
       "品項": "早餐",
       "原幣金額": 50,
-      "付款方式": "現金",
       "分類": "家庭/餐飲/早餐",
       "必要性": "必要日常支出",
-      "明細說明": "開飯"
+      "明細說明": "開飯",
+      "原幣別": "TWD",
+      "代墊狀態": "無",
+      "收款支付對象": ""
     },
     {
       "品項": "咖啡",
       "原幣金額": 45,
-      "付款方式": "現金",
       "分類": "家庭/飲品/咖啡",
       "必要性": "想吃想買但合理",
-      "明細說明": "7-11"
+      "明細說明": "7-11",
+      "原幣別": "TWD",
+      "代墊狀態": "無",
+      "收款支付對象": ""
     }
   ]
 }
@@ -599,20 +663,27 @@ class TestMultiExpenseComplexScenarios:
         mock_response.choices[0].message.content = '''
 {
   "intent": "multi_bookkeeping",
+  "payment_method": "台新狗卡",
   "items": [
     {
       "品項": "咖啡",
       "原幣金額": 50,
-      "付款方式": "台新狗卡",
       "分類": "家庭/飲品/咖啡",
-      "必要性": "想吃想買但合理"
+      "必要性": "想吃想買但合理",
+      "原幣別": "TWD",
+      "明細說明": "",
+      "代墊狀態": "無",
+      "收款支付對象": ""
     },
     {
       "品項": "蛋糕",
       "原幣金額": 120,
-      "付款方式": "台新狗卡",
       "分類": "家庭/點心",
-      "必要性": "想吃想買但合理"
+      "必要性": "想吃想買但合理",
+      "原幣別": "TWD",
+      "明細說明": "",
+      "代墊狀態": "無",
+      "收款支付對象": ""
     }
   ]
 }
@@ -651,7 +722,9 @@ class TestAdvancePayment:
       "分類": "家庭支出",
       "必要性": "想吃想買但合理",
       "代墊狀態": "代墊",
-      "收款支付對象": "妹"
+      "收款支付對象": "妹",
+      "原幣別": "TWD",
+      "明細說明": ""
     }
   ]
 }
@@ -687,7 +760,9 @@ class TestAdvancePayment:
       "分類": "交通/接駁",
       "必要性": "必要日常支出",
       "代墊狀態": "代墊",
-      "收款支付對象": "同事"
+      "收款支付對象": "同事",
+      "原幣別": "TWD",
+      "明細說明": ""
     }
   ]
 }
@@ -721,7 +796,9 @@ class TestAdvancePayment:
       "分類": "個人/餐飲",
       "必要性": "必要日常支出",
       "代墊狀態": "代墊",
-      "收款支付對象": "朋友"
+      "收款支付對象": "朋友",
+      "原幣別": "TWD",
+      "明細說明": ""
     }
   ]
 }
@@ -756,7 +833,8 @@ class TestAdvancePayment:
       "分類": "家庭/飲品",
       "必要性": "必要日常支出",
       "代墊狀態": "代墊",
-      "收款支付對象": "同事"
+      "收款支付對象": "同事",
+      "原幣別": "TWD"
     }
   ]
 }
@@ -794,7 +872,9 @@ class TestNeedToPay:
       "分類": "行程/住宿",
       "必要性": "必要日常支出",
       "代墊狀態": "需支付",
-      "收款支付對象": "弟"
+      "收款支付對象": "弟",
+      "原幣別": "TWD",
+      "明細說明": ""
     }
   ]
 }
@@ -830,7 +910,9 @@ class TestNeedToPay:
       "分類": "個人/娛樂",
       "必要性": "想吃想買但合理",
       "代墊狀態": "需支付",
-      "收款支付對象": "朋友"
+      "收款支付對象": "朋友",
+      "原幣別": "TWD",
+      "明細說明": ""
     }
   ]
 }
@@ -864,7 +946,9 @@ class TestNeedToPay:
       "分類": "個人/餐飲",
       "必要性": "必要日常支出",
       "代墊狀態": "需支付",
-      "收款支付對象": "同事"
+      "收款支付對象": "同事",
+      "原幣別": "TWD",
+      "明細說明": ""
     }
   ]
 }
@@ -901,7 +985,9 @@ class TestNoCollection:
       "分類": "健康/醫療/家庭成員",
       "必要性": "必要日常支出",
       "代墊狀態": "不索取",
-      "收款支付對象": "媽媽"
+      "收款支付對象": "媽媽",
+      "原幣別": "TWD",
+      "明細說明": ""
     }
   ]
 }
@@ -935,7 +1021,9 @@ class TestNoCollection:
       "分類": "交通/停車",
       "必要性": "必要日常支出",
       "代墊狀態": "不索取",
-      "收款支付對象": "老婆"
+      "收款支付對象": "老婆",
+      "原幣別": "TWD",
+      "明細說明": ""
     }
   ]
 }
@@ -972,7 +1060,9 @@ class TestMultiItemWithAdvance:
       "分類": "家庭/餐飲/早餐",
       "必要性": "必要日常支出",
       "代墊狀態": "無",
-      "收款支付對象": ""
+      "收款支付對象": "",
+      "原幣別": "TWD",
+      "明細說明": ""
     },
     {
       "品項": "午餐",
@@ -980,7 +1070,9 @@ class TestMultiItemWithAdvance:
       "分類": "個人/餐飲",
       "必要性": "必要日常支出",
       "代墊狀態": "代墊",
-      "收款支付對象": "同事"
+      "收款支付對象": "同事",
+      "原幣別": "TWD",
+      "明細說明": ""
     }
   ]
 }
@@ -1020,7 +1112,8 @@ class TestCompactFormatRecognition:
       "必要性": "必要日常支出",
       "代墊狀態": "無",
       "收款支付對象": "",
-      "明細說明": ""
+      "明細說明": "",
+      "原幣別": "TWD"
     }
   ]
 }
@@ -1055,7 +1148,8 @@ class TestCompactFormatRecognition:
       "必要性": "必要日常支出",
       "代墊狀態": "無",
       "收款支付對象": "",
-      "明細說明": ""
+      "明細說明": "",
+      "原幣別": "TWD"
     }
   ]
 }
@@ -1090,7 +1184,8 @@ class TestCompactFormatRecognition:
       "必要性": "必要日常支出",
       "代墊狀態": "無",
       "收款支付對象": "",
-      "明細說明": ""
+      "明細說明": "",
+      "原幣別": "TWD"
     }
   ]
 }
@@ -1125,7 +1220,8 @@ class TestCompactFormatRecognition:
       "必要性": "必要日常支出",
       "代墊狀態": "無",
       "收款支付對象": "",
-      "明細說明": ""
+      "明細說明": "",
+      "原幣別": "TWD"
     }
   ]
 }
@@ -1160,7 +1256,8 @@ class TestCompactFormatRecognition:
       "必要性": "必要日常支出",
       "代墊狀態": "無",
       "收款支付對象": "",
-      "明細說明": ""
+      "明細說明": "",
+      "原幣別": "TWD"
     }
   ]
 }
