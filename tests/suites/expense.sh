@@ -2,7 +2,7 @@
 
 # Suite: expense (single-item / basic fields)
 
-SUITE_PY_ARGS=(--v1)
+SUITE_PY_ARGS=()
 
 TEST_CASES=(
   "TC-V1-001|基本功能|標準記帳格式|午餐120元現金||記帳|午餐|120|現金|餐飲||||"

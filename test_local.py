@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-本地測試工具 - 直接測試 GPT 解析功能（v1 & v1.5.0 & v003-multi-currency）
+本地測試工具 - 直接測試 GPT 解析功能
 
 使用方式：
-  python test_local.py                      # 互動模式（推薦，預設 v1.5.0）
-  python test_local.py --v1                 # 互動模式（v1 單項目模式）
+  python test_local.py                      # 互動模式
   python test_local.py '早餐80元，午餐150元，現金'  # 單次測試（僅 GPT 解析）
+  python test_local.py --raw '11/12 午餐120元現金'  # 單次測試（僅輸出 JSON，給測試 runner 用）
   python test_local.py --full '午餐 100 現金'      # 完整流程測試（GPT + Webhook + KV）
 
 完整流程模式（--full）：
@@ -28,18 +28,12 @@ KV 儲存操作：
   - 直接輸入記帳訊息進行測試
   - 'full' - 切換完整流程模式（含 webhook payload 顯示 + KV）
   - 'live' - 切換 live 模式（實際發送 webhook，謹慎使用）
-  - 'v1' / 'v1.5' - 切換測試版本
   - 'json' - 切換 JSON 顯示
   - 'kv' - 查看 KV 中儲存的交易記錄
   - 'clear' - 清除 KV 中的交易記錄
   - 'exit' / 'quit' - 離開
 
-版本差異：
-  - v1: 單項目記帳（process_message）
-  - v1.5.0: 多項目記帳（process_multi_expense）- 預設
-  - v003-multi-currency: 多幣別記帳（已整合至 v1.5.0）
-
-外幣消費測試案例（v003-multi-currency）：
+外幣消費測試案例（多幣別）：
   python test_local.py 'WSJ 4.99美元 大戶'
   python test_local.py 'Netflix 15.99USD 信用卡'
   python test_local.py '飯店住宿 290.97歐元 信用卡'
@@ -49,7 +43,8 @@ KV 儲存操作：
 
 import sys
 import json
-from app.gpt_processor import process_message, process_multi_expense, MultiExpenseResult, BookkeepingEntry
+import argparse
+from app.gpt_processor import process_multi_expense, MultiExpenseResult, BookkeepingEntry
 from app.kv_store import get_last_transaction, KVStore
 from app.config import KV_ENABLED
 from app.webhook_sender import send_multiple_webhooks, build_create_payload, build_update_payload
@@ -57,6 +52,77 @@ from app.line_handler import handle_update_last_entry
 
 # Default test user ID for local testing
 DEFAULT_TEST_USER_ID = "test_local_user"
+
+
+def entry_to_dict(entry: BookkeepingEntry) -> dict:
+    return {
+        "日期": entry.日期,
+        "品項": entry.品項,
+        "原幣別": entry.原幣別,
+        "原幣金額": entry.原幣金額,
+        "匯率": entry.匯率,
+        "付款方式": entry.付款方式,
+        "交易ID": entry.交易ID,
+        "明細說明": entry.明細說明,
+        "分類": entry.分類,
+        "專案": entry.專案,
+        "必要性": entry.必要性,
+        "代墊狀態": entry.代墊狀態,
+        "收款支付對象": entry.收款支付對象,
+        "附註": entry.附註,
+    }
+
+
+def result_to_raw_json(result) -> dict:
+    """
+    Convert processing result to a stable, machine-readable JSON.
+
+    Notes:
+    - Always returns an object with at least `intent`.
+    - For bookkeeping intents, returns `entries` (list) for uniform consumption by test runners.
+    """
+    intent = getattr(result, "intent", "")
+    if intent == "multi_bookkeeping":
+        return {"intent": intent, "intent_display": "記帳", "entries": [entry_to_dict(e) for e in result.entries]}
+    if intent == "update_last_entry":
+        return {"intent": intent, "intent_display": "修改上一筆", "fields_to_update": getattr(result, "fields_to_update", {})}
+    if intent == "conversation":
+        return {"intent": intent, "intent_display": "對話", "response_text": getattr(result, "response_text", "")}
+    if intent == "error":
+        return {"intent": intent, "intent_display": "錯誤", "error_message": getattr(result, "error_message", "")}
+    return {"intent": intent, "intent_display": intent}
+
+
+def single_test_raw(message: str) -> int:
+    """
+    Raw single-test mode: print JSON only (no extra text).
+
+    This is designed for automated test runners (e.g., run_tests.sh).
+    """
+    try:
+        result = process_multi_expense(message)
+        data = result_to_raw_json(result)
+        print(json.dumps(data, ensure_ascii=False))
+        return 0
+    except Exception as e:
+        print(str(e), file=sys.stderr)
+        return 1
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="test_local.py",
+        description="Local test tool for LINE Bot GPT Bookkeeper.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument("message", nargs="*", help="Message to test (single-run mode).")
+    parser.add_argument("--full", action="store_true", help="Simulate full flow (GPT + webhook payload + KV).")
+    parser.add_argument("--live", action="store_true", help="Enable LIVE webhook sending (only with --full).")
+    parser.add_argument("--raw", action="store_true", help="Print JSON only for single-run mode (no extra text).")
+    parser.add_argument("--user", default=DEFAULT_TEST_USER_ID, help="Test user id used for KV/full flow.")
+    parser.add_argument("--kv", action="store_true", help="Show last transaction stored in KV and exit.")
+    parser.add_argument("--clear", action="store_true", help="Clear KV record for the user and exit.")
+    return parser
 
 
 def simulate_full_flow(message: str, user_id: str = DEFAULT_TEST_USER_ID, show_json: bool = True, live_mode: bool = False):
@@ -289,7 +355,7 @@ def print_result(entry, show_json=False):
         print(f"📅 日期: {entry.日期}")
         print(f"🛍️ 品項: {entry.品項}")
 
-        # Display currency info (v003-multi-currency)
+        # Display currency info (multi-currency)
         if entry.原幣別 != "TWD":
             twd_amount = entry.原幣金額 * entry.匯率
             print(f"💰 原幣金額: {entry.原幣金額} {entry.原幣別}")
@@ -338,17 +404,17 @@ def print_result(entry, show_json=False):
 
 
 def print_multi_result(result: MultiExpenseResult, show_json=False):
-    """美化輸出測試結果（v1.5.0 多項目格式）"""
+    """Pretty print result (multi-entry format)."""
 
-    # 單項目：使用 v1 格式（向後相容）
+    # Single item: show a compact format.
     if result.intent == "multi_bookkeeping" and len(result.entries) == 1:
         print("\n" + "=" * 60)
-        print("📝 v1.5.0 單項目模式（向後相容 v1 格式）")
+        print("📝 單項目模式")
         print("=" * 60)
         print_result(result.entries[0], show_json)
         return
 
-    # 多項目或其他 intent：使用 v1.5.0 格式
+    # Multi items or other intents: show multi-entry format.
     print("\n" + "=" * 60)
 
     if result.intent == "conversation":
@@ -387,7 +453,7 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
                 print(f"--- 項目 #{idx} ---")
                 print(f"  🛍️ 品項: {entry.品項}")
 
-                # Display currency info (v003-multi-currency)
+                # Display currency info (multi-currency)
                 if entry.原幣別 != "TWD":
                     twd_amount = entry.原幣金額 * entry.匯率
                     print(f"  💰 原幣金額: {entry.原幣金額} {entry.原幣別}")
@@ -444,7 +510,7 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
     print("=" * 60)
 
 
-def interactive_mode(use_v1=False, test_user_id=DEFAULT_TEST_USER_ID, full_mode=False, live_mode=False):
+def interactive_mode(test_user_id=DEFAULT_TEST_USER_ID, full_mode=False, live_mode=False):
     """互動模式 - 持續接收輸入並測試"""
     print("=" * 60)
     print("🤖 LINE Bot GPT Bookkeeper - 本地測試工具")
@@ -453,17 +519,12 @@ def interactive_mode(use_v1=False, test_user_id=DEFAULT_TEST_USER_ID, full_mode=
     print("  - 直接輸入記帳訊息進行測試")
     print("  - 'full' - 切換完整流程模式（含 webhook payload 顯示 + KV）")
     print("  - 'live' - 切換 live 模式（實際發送 webhook，謹慎使用）")
-    print("  - 'v1' - 切換到 v1 模式（單項目）")
-    print("  - 'v1.5' - 切換到 v1.5.0 模式（多項目）")
     print("  - 'json' - 切換 JSON 顯示模式")
     print("  - 'kv' - 查看 KV 中儲存的交易記錄")
     print("  - 'clear' - 清除 KV 中的交易記錄")
     print("  - 'exit' / 'quit' - 離開\n")
 
     show_json = False
-    version = "v1" if use_v1 else "v1.5.0"
-
-    print(f"🔖 當前版本: {version}")
     print(f"👤 測試用戶: {test_user_id}")
     if full_mode:
         mode_str = "🔴 完整流程 LIVE（實際發送 webhook）" if live_mode else "🟢 完整流程 DRY-RUN（不發送 webhook）"
@@ -514,16 +575,6 @@ def interactive_mode(use_v1=False, test_user_id=DEFAULT_TEST_USER_ID, full_mode=
                 print(f"✅ JSON 顯示模式已{status}")
                 continue
 
-            if user_input.lower() == 'v1':
-                version = "v1"
-                print(f"✅ 已切換到 v1 模式（單項目記帳）")
-                continue
-
-            if user_input.lower() in ['v1.5', 'v15']:
-                version = "v1.5.0"
-                print(f"✅ 已切換到 v1.5.0 模式（多項目記帳）")
-                continue
-
             if user_input.lower() == 'kv':
                 print_kv_status(test_user_id)
                 continue
@@ -537,10 +588,7 @@ def interactive_mode(use_v1=False, test_user_id=DEFAULT_TEST_USER_ID, full_mode=
                 if full_mode:
                     # 完整流程模式
                     simulate_full_flow(user_input, test_user_id, show_json, live_mode)
-                elif version == "v1":
-                    result = process_message(user_input)
-                    print_result(result, show_json)
-                else:  # v1.5.0
+                else:
                     result = process_multi_expense(user_input)
                     print_multi_result(result, show_json)
             except Exception as e:
@@ -556,7 +604,7 @@ def interactive_mode(use_v1=False, test_user_id=DEFAULT_TEST_USER_ID, full_mode=
             break
 
 
-def single_test(message, use_v1=False, full_mode=False, test_user_id=DEFAULT_TEST_USER_ID, live_mode=False):
+def single_test(message, full_mode=False, test_user_id=DEFAULT_TEST_USER_ID, live_mode=False):
     """單次測試模式"""
     if full_mode:
         print(f"\n🧪 測試訊息: {message}")
@@ -572,17 +620,12 @@ def single_test(message, use_v1=False, full_mode=False, test_user_id=DEFAULT_TES
             sys.exit(1)
         return
 
-    version = "v1" if use_v1 else "v1.5.0"
     print(f"\n🧪 測試訊息: {message}")
-    print(f"🔖 版本: {version}\n")
+    print("")
 
     try:
-        if use_v1:
-            result = process_message(message)
-            print_result(result, show_json=True)
-        else:
-            result = process_multi_expense(message)
-            print_multi_result(result, show_json=True)
+        result = process_multi_expense(message)
+        print_multi_result(result, show_json=True)
     except Exception as e:
         print(f"\n❌ 錯誤: {str(e)}\n")
         import traceback
@@ -591,68 +634,33 @@ def single_test(message, use_v1=False, full_mode=False, test_user_id=DEFAULT_TES
 
 
 if __name__ == "__main__":
-    use_v1 = False
-    full_mode = False
-    live_mode = False  # 預設 dry-run，不發送 webhook
-    test_user_id = DEFAULT_TEST_USER_ID
-    show_kv = False
-    do_clear = False
+    parser = build_arg_parser()
+    args = parser.parse_args()
 
-    # 解析參數
-    args = sys.argv[1:]
+    full_mode = args.full
+    live_mode = args.live  # Default is DRY-RUN (no webhook sending)
+    test_user_id = args.user
 
-    # 檢查是否有 --v1 參數
-    if '--v1' in args:
-        use_v1 = True
-        args.remove('--v1')
-
-    # 檢查是否有 --full 參數（完整流程模式）
-    if '--full' in args:
-        full_mode = True
-        args.remove('--full')
-
-    # 檢查是否有 --live 參數（實際發送 webhook）
-    if '--live' in args:
-        live_mode = True
-        args.remove('--live')
-
-    # 檢查是否有 --kv 參數（顯示 KV 內容）
-    if '--kv' in args:
-        show_kv = True
-        args.remove('--kv')
-
-    # 檢查是否有 --clear 參數（清除 KV）
-    if '--clear' in args:
-        do_clear = True
-        args.remove('--clear')
-
-    # 檢查是否有 --user 參數（指定測試用戶 ID）
-    for i, arg in enumerate(args):
-        if arg.startswith('--user='):
-            test_user_id = arg.split('=', 1)[1]
-            args.remove(arg)
-            break
-        elif arg == '--user' and i + 1 < len(args):
-            test_user_id = args[i + 1]
-            args.remove('--user')
-            args.remove(test_user_id)
-            break
-
-    # 執行 KV 操作
-    if do_clear:
+    if args.clear:
         clear_kv(test_user_id)
-        if not show_kv and len(args) == 0:
-            sys.exit(0)
+        if not args.kv and not args.message:
+            raise SystemExit(0)
 
-    if show_kv:
+    if args.kv:
         print_kv_status(test_user_id)
-        if len(args) == 0:
-            sys.exit(0)
+        if not args.message:
+            raise SystemExit(0)
 
-    if len(args) > 0:
-        # 單次測試模式
-        message = " ".join(args)
-        single_test(message, use_v1, full_mode, test_user_id, live_mode)
+    if args.message:
+        message = " ".join(args.message)
+        if args.raw:
+            if full_mode:
+                print("--raw cannot be used with --full.", file=sys.stderr)
+                raise SystemExit(2)
+            raise SystemExit(single_test_raw(message))
+        single_test(message, full_mode, test_user_id, live_mode)
     else:
-        # 互動模式
-        interactive_mode(use_v1, test_user_id, full_mode, live_mode)
+        if args.raw:
+            print("--raw requires a message argument.", file=sys.stderr)
+            raise SystemExit(2)
+        interactive_mode(test_user_id, full_mode, live_mode)

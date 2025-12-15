@@ -1,6 +1,6 @@
 # 測試指南
 
-本目錄包含 v1 MVP 和 v1.5.0 的完整測試案例和測試工具。
+本目錄包含測試案例與測試工具。
 
 ---
 
@@ -34,27 +34,24 @@
 
 ### 1. 互動式測試工具 - `test_local.py`
 
-位於專案根目錄，支援 v1 和 v1.5.0 雙版本測試。
+Located at repo root. No version switching; it always runs the unified parser.
 
 #### 使用方式
 
 ```bash
-# v1.5.0 互動模式（預設）
+# Interactive mode
 python test_local.py
 
-# v1 互動模式
-python test_local.py --v1
-
-# 單次測試
+# Single-run mode (human-readable output)
 python test_local.py '早餐80元，午餐150元，現金'
-python test_local.py --v1 '午餐120元現金'
+
+# Single-run mode (raw JSON only; for automated runners)
+python test_local.py --raw '11/12 午餐120元現金'
 ```
 
 #### 互動模式指令
 
 - 直接輸入測試訊息
-- `v1` - 切換到 v1 模式
-- `v1.5` - 切換到 v1.5.0 模式
 - `json` - 切換 JSON 顯示
 - `exit` / `quit` - 離開
 

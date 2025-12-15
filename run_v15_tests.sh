@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Legacy shim for v1.5 test script.
+# Legacy shim for the multi_expense suite.
 # Delegates to the unified functional-suite runner.
 
 AUTO=false
@@ -31,4 +31,3 @@ if [[ "$AUTO" == true ]]; then
 else
   ./run_tests.sh --suite multi_expense --manual
 fi
-

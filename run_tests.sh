@@ -13,6 +13,8 @@ NC='\033[0m'
 AUTO_MODE=false
 SUITE=""
 ONLY_PATTERN=""
+LIST_MODE=false
+DEBUG_MODE=false
 
 TOTAL_TESTS=0
 PASSED_TESTS=0
@@ -24,18 +26,22 @@ usage() {
 Unified test runner (functional suites)
 
 Usage:
-  ./run_tests.sh --suite <expense|multi_expense|advance_payment|date> [--auto|--manual] [--only <pattern>]
+  ./run_tests.sh --suite <expense|multi_expense|advance_payment|date> [--auto|--manual] [--only <pattern>] [--list]
 
 Options:
   --suite <name>    Suite name: expense, multi_expense, advance_payment, date
   --auto            Auto-compare expected vs actual (default: manual)
   --manual          Manual mode (default)
   --only <pattern>  Run only tests whose id/name/message matches regex
+  --list            List matched tests and exit (no OpenAI calls)
+  --debug           Print debug info on failures
   --help, -h        Show this help
 
 Notes:
   - Requires jq. If missing, the script exits with install hints.
   - transaction_id is not compared (non-deterministic).
+  - If your pattern contains '|', quote it to avoid shell piping:
+      --only 'TC-V1-001|TC-V17-015'
 EOF
 }
 
@@ -65,8 +71,22 @@ parse_args() {
         shift
         ;;
       --only)
-        ONLY_PATTERN="${2:-}"
+        # Supports multiple --only flags by OR-ing patterns.
+        local new_pattern="${2:-}"
+        if [[ -z "$ONLY_PATTERN" ]]; then
+          ONLY_PATTERN="$new_pattern"
+        else
+          ONLY_PATTERN="(${ONLY_PATTERN})|(${new_pattern})"
+        fi
         shift 2
+        ;;
+      --list|--dry-run)
+        LIST_MODE=true
+        shift
+        ;;
+      --debug)
+        DEBUG_MODE=true
+        shift
         ;;
       --help|-h)
         usage
@@ -89,6 +109,38 @@ parse_args() {
   fi
 }
 
+should_run_case() {
+  local tc_id="$1" tc_group="$2" tc_name="$3" tc_message="$4"
+  if [[ -z "$ONLY_PATTERN" ]]; then
+    return 0
+  fi
+  printf '%s\n' "$tc_id $tc_group $tc_name $tc_message" | grep -qE -- "$ONLY_PATTERN"
+}
+
+validate_case_record() {
+  local record="$1" tc_id="$2" expected_intent="$3" expected_recipient="$4" expected_error_contains="$5" expected_date="$6"
+  if [[ -z "$tc_id" ]]; then
+    echo "Error: invalid test record (missing tc_id): $record" >&2
+    exit 2
+  fi
+  if [[ "$expected_date" == \|* ]]; then
+    echo "Error: invalid test record (expected_date contains unexpected '|'): $record" >&2
+    exit 2
+  fi
+  if [[ -z "$expected_date" ]] && [[ "$expected_error_contains" =~ ^(\{YEAR\}-|[0-9]{4}-[0-9]{2}-[0-9]{2}) ]]; then
+    echo "Error: invalid test record (date likely shifted into expected_error_contains): $record" >&2
+    exit 2
+  fi
+  if [[ -n "$expected_date" ]] && [[ ! "$expected_date" =~ ^(\{YEAR\}-|[0-9]{4}-[0-9]{2}-[0-9]{2}) ]]; then
+    echo "Error: invalid test record (expected_date must be YYYY-MM-DD or {YEAR}-MM-DD): $record" >&2
+    exit 2
+  fi
+  if [[ "$expected_intent" == "錯誤" ]] && [[ -n "$expected_recipient" ]] && [[ -z "$expected_error_contains" ]]; then
+    echo "Error: invalid test record (error keyword likely shifted into expected_recipient): $record" >&2
+    exit 2
+  fi
+}
+
 suite_path() {
   case "$SUITE" in
     expense) echo "tests/suites/expense.sh" ;;
@@ -105,15 +157,69 @@ suite_path() {
 extract_json_block() {
   # Extract JSON block printed by test_local.py between "📄 完整 JSON:" and the next separator line of "=".
   local output="$1"
-  echo "$output" | awk '
+  printf '%s\n' "$output" | awk '
     /📄 完整 JSON:/ {in_json=1; next}
     in_json && /^=+$/ {exit}
     in_json {print}
   '
 }
 
+extract_json_fallback() {
+  # Fallback JSON extraction when the marker+separator heuristic fails (e.g., separator not matched).
+  # Tries (1) first JSON after "📄 完整 JSON:"; otherwise (2) last JSON object/array in the output.
+  python - <<'PY'
+import json
+import re
+import sys
+
+text = sys.stdin.read()
+marker = "📄 完整 JSON:"
+decoder = json.JSONDecoder()
+
+def first_json_from(s: str):
+    m = re.search(r"[\{\[]", s)
+    if not m:
+        return None
+    start = m.start()
+    try:
+        obj, end = decoder.raw_decode(s[start:])
+        return json.dumps(obj, ensure_ascii=False)
+    except Exception:
+        return None
+
+idx = text.find(marker)
+if idx != -1:
+    candidate = first_json_from(text[idx + len(marker):])
+    if candidate is not None:
+        print(candidate)
+        sys.exit(0)
+
+i = 0
+found = None
+while True:
+    m = re.search(r"[\{\[]", text[i:])
+    if not m:
+        break
+    j = i + m.start()
+    try:
+        obj, end = decoder.raw_decode(text[j:])
+        found = json.dumps(obj, ensure_ascii=False)
+        i = j + end
+    except Exception:
+        i = j + 1
+
+if found is not None:
+    print(found)
+PY
+}
+
 extract_intent_text() {
   local output="$1"
+  if echo "$output" | jq -e . >/dev/null 2>&1; then
+    # Prefer the display intent (Chinese) for compatibility with existing test cases.
+    echo "$output" | jq -r '.intent_display // .intent // empty' 2>/dev/null | head -n 1 | xargs || true
+    return
+  fi
   echo "$output" | sed -n 's/.*📝 意圖: //p' | head -n 1 | xargs || true
 }
 
@@ -146,11 +252,19 @@ actual_item_count() {
 extract_fields() {
   local output="$1"
   local json
-  json="$(extract_json_block "$output")"
+  if echo "$output" | jq -e . >/dev/null 2>&1; then
+    json="$output"
+  else
+    json="$(extract_json_block "$output")"
 
-  if [[ -z "$json" ]]; then
-    echo "Error: failed to extract JSON from output." >&2
-    echo "Hint: ensure test_local.py prints '📄 完整 JSON:' in single-test mode." >&2
+    if [[ -z "$json" ]] || ! echo "$json" | jq -e . >/dev/null 2>&1; then
+      json="$(printf '%s\n' "$output" | extract_json_fallback)"
+    fi
+  fi
+
+  if [[ -z "$json" ]] || ! echo "$json" | jq -e . >/dev/null 2>&1; then
+    echo "Error: failed to extract valid JSON from output." >&2
+    echo "Hint: ensure test_local.py prints a JSON object/array for single-test mode." >&2
     return 1
   fi
 
@@ -166,7 +280,7 @@ extract_fields() {
     category="$(json_get "$json" '.entries[0]["分類"] // empty')"
     advance_status="$(json_get "$json" '.entries[0]["代墊狀態"] // empty')"
     recipient="$(json_get "$json" '.entries[0]["收款支付對象"] // empty')"
-    error_message="$(json_get "$json" '.message // empty')"
+    error_message="$(json_get "$json" '.error_message // .message // empty')"
   else
     item="$(json_get "$json" '.["品項"] // empty')"
     date="$(json_get "$json" '.["日期"] // empty')"
@@ -175,13 +289,41 @@ extract_fields() {
     category="$(json_get "$json" '.["分類"] // empty')"
     advance_status="$(json_get "$json" '.["代墊狀態"] // empty')"
     recipient="$(json_get "$json" '.["收款支付對象"] // empty')"
-    error_message="$(json_get "$json" '.message // empty')"
+    error_message="$(json_get "$json" '.error_message // .message // empty')"
   fi
   item_count="$(actual_item_count "$json")"
 
-  # Tab-separated output for safe parsing (values may contain spaces).
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  # Use a non-whitespace delimiter so bash `read` does not collapse empty fields.
+  # (IFS treats whitespace specially and will "eat" consecutive delimiters.)
+  printf '%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\n' \
     "$item" "$amount" "$payment" "$category" "$advance_status" "$recipient" "$error_message" "$item_count" "$date"
+}
+
+debug_dump_output_and_json() {
+  local output="$1"
+  echo -e "${YELLOW}Debug (raw test_local.py output):${NC}" >&2
+  echo "$output" >&2
+
+  local json
+  json="$(extract_json_block "$output")"
+  if [[ -z "$json" ]] || ! echo "$json" | jq -e . >/dev/null 2>&1; then
+    json="$(printf '%s\n' "$output" | extract_json_fallback)"
+  fi
+
+  echo -e "${YELLOW}Debug (extracted JSON):${NC}" >&2
+  echo "$json" >&2
+  echo -e "${YELLOW}Debug (jq probes):${NC}" >&2
+  local probe
+  probe="$(jq -r 'has("entries")' <<<"$json" 2>&1)" || true
+  echo "has(entries): $probe" >&2
+  probe="$(jq -r '.entries[0] | keys_unsorted? // keys? // empty' <<<"$json" 2>&1)" || true
+  echo "entries[0] keys: $probe" >&2
+  probe="$(jq -r '.entries[0]["品項"] // empty' <<<"$json" 2>&1)" || true
+  echo 'entries[0]["品項"]: '"$probe" >&2
+  probe="$(jq -r '.entries[0]["日期"] // empty' <<<"$json" 2>&1)" || true
+  echo 'entries[0]["日期"]: '"$probe" >&2
+  probe="$(jq -r '.["日期"] // empty' <<<"$json" 2>&1)" || true
+  echo 'root["日期"]: '"$probe" >&2
 }
 
 normalize_amount() {
@@ -245,7 +387,12 @@ run_case_manual() {
     echo "Expected: $expected_desc"
   fi
   echo ""
-  python test_local.py "${SUITE_PY_ARGS[@]}" "$message"
+  # Note: with `set -u`, expanding an empty array `${arr[@]}` triggers "unbound variable".
+  if ((${#SUITE_PY_ARGS[@]})); then
+    python test_local.py "${SUITE_PY_ARGS[@]}" "$message"
+  else
+    python test_local.py "$message"
+  fi
   echo ""
   read -r -p "Press Enter to continue..."
 }
@@ -263,14 +410,32 @@ run_case_auto() {
   echo "Message: $message"
 
   local output
-  output="$(python test_local.py "${SUITE_PY_ARGS[@]}" "$message" 2>&1)"
+  # Prefer raw JSON output to avoid parsing human-readable text.
+  # Note: with `set -u`, expanding an empty array `${arr[@]}` triggers "unbound variable".
+  if ((${#SUITE_PY_ARGS[@]})); then
+    output="$(python test_local.py "${SUITE_PY_ARGS[@]}" --raw "$message" 2> >(cat >&2))"
+  else
+    output="$(python test_local.py --raw "$message" 2> >(cat >&2))"
+  fi
 
   local actual_intent
   actual_intent="$(extract_intent_text "$output")"
 
   local item amount payment category advance_status recipient error_message item_count date
-  IFS=$'\t' read -r item amount payment category advance_status recipient error_message item_count date \
-    <<<"$(extract_fields "$output")"
+  local extracted
+  if ! extracted="$(extract_fields "$output")"; then
+    echo -e "${RED}❌ FAIL${NC}"
+    echo -e "${YELLOW}Differences:${NC}"
+    echo "  - error: failed to extract JSON fields from test_local.py output"
+    if [[ "$DEBUG_MODE" == true ]]; then
+      echo -e "${YELLOW}Debug (raw test_local.py output):${NC}" >&2
+      echo "$output" >&2
+    fi
+    ((FAILED_TESTS+=1))
+    return
+  fi
+  IFS=$'\037' read -r item amount payment category advance_status recipient error_message item_count date \
+    <<<"$extracted"
 
   local test_passed=true
   local failures=()
@@ -318,21 +483,22 @@ run_case_auto() {
 
   if [[ "$test_passed" == true ]]; then
     echo -e "${GREEN}✅ PASS${NC}"
-    ((PASSED_TESTS++))
+    ((PASSED_TESTS+=1))
   else
     echo -e "${RED}❌ FAIL${NC}"
     echo -e "${YELLOW}Differences:${NC}"
     for f in "${failures[@]}"; do
       echo "  - $f"
     done
-    ((FAILED_TESTS++))
+    [[ "$DEBUG_MODE" == true ]] && debug_dump_output_and_json "$output"
+    ((FAILED_TESTS+=1))
   fi
 }
 
 run_case() {
   local group="$1" name="$2" message="$3" expected_desc="$4"
   shift 4
-  ((TOTAL_TESTS++))
+  ((TOTAL_TESTS+=1))
   if [[ "$AUTO_MODE" == true ]]; then
     run_case_auto "$group" "$name" "$message" "$@"
   else
@@ -341,7 +507,6 @@ run_case() {
 }
 
 main() {
-  require_jq
   parse_args "$@"
 
   local suite_file
@@ -358,7 +523,19 @@ main() {
   #   id|group|name|message|expected_desc|expected_intent|expected_item|expected_amount|expected_payment|expected_category|expected_item_count|expected_advance_status|expected_recipient|expected_error_contains|expected_date
   # (expected_desc is used only in manual mode)
   # shellcheck disable=SC1090
+  # Provide defaults so `set -u` doesn't fail if a suite omits optional variables.
+  SUITE_PY_ARGS=()
+  TEST_CASES=()
   source "$suite_file"
+
+  if ! declare -p TEST_CASES >/dev/null 2>&1; then
+    echo "Error: suite did not define TEST_CASES: $suite_file" >&2
+    exit 2
+  fi
+
+  if [[ "$LIST_MODE" == false ]]; then
+    require_jq
+  fi
 
   echo "======================================================================"
   echo "🧪 Test Suite: $SUITE"
@@ -371,6 +548,29 @@ main() {
   fi
   if [[ -n "$ONLY_PATTERN" ]]; then
     echo "Filter: $ONLY_PATTERN"
+  fi
+  if [[ "$LIST_MODE" == true ]]; then
+    echo "Mode: list"
+  fi
+
+  if [[ "$LIST_MODE" == true ]]; then
+    local record listed=0
+    for record in "${TEST_CASES[@]}"; do
+      IFS='|' read -r \
+        tc_id tc_group tc_name tc_message \
+        expected_desc expected_intent expected_item expected_amount expected_payment \
+        expected_category expected_item_count expected_advance_status expected_recipient expected_error_contains expected_date \
+        <<<"$record"
+      validate_case_record "$record" "$tc_id" "$expected_intent" "$expected_recipient" "$expected_error_contains" "$expected_date"
+
+      if should_run_case "$tc_id" "$tc_group" "$tc_name" "$tc_message"; then
+        printf '%s\n' "$tc_id | $tc_group | $tc_name"
+        ((listed+=1))
+      fi
+    done
+    echo ""
+    echo "Matched: $listed"
+    exit 0
   fi
 
   if [[ "$AUTO_MODE" == false ]]; then
@@ -385,12 +585,11 @@ main() {
       expected_desc expected_intent expected_item expected_amount expected_payment \
       expected_category expected_item_count expected_advance_status expected_recipient expected_error_contains expected_date \
       <<<"$record"
+    validate_case_record "$record" "$tc_id" "$expected_intent" "$expected_recipient" "$expected_error_contains" "$expected_date"
 
-    if [[ -n "$ONLY_PATTERN" ]]; then
-      if ! echo "$tc_id $tc_group $tc_name $tc_message" | grep -qE "$ONLY_PATTERN"; then
-        ((SKIPPED_TESTS++))
-        continue
-      fi
+    if ! should_run_case "$tc_id" "$tc_group" "$tc_name" "$tc_message"; then
+      ((SKIPPED_TESTS+=1))
+      continue
     fi
 
     run_case "$tc_group" "$tc_id: $tc_name" "$tc_message" "$expected_desc" \
