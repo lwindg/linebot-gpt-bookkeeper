@@ -117,36 +117,12 @@ should_run_case() {
   printf '%s\n' "$tc_id $tc_group $tc_name $tc_message" | grep -qE -- "$ONLY_PATTERN"
 }
 
-validate_case_record() {
-  local record="$1" tc_id="$2" expected_intent="$3" expected_recipient="$4" expected_error_contains="$5" expected_date="$6"
-  if [[ -z "$tc_id" ]]; then
-    echo "Error: invalid test record (missing tc_id): $record" >&2
-    exit 2
-  fi
-  if [[ "$expected_date" == \|* ]]; then
-    echo "Error: invalid test record (expected_date contains unexpected '|'): $record" >&2
-    exit 2
-  fi
-  if [[ -z "$expected_date" ]] && [[ "$expected_error_contains" =~ ^(\{YEAR\}-|[0-9]{4}-[0-9]{2}-[0-9]{2}) ]]; then
-    echo "Error: invalid test record (date likely shifted into expected_error_contains): $record" >&2
-    exit 2
-  fi
-  if [[ -n "$expected_date" ]] && [[ ! "$expected_date" =~ ^(\{YEAR\}-|[0-9]{4}-[0-9]{2}-[0-9]{2}) ]]; then
-    echo "Error: invalid test record (expected_date must be YYYY-MM-DD or {YEAR}-MM-DD): $record" >&2
-    exit 2
-  fi
-  if [[ "$expected_intent" == "錯誤" ]] && [[ -n "$expected_recipient" ]] && [[ -z "$expected_error_contains" ]]; then
-    echo "Error: invalid test record (error keyword likely shifted into expected_recipient): $record" >&2
-    exit 2
-  fi
-}
-
 suite_path() {
   case "$SUITE" in
-    expense) echo "tests/suites/expense.sh" ;;
-    multi_expense) echo "tests/suites/multi_expense.sh" ;;
-    advance_payment) echo "tests/suites/advance_payment.sh" ;;
-    date) echo "tests/suites/date.sh" ;;
+    expense) echo "tests/functional/suites/expense.jsonl" ;;
+    multi_expense) echo "tests/functional/suites/multi_expense.jsonl" ;;
+    advance_payment) echo "tests/functional/suites/advance_payment.jsonl" ;;
+    date) echo "tests/functional/suites/date.jsonl" ;;
     *)
       echo "Error: unknown suite: $SUITE" >&2
       exit 2
@@ -387,12 +363,7 @@ run_case_manual() {
     echo "Expected: $expected_desc"
   fi
   echo ""
-  # Note: with `set -u`, expanding an empty array `${arr[@]}` triggers "unbound variable".
-  if ((${#SUITE_PY_ARGS[@]})); then
-    python test_local.py "${SUITE_PY_ARGS[@]}" "$message"
-  else
-    python test_local.py "$message"
-  fi
+  python test_local.py "$message"
   echo ""
   read -r -p "Press Enter to continue..."
 }
@@ -411,12 +382,7 @@ run_case_auto() {
 
   local output
   # Prefer raw JSON output to avoid parsing human-readable text.
-  # Note: with `set -u`, expanding an empty array `${arr[@]}` triggers "unbound variable".
-  if ((${#SUITE_PY_ARGS[@]})); then
-    output="$(python test_local.py "${SUITE_PY_ARGS[@]}" --raw "$message" 2> >(cat >&2))"
-  else
-    output="$(python test_local.py --raw "$message" 2> >(cat >&2))"
-  fi
+  output="$(python test_local.py --raw "$message" 2> >(cat >&2))"
 
   local actual_intent
   actual_intent="$(extract_intent_text "$output")"
@@ -508,33 +474,13 @@ run_case() {
 
 main() {
   parse_args "$@"
+  require_jq
 
   local suite_file
   suite_file="$(suite_path)"
   if [[ ! -f "$suite_file" ]]; then
     echo "Error: suite file not found: $suite_file" >&2
     exit 2
-  fi
-
-  # Suite files must define:
-  # - SUITE_PY_ARGS: bash array of extra args passed to test_local.py
-  # - TEST_CASES: bash array of '|' delimited records
-  # Record format (15 fields):
-  #   id|group|name|message|expected_desc|expected_intent|expected_item|expected_amount|expected_payment|expected_category|expected_item_count|expected_advance_status|expected_recipient|expected_error_contains|expected_date
-  # (expected_desc is used only in manual mode)
-  # shellcheck disable=SC1090
-  # Provide defaults so `set -u` doesn't fail if a suite omits optional variables.
-  SUITE_PY_ARGS=()
-  TEST_CASES=()
-  source "$suite_file"
-
-  if ! declare -p TEST_CASES >/dev/null 2>&1; then
-    echo "Error: suite did not define TEST_CASES: $suite_file" >&2
-    exit 2
-  fi
-
-  if [[ "$LIST_MODE" == false ]]; then
-    require_jq
   fi
 
   echo "======================================================================"
@@ -554,20 +500,19 @@ main() {
   fi
 
   if [[ "$LIST_MODE" == true ]]; then
-    local record listed=0
-    for record in "${TEST_CASES[@]}"; do
-      IFS='|' read -r \
-        tc_id tc_group tc_name tc_message \
-        expected_desc expected_intent expected_item expected_amount expected_payment \
-        expected_category expected_item_count expected_advance_status expected_recipient expected_error_contains expected_date \
-        <<<"$record"
-      validate_case_record "$record" "$tc_id" "$expected_intent" "$expected_recipient" "$expected_error_contains" "$expected_date"
-
+    local line tc_id tc_group tc_name tc_message listed=0
+    while IFS= read -r line; do
+      [[ -z "$line" ]] && continue
+      [[ "$line" =~ ^# ]] && continue
+      tc_id="$(jq -r '.id // empty' <<<"$line")"
+      tc_group="$(jq -r '.group // empty' <<<"$line")"
+      tc_name="$(jq -r '.name // empty' <<<"$line")"
+      tc_message="$(jq -r '.message // empty' <<<"$line")"
       if should_run_case "$tc_id" "$tc_group" "$tc_name" "$tc_message"; then
         printf '%s\n' "$tc_id | $tc_group | $tc_name"
         ((listed+=1))
       fi
-    done
+    done <"$suite_file"
     echo ""
     echo "Matched: $listed"
     exit 0
@@ -578,14 +523,40 @@ main() {
     read -r -p "Press Enter to start..."
   fi
 
-  local record
-  for record in "${TEST_CASES[@]}"; do
-    IFS='|' read -r \
-      tc_id tc_group tc_name tc_message \
-      expected_desc expected_intent expected_item expected_amount expected_payment \
-      expected_category expected_item_count expected_advance_status expected_recipient expected_error_contains expected_date \
-      <<<"$record"
-    validate_case_record "$record" "$tc_id" "$expected_intent" "$expected_recipient" "$expected_error_contains" "$expected_date"
+  local line
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    [[ "$line" =~ ^# ]] && continue
+
+    local tc_id tc_group tc_name tc_message expected_desc
+    local expected_intent expected_item expected_amount expected_payment expected_category
+    local expected_item_count expected_advance_status expected_recipient expected_error_contains expected_date
+
+    tc_id="$(jq -r '.id // empty' <<<"$line")"
+    tc_group="$(jq -r '.group // empty' <<<"$line")"
+    tc_name="$(jq -r '.name // empty' <<<"$line")"
+    tc_message="$(jq -r '.message // empty' <<<"$line")"
+    expected_desc="$(jq -r '.expected_desc // empty' <<<"$line")"
+
+    expected_intent="$(jq -r '.expected.intent // empty' <<<"$line")"
+    expected_item="$(jq -r '.expected.item // empty' <<<"$line")"
+    expected_amount="$(jq -r '.expected.amount // empty' <<<"$line")"
+    expected_payment="$(jq -r '.expected.payment // empty' <<<"$line")"
+    expected_category="$(jq -r '.expected.category // empty' <<<"$line")"
+    expected_item_count="$(jq -r '.expected.item_count // empty' <<<"$line")"
+    expected_advance_status="$(jq -r '.expected.advance_status // empty' <<<"$line")"
+    expected_recipient="$(jq -r '.expected.recipient // empty' <<<"$line")"
+    expected_error_contains="$(jq -r '.expected.error_contains // empty' <<<"$line")"
+    expected_date="$(jq -r '.expected.date // empty' <<<"$line")"
+
+    if [[ -z "$tc_id" ]] || [[ -z "$tc_message" ]]; then
+      echo "Error: invalid test case JSON (missing id/message): $line" >&2
+      exit 2
+    fi
+    if [[ -n "$expected_date" ]] && [[ ! "$expected_date" =~ ^(\{YEAR\}-|[0-9]{4}-[0-9]{2}-[0-9]{2}) ]]; then
+      echo "Error: invalid expected.date (must be YYYY-MM-DD or {YEAR}-MM-DD): $line" >&2
+      exit 2
+    fi
 
     if ! should_run_case "$tc_id" "$tc_group" "$tc_name" "$tc_message"; then
       ((SKIPPED_TESTS+=1))
@@ -596,7 +567,7 @@ main() {
       "$expected_intent" "$expected_item" "$expected_amount" "$expected_payment" \
       "$expected_category" "$expected_item_count" "$expected_advance_status" "$expected_recipient" \
       "$expected_error_contains" "$expected_date"
-  done
+  done <"$suite_file"
 
   echo ""
   echo "======================================================================"

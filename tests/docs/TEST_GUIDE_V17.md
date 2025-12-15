@@ -33,12 +33,12 @@ python test_local.py "代妹購買Pizza兌換券979元現金"
 
 ```bash
 # 執行完整測試套件
-PYTHONPATH=. uv run pytest tests/test_multi_expense.py -v
+PYTHONPATH=. uv run pytest tests/unit/test_multi_expense.py -v
 
 # 只執行代墊相關測試
-PYTHONPATH=. uv run pytest tests/test_multi_expense.py::TestAdvancePayment -v
-PYTHONPATH=. uv run pytest tests/test_multi_expense.py::TestNeedToPay -v
-PYTHONPATH=. uv run pytest tests/test_multi_expense.py::TestNoCollection -v
+PYTHONPATH=. uv run pytest tests/unit/test_multi_expense.py::TestAdvancePayment -v
+PYTHONPATH=. uv run pytest tests/unit/test_multi_expense.py::TestNeedToPay -v
+PYTHONPATH=. uv run pytest tests/unit/test_multi_expense.py::TestNoCollection -v
 ```
 
 ---

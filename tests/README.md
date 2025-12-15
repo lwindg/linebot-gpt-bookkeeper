@@ -1,32 +1,15 @@
 # 測試指南
 
-本目錄包含測試案例與測試工具。
+本目錄包含單元測試、整合測試、功能回歸（functional suites）與測試文件。
 
 ---
 
-## 📋 測試文件
+## 📦 目錄結構
 
-### 測試案例文件
-
-- **`test_cases_v1.md`** - v1 MVP 測試案例（60+ 個測試案例）
-- **`test_cases_v1.5.md`** - v1.5.0 測試案例（50+ 個測試案例）
-
-### 單元測試文件
-
-- **`test_multi_expense.py`** - v1.5.0 多項目支出單元測試
-  - 單項目記帳（向後相容）
-  - 多項目記帳（核心功能）
-  - 共用付款方式驗證
-  - 錯誤處理與邊界案例
-  - 對話意圖識別
-  - 複雜場景測試
-
-- **`test_webhook_batch.py`** - Webhook 批次發送單元測試
-  - send_multiple_webhooks() 函式測試
-  - 批次發送成功/失敗處理
-  - 共用交易ID驗證
-  - 順序發送驗證
-  - 錯誤處理
+- `tests/unit/`: 單元測試（pytest）
+- `tests/integration/`: 整合測試（pytest，跨模組流程）
+- `tests/functional/`: 功能回歸測試資料（由 `./run_tests.sh` 執行）
+- `tests/docs/`: 測試文件與案例（人工參考）
 
 ---
 
@@ -183,17 +166,17 @@ python test_local.py '早餐80元現金，午餐150元刷卡'
 pytest
 
 # 執行特定測試文件
-pytest tests/test_multi_expense.py
-pytest tests/test_webhook_batch.py
+pytest tests/unit/test_multi_expense.py
+pytest tests/unit/test_webhook_batch.py
 
 # 詳細輸出模式
 pytest -v
 
 # 執行特定測試類別
-pytest tests/test_multi_expense.py::TestMultiExpenseMultipleItems
+pytest tests/unit/test_multi_expense.py::TestMultiExpenseMultipleItems
 
 # 執行特定測試函式
-pytest tests/test_multi_expense.py::TestMultiExpenseSingleItem::test_single_item_standard_format
+pytest tests/unit/test_multi_expense.py::TestMultiExpenseSingleItem::test_single_item_standard_format
 
 # 顯示測試覆蓋率（需安裝 pytest-cov）
 pytest --cov=app --cov-report=html

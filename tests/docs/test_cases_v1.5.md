@@ -1,7 +1,7 @@
 # v1.5.0 測試案例
 
-**版本**：v1.5.0（多項目支出記帳）
-**測試工具**：`python test_local.py`（互動模式，預設 v1.5.0）
+**版本**：legacy（多項目支出案例集合）
+**測試工具**：`python test_local.py`（互動模式）或 `./run_tests.sh --suite multi_expense`
 
 ---
 

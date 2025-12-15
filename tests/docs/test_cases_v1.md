@@ -1,7 +1,7 @@
 # v1 MVP 測試案例
 
-**版本**：v1 MVP（單項目記帳）
-**測試工具**：`python test_local.py --v1`（互動模式）或直接輸入測試
+**版本**：legacy（單項目記帳案例集合）
+**測試工具**：`python test_local.py`（互動模式）或 `./run_tests.sh --suite expense`
 
 ---
 
