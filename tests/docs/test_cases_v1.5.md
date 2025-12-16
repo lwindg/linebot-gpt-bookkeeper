@@ -1,7 +1,11 @@
 # v1.5.0 測試案例
 
-**版本**：legacy（多項目支出案例集合）
-**測試工具**：`python test_local.py`（互動模式）或 `./run_tests.sh --suite multi_expense`
+**Status**: legacy (human-readable reference)
+**Source of truth**: `tests/functional/suites/multi_expense.jsonl`
+**Runner**: `./run_tests.sh --suite multi_expense`
+
+> This document is kept for manual reading. The canonical expectations live in the JSONL suite.
+> If anything conflicts, follow `tests/functional/suites/multi_expense.jsonl`.
 
 ---
 
@@ -240,62 +244,26 @@
 
 ## 測試執行方式
 
-### 方法 1：互動模式（推薦）
+### 方法 1：List-only（offline, no OpenAI calls）
 ```bash
-python test_local.py
+./run_tests.sh --suite multi_expense --list
+./run_tests.sh --suite multi_expense --list --only 'TC-V15-010|TC-V15-030'
 ```
 
-然後依次輸入上述測試案例。使用 `json` 指令查看完整 JSON 輸出。
+### 方法 2：Manual（one-by-one）
+```bash
+./run_tests.sh --suite multi_expense
+```
 
-### 方法 2：單次測試
+### 方法 3：Auto compare（requires OpenAI）
+```bash
+./run_tests.sh --suite multi_expense --auto
+```
+
+### 方法 4：Ad-hoc local run
 ```bash
 python test_local.py '早餐80元，午餐150元，現金'
-```
-
-### 方法 3：切換版本測試
-```bash
-python test_local.py
-# 互動模式中輸入：
-v1      # 切換到 v1 模式
-v1.5    # 切換回 v1.5.0 模式
-```
-
-### 方法 4：批次測試腳本
-創建 `run_v15_tests.sh`：
-```bash
-#!/bin/bash
-
-echo "Running v1.5.0 test cases..."
-
-# 正確案例
-correct_cases=(
-  "早餐80元，午餐150元，現金"
-  "用狗卡，咖啡50，三明治35"
-  "早餐50元，午餐120元，晚餐200元，現金"
-  "午餐120元現金"
-)
-
-# 錯誤案例
-error_cases=(
-  "早餐80元現金，午餐150元刷卡"
-  "早餐80元，午餐，現金"
-  "三明治和咖啡80元現金"
-  "早餐80元，午餐150元"
-)
-
-echo "=== Testing Correct Cases ==="
-for test in "${correct_cases[@]}"; do
-  echo "Testing: $test"
-  python test_local.py "$test"
-  echo ""
-done
-
-echo "=== Testing Error Cases ==="
-for test in "${error_cases[@]}"; do
-  echo "Testing: $test"
-  python test_local.py "$test"
-  echo ""
-done
+python test_local.py --raw '早餐80元現金，午餐150元刷卡'
 ```
 
 ---

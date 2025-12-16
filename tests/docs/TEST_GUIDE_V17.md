@@ -6,18 +6,22 @@
 
 ## 🧪 測試工具
 
-### 1. 自動化測試腳本
+### 1. Functional suite runner (recommended)
 
 ```bash
-# 人工判斷模式（預設）- 逐一檢視每個測試結果
-./run_v17_tests.sh
+# Manual mode (default) - review cases one by one
+./run_tests.sh --suite advance_payment
+./run_tests.sh --suite date
 
-# 自動判斷模式 - 自動比對結果並統計
-./run_v17_tests.sh --auto
+# Auto-compare mode (requires OpenAI)
+./run_tests.sh --suite advance_payment --auto
+./run_tests.sh --suite date --auto
 
-# 顯示說明
-./run_v17_tests.sh --help
+# List-only (offline, no OpenAI calls)
+./run_tests.sh --suite advance_payment --list
 ```
+
+> Legacy shim: `./run_v17_tests.sh` is kept for backward compatibility, but `./run_tests.sh` is the source of truth.
 
 ### 2. 互動式測試工具
 

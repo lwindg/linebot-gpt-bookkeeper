@@ -44,60 +44,48 @@ python test_local.py --raw '11/12 午餐120元現金'
 
 位於專案根目錄，提供人工檢視和自動驗證兩種模式。
 
-#### v1 測試腳本
+#### Functional suite runner (source of truth)
 
 ```bash
-# 人工判斷模式（預設，逐個檢視結果）
-./run_v1_tests.sh
+# Manual mode (default)
+./run_tests.sh --suite expense
+./run_tests.sh --suite multi_expense
+./run_tests.sh --suite advance_payment
+./run_tests.sh --suite date
 
-# 自動判斷模式（快速驗證所有測試）
-./run_v1_tests.sh --auto
+# Auto compare (requires OpenAI)
+./run_tests.sh --suite expense --auto
+./run_tests.sh --suite multi_expense --auto
+./run_tests.sh --suite advance_payment --auto
+./run_tests.sh --suite date --auto
 
-# 顯示說明
-./run_v1_tests.sh --help
+# List-only (offline, no OpenAI calls)
+./run_tests.sh --suite expense --list
+./run_tests.sh --suite multi_expense --list
+./run_tests.sh --suite advance_payment --list
+./run_tests.sh --suite date --list
 ```
 
-**包含測試**：
-- 基本功能：3 個測試
-- 日期處理：5 個測試
-- 付款方式：6 個測試
-- 品項分類：7 個測試
-- 自然語句：3 個測試
-- 對話意圖：3 個測試
-- 錯誤處理：3 個測試
-- **總計：30 個測試**
+**Suites**:
+- `expense`: single expense + conversation + core capability cases
+- `multi_expense`: multiple expenses (and related error handling)
+- `advance_payment`: advance payment tracking
+- `date`: date extraction / normalization
 
-**自動判斷項目**：
-- ✅ 意圖、品項、金額、付款方式、分類
-- ❌ 交易ID（每次都不同）
+**Comparison notes**:
+- `transaction_id` is not compared (non-deterministic)
+- `date` supports `{YEAR}` placeholder (expanded at runtime)
 
-#### v1.5.0 測試腳本
+#### Legacy shims (optional)
 
 ```bash
-# 人工判斷模式（預設，逐個檢視結果）
+# Backward-compatible wrappers around `run_tests.sh`
 ./run_v15_tests.sh
-
-# 自動判斷模式（快速驗證所有測試）
-./run_v15_tests.sh --auto
-
-# 顯示說明
-./run_v15_tests.sh --help
+./run_v1_tests.sh
+./run_v17_tests.sh
 ```
 
-**包含測試**：
-- 向後相容：3 個測試
-- 多項目核心功能：6 個測試
-- 共用驗證：3 個測試
-- 錯誤處理：6 個測試
-- 對話意圖：3 個測試
-- 複雜場景：2 個測試
-- **總計：23 個測試**
-
-**自動判斷項目**：
-- ✅ 意圖、項目數量、共用付款方式、錯誤訊息
-- ❌ 交易ID（每次都不同）
-
-**詳細使用說明**：參見專案根目錄的 `AUTO_TEST_GUIDE.md`
+**詳細使用說明**：參見 `docs/AUTO_TEST_GUIDE.md`
 
 ---
 
@@ -108,11 +96,10 @@ python test_local.py --raw '11/12 午餐120元現金'
 適合快速驗證所有功能，特別是修改 prompt 後。
 
 ```bash
-# v1 自動測試
-./run_v1_tests.sh --auto
-
-# v1.5.0 自動測試
-./run_v15_tests.sh --auto
+./run_tests.sh --suite expense --auto
+./run_tests.sh --suite multi_expense --auto
+./run_tests.sh --suite advance_payment --auto
+./run_tests.sh --suite date --auto
 ```
 
 **優點**：
@@ -126,11 +113,10 @@ python test_local.py --raw '11/12 午餐120元現金'
 適合逐個檢視測試結果，確保理解測試意圖。
 
 ```bash
-# v1 人工測試
-./run_v1_tests.sh
-
-# v1.5.0 人工測試
-./run_v15_tests.sh
+./run_tests.sh --suite expense
+./run_tests.sh --suite multi_expense
+./run_tests.sh --suite advance_payment
+./run_tests.sh --suite date
 ```
 
 每個測試案例會逐個執行，按 Enter 查看下一個測試。
@@ -162,24 +148,24 @@ python test_local.py '早餐80元現金，午餐150元刷卡'
 適合自動化測試和持續整合。
 
 ```bash
-# 執行所有單元測試
-pytest
+# Run all unit tests
+uv run pytest
 
-# 執行特定測試文件
-pytest tests/unit/test_multi_expense.py
-pytest tests/unit/test_webhook_batch.py
+# Run specific test files
+uv run pytest tests/unit/test_multi_expense.py
+uv run pytest tests/unit/test_webhook_batch.py
 
-# 詳細輸出模式
-pytest -v
+# Verbose
+uv run pytest -v
 
-# 執行特定測試類別
-pytest tests/unit/test_multi_expense.py::TestMultiExpenseMultipleItems
+# Run a single class
+uv run pytest tests/unit/test_multi_expense.py::TestMultiExpenseMultipleItems
 
-# 執行特定測試函式
-pytest tests/unit/test_multi_expense.py::TestMultiExpenseSingleItem::test_single_item_standard_format
+# Run a single test
+uv run pytest tests/unit/test_multi_expense.py::TestMultiExpenseSingleItem::test_single_item_standard_format
 
 # 顯示測試覆蓋率（需安裝 pytest-cov）
-pytest --cov=app --cov-report=html
+uv run pytest --cov=app --cov-report=html
 ```
 
 **注意**：單元測試需要設置 `.env` 文件或環境變數才能執行。
@@ -188,7 +174,7 @@ pytest --cov=app --cov-report=html
 
 ## ✅ 測試檢查清單
 
-### v1 MVP 驗證重點
+### expense suite 驗證重點
 
 - [ ] 單項目記帳正確處理
 - [ ] 付款方式暱稱正確轉換（狗卡→台新狗卡）
@@ -198,10 +184,9 @@ pytest --cov=app --cov-report=html
 - [ ] 對話意圖正確識別
 - [ ] 錯誤提示清晰友善
 
-### v1.5.0 驗證重點
+### multi_expense suite 驗證重點
 
 #### 核心功能
-- [ ] 單項目記帳正常運作（向後相容 v1）
 - [ ] 雙項目記帳正確處理
 - [ ] 三項目及以上記帳正確處理
 - [ ] 所有項目共用交易ID
@@ -216,23 +201,17 @@ pytest --cov=app --cov-report=html
 - [ ] 模糊情況（「和」連接詞）被拒絕
 
 #### 輸出格式
-- [ ] 單項目使用 v1 格式顯示
-- [ ] 多項目使用 v1.5.0 格式顯示
-- [ ] 項目編號正確（#1, #2, ...）
-- [ ] 共用資訊正確標註
+- [ ] Functional suites compare extracted JSON fields (intent/item/amount/payment/...) rather than human-readable formatting
+- [ ] Multi-entry shared fields behave consistently (date/payment/transaction_id rules)
 
 ---
 
-## 📊 關鍵差異：v1 vs v1.5.0
+## 📊 Suite coverage
 
-| 特性 | v1 MVP | v1.5.0 |
-|------|--------|--------|
-| 單項目記帳 | ✅ | ✅（向後相容）|
-| 多項目記帳 | ❌ | ✅ |
-| 共用交易ID | N/A | ✅ |
-| 共用付款方式 | N/A | ✅ |
-| 錯誤處理 | 基本 | 增強（多種付款方式、模糊情況）|
-| 顯示格式 | 單項目 | 單項目 + 多項目列表 |
+- `expense`: single expense + conversation + core capability cases
+- `multi_expense`: multi-item expense + validation errors
+- `advance_payment`: advance payment tracking
+- `date`: date extraction / normalization
 
 ---
 
@@ -273,7 +252,7 @@ Permission denied: ./run_v1_tests.sh
 
 **解決方式**：添加可執行權限
 ```bash
-chmod +x run_v1_tests.sh run_v15_tests.sh
+chmod +x run_tests.sh run_v1_tests.sh run_v15_tests.sh run_v17_tests.sh
 ```
 
 ---
@@ -290,5 +269,5 @@ chmod +x run_v1_tests.sh run_v15_tests.sh
 
 ---
 
-**更新日期**：2025-11-15
-**版本**：v1.5.0 Testing Guide
+**更新日期**：2025-12-16
+**版本**：functional suites testing guide

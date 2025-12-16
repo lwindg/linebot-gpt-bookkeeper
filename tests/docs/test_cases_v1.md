@@ -1,7 +1,11 @@
 # v1 MVP 測試案例
 
-**版本**：legacy（單項目記帳案例集合）
-**測試工具**：`python test_local.py`（互動模式）或 `./run_tests.sh --suite expense`
+**Status**: legacy (human-readable reference)
+**Source of truth**: `tests/functional/suites/expense.jsonl` + `tests/functional/suites/date.jsonl`
+**Runner**: `./run_tests.sh --suite <expense|date>`
+
+> This document is kept for manual reading. The canonical expectations live in the JSONL suites.
+> If anything conflicts, follow the suite files.
 
 ---
 
@@ -233,38 +237,29 @@
 
 ## 測試執行方式
 
-### 方法 1：互動模式（推薦）
+### 方法 1：List-only（offline, no OpenAI calls）
 ```bash
-python test_local.py --v1
+./run_tests.sh --suite expense --list
+./run_tests.sh --suite date --list
+./run_tests.sh --suite expense --list --only 'TC-V1-001|TC-V1-050'
 ```
 
-然後依次輸入上述測試案例。
-
-### 方法 2：單次測試
+### 方法 2：Manual（one-by-one）
 ```bash
-python test_local.py --v1 '午餐120元現金'
+./run_tests.sh --suite expense
+./run_tests.sh --suite date
 ```
 
-### 方法 3：批次測試腳本
-創建 `run_v1_tests.sh`：
+### 方法 3：Auto compare（requires OpenAI）
 ```bash
-#!/bin/bash
+./run_tests.sh --suite expense --auto
+./run_tests.sh --suite date --auto
+```
 
-echo "Running v1 test cases..."
-
-test_cases=(
-  "午餐120元現金"
-  "200 點心 狗卡"
-  "昨天晚餐200元狗卡"
-  "花磚甜點200元現金"
-  "買了咖啡50元，Line轉帳"
-)
-
-for test in "${test_cases[@]}"; do
-  echo "Testing: $test"
-  python test_local.py --v1 "$test"
-  echo ""
-done
+### 方法 4：Ad-hoc local run
+```bash
+python test_local.py '午餐120元現金'
+python test_local.py --raw '11/12 午餐120元現金'
 ```
 
 ---

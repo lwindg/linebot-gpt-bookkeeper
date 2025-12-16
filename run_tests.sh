@@ -130,6 +130,78 @@ suite_path() {
   esac
 }
 
+validate_suite_jsonl() {
+  local suite_file="$1"
+
+  local line_num=0
+  local line
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    ((line_num+=1))
+    [[ -z "$line" ]] && continue
+    [[ "$line" =~ ^# ]] && continue
+
+    if ! echo "$line" | jq -e . >/dev/null 2>&1; then
+      echo "Error: invalid JSON at $suite_file:$line_num" >&2
+      echo "Line: $line" >&2
+      exit 2
+    fi
+
+    if ! echo "$line" | jq -e '
+      type == "object"
+      and (.id | type == "string" and length > 0)
+      and (.group | type == "string" and length > 0)
+      and (.name | type == "string" and length > 0)
+      and (.message | type == "string" and length > 0)
+      and (.expected | type == "object")
+      and (.expected.intent | type == "string" and length > 0)
+      and (.expected.item | type == "string")
+      and (.expected.amount | type == "string")
+      and (.expected.payment | type == "string")
+      and (.expected.category | type == "string")
+      and (.expected.item_count | type == "string")
+      and (.expected.advance_status | type == "string")
+      and (.expected.recipient | type == "string")
+      and (.expected.error_contains | type == "string")
+      and (.expected.date | type == "string")
+    ' >/dev/null 2>&1; then
+      echo "Error: invalid test case schema at $suite_file:$line_num" >&2
+      echo "Line: $line" >&2
+      exit 2
+    fi
+
+    local expected_intent expected_error_contains expected_date
+    expected_intent="$(jq -r '.expected.intent' <<<"$line")"
+    expected_error_contains="$(jq -r '.expected.error_contains' <<<"$line")"
+    expected_date="$(jq -r '.expected.date' <<<"$line")"
+
+    if [[ "$expected_intent" == "錯誤" || "$expected_intent" == "error" ]]; then
+      if [[ -z "$expected_error_contains" ]]; then
+        echo "Error: expected.error_contains is required when expected.intent is error at $suite_file:$line_num" >&2
+        echo "Line: $line" >&2
+        exit 2
+      fi
+    fi
+
+    if [[ -n "$expected_date" ]] && [[ ! "$expected_date" =~ ^(\{YEAR\}-|[0-9]{4}-[0-9]{2}-[0-9]{2}) ]]; then
+      echo "Error: invalid expected.date (must be YYYY-MM-DD or {YEAR}-MM-DD) at $suite_file:$line_num" >&2
+      echo "Line: $line" >&2
+      exit 2
+    fi
+  done <"$suite_file"
+
+  local dup_ids
+  dup_ids="$(
+    jq -Rr 'select(length > 0 and (startswith("#") | not)) | (fromjson? // empty) | .id // empty' "$suite_file" \
+      | sort \
+      | uniq -d
+  )"
+  if [[ -n "$dup_ids" ]]; then
+    echo "Error: duplicate test case id(s) found in $suite_file:" >&2
+    echo "$dup_ids" >&2
+    exit 2
+  fi
+}
+
 extract_json_block() {
   # Extract JSON block printed by test_local.py between "📄 完整 JSON:" and the next separator line of "=".
   local output="$1"
@@ -482,6 +554,7 @@ main() {
     echo "Error: suite file not found: $suite_file" >&2
     exit 2
   fi
+  validate_suite_jsonl "$suite_file"
 
   echo "======================================================================"
   echo "🧪 Test Suite: $SUITE"
@@ -548,15 +621,6 @@ main() {
     expected_recipient="$(jq -r '.expected.recipient // empty' <<<"$line")"
     expected_error_contains="$(jq -r '.expected.error_contains // empty' <<<"$line")"
     expected_date="$(jq -r '.expected.date // empty' <<<"$line")"
-
-    if [[ -z "$tc_id" ]] || [[ -z "$tc_message" ]]; then
-      echo "Error: invalid test case JSON (missing id/message): $line" >&2
-      exit 2
-    fi
-    if [[ -n "$expected_date" ]] && [[ ! "$expected_date" =~ ^(\{YEAR\}-|[0-9]{4}-[0-9]{2}-[0-9]{2}) ]]; then
-      echo "Error: invalid expected.date (must be YYYY-MM-DD or {YEAR}-MM-DD): $line" >&2
-      exit 2
-    fi
 
     if ! should_run_case "$tc_id" "$tc_group" "$tc_name" "$tc_message"; then
       ((SKIPPED_TESTS+=1))
