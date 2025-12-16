@@ -160,122 +160,85 @@ validate_suite_jsonl() {
       exit 2
     fi
 
-    local expected_intent has_v2
+    local expected_intent
     expected_intent="$(jq -r '.expected.intent' <<<"$line")"
-    has_v2="$(jq -r '.expected | (has("bookkeeping") or has("error") or has("conversation"))' <<<"$line")"
 
-    if [[ "$has_v2" == "true" ]]; then
-      local has_bookkeeping has_error has_conversation
-      has_bookkeeping="$(jq -r '.expected | has("bookkeeping")' <<<"$line")"
-      has_error="$(jq -r '.expected | has("error")' <<<"$line")"
-      has_conversation="$(jq -r '.expected | has("conversation")' <<<"$line")"
+    local has_bookkeeping has_error has_conversation
+    has_bookkeeping="$(jq -r '.expected | has("bookkeeping")' <<<"$line")"
+    has_error="$(jq -r '.expected | has("error")' <<<"$line")"
+    has_conversation="$(jq -r '.expected | has("conversation")' <<<"$line")"
 
-      case "$expected_intent" in
-        記帳)
-          if [[ "$has_bookkeeping" != "true" ]]; then
-            echo "Error: expected.bookkeeping is required when expected.intent is 記帳 at $suite_file:$line_num" >&2
-            echo "Line: $line" >&2
-            exit 2
-          fi
-          if [[ "$has_error" == "true" || "$has_conversation" == "true" ]]; then
-            echo "Error: expected.error/conversation is not allowed when expected.intent is 記帳 at $suite_file:$line_num" >&2
-            echo "Line: $line" >&2
-            exit 2
-          fi
-          if ! echo "$line" | jq -e '
-            (.expected.bookkeeping | type == "object")
-            and ((.expected.bookkeeping.item? // "" ) | type == "string")
-            and ((.expected.bookkeeping.amount? // "" ) | type == "string")
-            and ((.expected.bookkeeping.payment? // "" ) | type == "string")
-            and ((.expected.bookkeeping.category? // "" ) | type == "string")
-            and ((.expected.bookkeeping.item_count? // "" ) | type == "string")
-            and ((.expected.bookkeeping.advance_status? // "" ) | type == "string")
-            and ((.expected.bookkeeping.recipient? // "" ) | type == "string")
-            and ((.expected.bookkeeping.date? // "" ) | type == "string")
-          ' >/dev/null 2>&1; then
-            echo "Error: invalid expected.bookkeeping schema at $suite_file:$line_num" >&2
-            echo "Line: $line" >&2
-            exit 2
-          fi
-
-          local expected_date
-          expected_date="$(jq -r '.expected.bookkeeping.date // empty' <<<"$line")"
-          if [[ -n "$expected_date" ]] && [[ ! "$expected_date" =~ ^(\{YEAR\}-|[0-9]{4}-[0-9]{2}-[0-9]{2}) ]]; then
-            echo "Error: invalid expected.bookkeeping.date (must be YYYY-MM-DD or {YEAR}-MM-DD) at $suite_file:$line_num" >&2
-            echo "Line: $line" >&2
-            exit 2
-          fi
-          ;;
-        錯誤|error)
-          if [[ "$has_error" != "true" ]]; then
-            echo "Error: expected.error is required when expected.intent is error at $suite_file:$line_num" >&2
-            echo "Line: $line" >&2
-            exit 2
-          fi
-          if [[ "$has_bookkeeping" == "true" || "$has_conversation" == "true" ]]; then
-            echo "Error: expected.bookkeeping/conversation is not allowed when expected.intent is error at $suite_file:$line_num" >&2
-            echo "Line: $line" >&2
-            exit 2
-          fi
-          local expected_error_contains
-          expected_error_contains="$(jq -r '.expected.error.contains // empty' <<<"$line")"
-          if [[ -z "$expected_error_contains" ]]; then
-            echo "Error: expected.error.contains is required when expected.intent is error at $suite_file:$line_num" >&2
-            echo "Line: $line" >&2
-            exit 2
-          fi
-          ;;
-        對話)
-          if [[ "$has_bookkeeping" == "true" || "$has_error" == "true" ]]; then
-            echo "Error: expected.bookkeeping/error is not allowed when expected.intent is 對話 at $suite_file:$line_num" >&2
-            echo "Line: $line" >&2
-            exit 2
-          fi
-          if [[ "$has_conversation" == "true" ]] && ! echo "$line" | jq -e '(.expected.conversation | type == "object")' >/dev/null 2>&1; then
-            echo "Error: expected.conversation must be an object at $suite_file:$line_num" >&2
-            echo "Line: $line" >&2
-            exit 2
-          fi
-          ;;
-        *)
-          echo "Error: invalid expected.intent at $suite_file:$line_num (must be 記帳/對話/錯誤) " >&2
-          echo "Line: $line" >&2
-          exit 2
-          ;;
-      esac
-    else
-      if ! echo "$line" | jq -e '
-        (.expected.item | type == "string")
-        and (.expected.amount | type == "string")
-        and (.expected.payment | type == "string")
-        and (.expected.category | type == "string")
-        and (.expected.item_count | type == "string")
-        and (.expected.advance_status | type == "string")
-        and (.expected.recipient | type == "string")
-        and (.expected.error_contains | type == "string")
-        and (.expected.date | type == "string")
-      ' >/dev/null 2>&1; then
-        echo "Error: invalid expected (v1) schema at $suite_file:$line_num" >&2
-        echo "Line: $line" >&2
-        exit 2
-      fi
-
-      local expected_error_contains expected_date
-      expected_error_contains="$(jq -r '.expected.error_contains' <<<"$line")"
-      expected_date="$(jq -r '.expected.date' <<<"$line")"
-      if [[ "$expected_intent" == "錯誤" || "$expected_intent" == "error" ]]; then
-        if [[ -z "$expected_error_contains" ]]; then
-          echo "Error: expected.error_contains is required when expected.intent is error at $suite_file:$line_num" >&2
+    case "$expected_intent" in
+      記帳)
+        if [[ "$has_bookkeeping" != "true" ]]; then
+          echo "Error: expected.bookkeeping is required when expected.intent is 記帳 at $suite_file:$line_num" >&2
           echo "Line: $line" >&2
           exit 2
         fi
-      fi
-      if [[ -n "$expected_date" ]] && [[ ! "$expected_date" =~ ^(\{YEAR\}-|[0-9]{4}-[0-9]{2}-[0-9]{2}) ]]; then
-        echo "Error: invalid expected.date (must be YYYY-MM-DD or {YEAR}-MM-DD) at $suite_file:$line_num" >&2
+        if [[ "$has_error" == "true" || "$has_conversation" == "true" ]]; then
+          echo "Error: expected.error/conversation is not allowed when expected.intent is 記帳 at $suite_file:$line_num" >&2
+          echo "Line: $line" >&2
+          exit 2
+        fi
+        if ! echo "$line" | jq -e '
+          (.expected.bookkeeping | type == "object")
+          and ((.expected.bookkeeping.item? // "" ) | type == "string")
+          and ((.expected.bookkeeping.amount? // "" ) | type == "string")
+          and ((.expected.bookkeeping.payment? // "" ) | type == "string")
+          and ((.expected.bookkeeping.category? // "" ) | type == "string")
+          and ((.expected.bookkeeping.item_count? // "" ) | type == "string")
+          and ((.expected.bookkeeping.advance_status? // "" ) | type == "string")
+          and ((.expected.bookkeeping.recipient? // "" ) | type == "string")
+          and ((.expected.bookkeeping.date? // "" ) | type == "string")
+        ' >/dev/null 2>&1; then
+          echo "Error: invalid expected.bookkeeping schema at $suite_file:$line_num" >&2
+          echo "Line: $line" >&2
+          exit 2
+        fi
+
+        local expected_date
+        expected_date="$(jq -r '.expected.bookkeeping.date // empty' <<<"$line")"
+        if [[ -n "$expected_date" ]] && [[ ! "$expected_date" =~ ^(\{YEAR\}-|[0-9]{4}-[0-9]{2}-[0-9]{2}) ]]; then
+          echo "Error: invalid expected.bookkeeping.date (must be YYYY-MM-DD or {YEAR}-MM-DD) at $suite_file:$line_num" >&2
+          echo "Line: $line" >&2
+          exit 2
+        fi
+        ;;
+      錯誤)
+        if [[ "$has_error" != "true" ]]; then
+          echo "Error: expected.error is required when expected.intent is 錯誤 at $suite_file:$line_num" >&2
+          echo "Line: $line" >&2
+          exit 2
+        fi
+        if [[ "$has_bookkeeping" == "true" || "$has_conversation" == "true" ]]; then
+          echo "Error: expected.bookkeeping/conversation is not allowed when expected.intent is 錯誤 at $suite_file:$line_num" >&2
+          echo "Line: $line" >&2
+          exit 2
+        fi
+        if ! echo "$line" | jq -e '(.expected.error | type == "object") and (.expected.error.contains | type == "string" and length > 0)' >/dev/null 2>&1; then
+          echo "Error: expected.error.contains must be a non-empty string at $suite_file:$line_num" >&2
+          echo "Line: $line" >&2
+          exit 2
+        fi
+        ;;
+      對話)
+        if [[ "$has_bookkeeping" == "true" || "$has_error" == "true" ]]; then
+          echo "Error: expected.bookkeeping/error is not allowed when expected.intent is 對話 at $suite_file:$line_num" >&2
+          echo "Line: $line" >&2
+          exit 2
+        fi
+        if [[ "$has_conversation" == "true" ]] && ! echo "$line" | jq -e '(.expected.conversation | type == "object")' >/dev/null 2>&1; then
+          echo "Error: expected.conversation must be an object at $suite_file:$line_num" >&2
+          echo "Line: $line" >&2
+          exit 2
+        fi
+        ;;
+      *)
+        echo "Error: invalid expected.intent at $suite_file:$line_num (must be 記帳/對話/錯誤)" >&2
         echo "Line: $line" >&2
         exit 2
-      fi
-    fi
+        ;;
+    esac
   done <"$suite_file"
 
   local dup_ids
@@ -701,15 +664,15 @@ main() {
     expected_desc="$(jq -r '.expected_desc // empty' <<<"$line")"
 
     expected_intent="$(jq -r '.expected.intent // empty' <<<"$line")"
-    expected_item="$(jq -r '.expected.bookkeeping.item // .expected.item // empty' <<<"$line")"
-    expected_amount="$(jq -r '.expected.bookkeeping.amount // .expected.amount // empty' <<<"$line")"
-    expected_payment="$(jq -r '.expected.bookkeeping.payment // .expected.payment // empty' <<<"$line")"
-    expected_category="$(jq -r '.expected.bookkeeping.category // .expected.category // empty' <<<"$line")"
-    expected_item_count="$(jq -r '.expected.bookkeeping.item_count // .expected.item_count // empty' <<<"$line")"
-    expected_advance_status="$(jq -r '.expected.bookkeeping.advance_status // .expected.advance_status // empty' <<<"$line")"
-    expected_recipient="$(jq -r '.expected.bookkeeping.recipient // .expected.recipient // empty' <<<"$line")"
-    expected_error_contains="$(jq -r '.expected.error.contains // .expected.error_contains // empty' <<<"$line")"
-    expected_date="$(jq -r '.expected.bookkeeping.date // .expected.date // empty' <<<"$line")"
+    expected_item="$(jq -r '.expected.bookkeeping.item // empty' <<<"$line")"
+    expected_amount="$(jq -r '.expected.bookkeeping.amount // empty' <<<"$line")"
+    expected_payment="$(jq -r '.expected.bookkeeping.payment // empty' <<<"$line")"
+    expected_category="$(jq -r '.expected.bookkeeping.category // empty' <<<"$line")"
+    expected_item_count="$(jq -r '.expected.bookkeeping.item_count // empty' <<<"$line")"
+    expected_advance_status="$(jq -r '.expected.bookkeeping.advance_status // empty' <<<"$line")"
+    expected_recipient="$(jq -r '.expected.bookkeeping.recipient // empty' <<<"$line")"
+    expected_error_contains="$(jq -r '.expected.error.contains // empty' <<<"$line")"
+    expected_date="$(jq -r '.expected.bookkeeping.date // empty' <<<"$line")"
 
     if ! should_run_case "$tc_id" "$tc_group" "$tc_name" "$tc_message"; then
       ((SKIPPED_TESTS+=1))

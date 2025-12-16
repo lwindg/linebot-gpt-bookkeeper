@@ -3,6 +3,7 @@
 ## 狀態
 - smoke 已通過、依賴確認無誤；full regression 先暫緩（會呼叫 OpenAI）。
 - 已補強 suites 文件一致性與 runner 的 JSONL schema 驗證（可在離線模式提前擋錯）。
+- 已完成 `expected` v2 分型並遷移四個 suites；runner 可相容 v1/v2。
 
 ## 已完成變更（摘要）
 - 新增統一測試入口：`run_tests.sh`
@@ -33,12 +34,13 @@
   - `pytest.ini` 更新 `testpaths` 並加入 `pythonpath=.`（`import app.*` 可用）
 - 文件與 runner 一致性：
   - 更新 `tests/README.md` 與 `tests/docs/*`，統一以 suite 名稱描述（expense/multi_expense/date/advance_payment），並移除失效的版本切換說明。
-  - `run_tests.sh` 新增 suite JSONL schema 驗證（JSON 格式、必要欄位/型別、`expected.date` 格式、`intent=錯誤` 必填 `error_contains`、id 重複檢查）。
+  - `run_tests.sh` 新增 suite JSONL schema 驗證（JSON 格式、必要欄位/型別、`expected.date` 格式、`intent=錯誤` 必填錯誤訊息 contains、id 重複檢查）。
   - 已提交：`refactor(tests): validate suites and align docs`（commit: `3002bb7`）
-- Suite `expected` v2 分型（進行中/已落地）：
-  - 新增 v2 規格草案：`specs/004-prompt-refactor/expected_v2.md`
-  - `run_tests.sh` 支援 `expected` v1（攤平）/v2（分型）並在執行前做 schema 驗證
+- Suite `expected` v2 分型（已完成）：
+  - v2 規格：`specs/004-prompt-refactor/expected_v2.md`
+  - `run_tests.sh` 支援 `expected` v1（攤平）/v2（分型）並在執行前做 schema 驗證（依 intent 分型檢查）
   - 四個 suites 已遷移到 v2：`expense/multi_expense/advance_payment/date`
+  - 已提交：`refactor(tests): type expected v2 and migrate suites`（commit: `efd5385`）
 
 ## 待驗證（尚未執行）
 > 以下命令會觸發 GPT 呼叫；需環境可連網、並具備必要環境變數（如 OpenAI key）。
@@ -73,18 +75,16 @@
 - ✅ Functional cases：已將 `tests/docs/test_cases_v1*.md` 改為指向 JSONL suites（保留文件作為人工參考），避免維護兩套案例來源。
 - ✅ Functional runner：已補上 suite JSONL schema 驗證，在執行前驗證每筆 JSONL 欄位完整性。
 - ✅ 文件：已更新 `tests/README.md` 的「v1/v1.5」殘留文字，統一以 suite 名稱描述。
-- 下一步（進行中）：Suite 規格 - 將 `expected` 從「一律攤平」改為針對 intent 分型（先維持 intent=記帳/對話/錯誤 三類），降低誤填欄位機率。
+- ✅ Suite 規格：已將 `expected` 從「一律攤平」改為針對 intent 分型（維持 intent=記帳/對話/錯誤 三類），降低誤填欄位機率。
 
 ## 下一步（預計）
-1. 盤點四個 suite 的 `expected` 欄位實際用法（哪些欄位常用/永遠空）。
-2. 定義 `expected` v2 分型格式（`bookkeeping` / `error` / `conversation`），並寫清楚欄位允許規則。
-3. runner 同時支援 v1/v2，並把 schema 驗證升級成「依 intent 檢查」。
-4. 逐個 suite 遷移到 v2（先 `date`/`advance_payment`，再 `multi_expense`/`expense`）。
-5. 離線 `--list` 驗證 + 少量 smoke case（會呼叫 OpenAI）確認相容。
+1. ✅ 已完成：v2 suites smoke 通過（會呼叫 OpenAI）。
+2. ✅ 已完成：移除 runner 對 v1（攤平 expected）的 fallback 支援，避免長期維護兩套格式。
+3.（可選）補一個純離線的 `--validate` 命令/腳本：只做 JSONL schema 驗證與 id 重複檢查，方便 CI 或 pre-commit。
 
 ### 盤點結果（v1 實際用法摘要）
 - `expense.jsonl`：`intent=記帳` 主要用 `item/amount/payment/category`；`intent=對話` 不比對欄位。
-- `multi_expense.jsonl`：`intent=記帳` 主要用 `payment/item_count`；`intent=錯誤` 用 `error_contains`。
+- `multi_expense.jsonl`：`intent=記帳` 主要用 `payment/item_count`；`intent=錯誤` 用 error message contains。
 - `advance_payment.jsonl`：`intent=記帳` 主要用 `item/amount/payment/advance_status/recipient`（少量用 `item_count/date`）。
 - `date.jsonl`：`intent=記帳` 主要用 `item/amount/payment/category/date`（少量用 `item_count`）。
 

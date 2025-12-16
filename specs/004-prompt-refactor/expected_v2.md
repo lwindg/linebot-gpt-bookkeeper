@@ -99,6 +99,5 @@ Rules:
 
 ## Compatibility plan
 
-- Runner supports both v1 (flattened) and v2 (typed) during migration.
-- Suites migrate file-by-file; validation ensures each JSON line is either valid v1 or valid v2.
-
+- Runner requires v2 (typed `expected`) and rejects v1 (flattened) formats.
+- Suites are fully migrated to v2; keep this document as the single source of truth for authoring new cases.
