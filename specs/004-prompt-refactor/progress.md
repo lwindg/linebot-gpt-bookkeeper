@@ -3,7 +3,8 @@
 ## 狀態
 - smoke 已通過、依賴確認無誤；full regression 先暫緩（會呼叫 OpenAI）。
 - 已補強 suites 文件一致性與 runner 的 JSONL schema 驗證（可在離線模式提前擋錯）。
-- 已完成 `expected` v2 分型並遷移四個 suites；runner 可相容 v1/v2。
+- 已完成 `expected` v2 分型並遷移四個 suites；runner 已移除 v1 fallback（只接受 v2）。
+- 已新增 `--all` 與 `--smoke` 便於快速回歸與全量回歸。
 
 ## 已完成變更（摘要）
 - 新增統一測試入口：`run_tests.sh`
@@ -38,9 +39,11 @@
   - 已提交：`refactor(tests): validate suites and align docs`（commit: `3002bb7`）
 - Suite `expected` v2 分型（已完成）：
   - v2 規格：`specs/004-prompt-refactor/expected_v2.md`
-  - `run_tests.sh` 支援 `expected` v1（攤平）/v2（分型）並在執行前做 schema 驗證（依 intent 分型檢查）
+  - `run_tests.sh` 僅支援 v2（分型）並在執行前做 schema 驗證（依 intent 分型檢查）
   - 四個 suites 已遷移到 v2：`expense/multi_expense/advance_payment/date`
   - 已提交：`refactor(tests): type expected v2 and migrate suites`（commit: `efd5385`）
+  - 已提交：`refactor(tests): remove v1 expected fallback`（commit: `f627c7b`）
+  - 已提交：`feat(tests): add --all and --smoke runners`（commit: `f1620c6`）
 
 ## 待驗證（尚未執行）
 > 以下命令會觸發 GPT 呼叫；需環境可連網、並具備必要環境變數（如 OpenAI key）。
@@ -83,6 +86,8 @@
 1. ✅ 已完成：v2 suites smoke 通過（會呼叫 OpenAI）。
 2. ✅ 已完成：移除 runner 對 v1（攤平 expected）的 fallback 支援，避免長期維護兩套格式。
 3.（可選）補一個純離線的 `--validate` 命令/腳本：只做 JSONL schema 驗證與 id 重複檢查，方便 CI 或 pre-commit。
+4. pytest 測試整頓（仍待）：markers 正規化、測試檔命名整理、處理空檔測試、抽共用 fixtures/helpers。
+5. full regression baseline（可選，會呼叫 OpenAI）：`./run_tests.sh --all --auto`。
 
 ### 盤點結果（v1 實際用法摘要）
 - `expense.jsonl`：`intent=記帳` 主要用 `item/amount/payment/category`；`intent=對話` 不比對欄位。

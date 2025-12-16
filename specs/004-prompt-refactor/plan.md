@@ -14,16 +14,23 @@
 - 測試腳本整合：改用功能分類套件（`expense`/`multi_expense`/`advance_payment`…），統一入口與解析策略（以 `jq` 為必備），保留舊檔名 shim。
 
 ## ✅ 當前狀態
-- 尚未開發，等待確認方案後實作。
+- 測試重構已完成並可用於回歸；Prompt/Schema 重構尚未開始。
+  - Functional runner：`run_tests.sh`（支援 `--suite`/`--all`/`--smoke`/`--only`/`--list`/`--auto`）
+  - Suites：`tests/functional/suites/*.jsonl`（v2 typed `expected`）
+  - 里程碑 commits（摘要）：
+    - `3002bb7` `refactor(tests): validate suites and align docs`
+    - `efd5385` `refactor(tests): type expected v2 and migrate suites`
+    - `f627c7b` `refactor(tests): remove v1 expected fallback`
+    - `f1620c6` `feat(tests): add --all and --smoke runners`
 
 ## 🛠️ 執行步驟（草案）
-1) 測試腳本整合（先做）：定義 suite（`expense`/`multi_expense`/`advance_payment`…）、統一入口與參數（`--suite`、`--auto/--manual`、`--only`），保留舊檔名 shim。  
+1) ✅ 測試腳本整合（已完成）：定義 suite（`expense`/`multi_expense`/`advance_payment`/`date`）、統一入口與參數（`--suite`、`--auto/--manual`、`--only`、`--list`、`--all`、`--smoke`），保留舊檔名 shim。  
    - 應測：CLI 參數行為一致；suite 選擇正確；舊檔名 shim 可正確轉呼叫。  
    - 風險：介面變更造成使用習慣斷裂（需 shim）；不同腳本既有行為不一致導致整合困難。
-2) 解析與欄位對照統一：以 `jq` 解析 JSON 為必備（若未安裝則直接報錯並提示安裝），統一欄位鍵（intent、item_count、payment、category、advance_status…）與比對規則。  
+2) ✅ 解析與欄位對照統一（已完成）：以 `jq` 解析 JSON 為必備（若未安裝則直接報錯並提示安裝），統一欄位鍵（intent、item_count、payment、category、advance_status…）與比對規則。  
    - 應測：同一案例在新入口下可取得與原腳本一致的欄位值；分類/錯誤訊息的匹配策略不誤判。  
    - 風險：環境缺少 `jq` 導致無法執行（需明確安裝指引）；輸出格式不穩定導致解析失敗；分類「部分匹配」規則需一致化。
-3) 案例搬移與基準鎖定：把現有三個腳本案例搬到資料結構（功能 suite），案例內容不改，先建立可重跑的 baseline。  
+3) ✅ 案例搬移與基準鎖定（已完成）：把現有腳本案例搬到 `tests/functional/suites/*.jsonl`，並把 `expected` 升級為 v2 分型（typed），移除 v1 fallback，建立可重跑 baseline。  
    - 應測：`expense`/`multi_expense`/`advance_payment` 三套 suite 都能跑完；與舊腳本結果一致（以欄位比對或摘要比對）。  
    - 風險：測試依賴 GPT 回應的非決定性；需要明確哪些欄位可比對、哪些必須忽略（如交易ID）。
 4) 信息盤點：拆出必填欄位與預設值清單；確定必要性、分類、代墊、專案的關鍵字映射，幣別/付款 few-shot 範圍。  
@@ -50,7 +57,7 @@
 ## 🧪 測試腳本整合構想（功能分類）
 - 目標：用功能類別（核心記帳、多項目、代墊等）取代版本區分，統一入口腳本，降低重複維護。
 - 分類構想：`expense`（單項/基本欄位）、`multi_expense`（多項目共用付款/日期/交易ID）、`advance_payment`（代墊/需支付/不索取），後續可擴充 `fx`（多幣別）等。
-- 介面：單一 `run_tests.sh --suite <expense|multi_expense|advance_payment> [--auto|--manual] [--only pattern]`；可保留舊檔名作 shim 轉呼叫。
+- 介面：單一 `run_tests.sh --suite <expense|multi_expense|advance_payment|date> [--auto|--manual] [--only pattern] [--list] [--smoke]` 或 `run_tests.sh --all`。
 - 解析策略：以 `jq` 解析 JSON 為必備；若 `jq` 缺失則直接報錯並提示安裝；欄位對照統一（intent、item_count、payment、category、advance_status 等）。
 - 測試案例來源：將現有三個腳本的案例搬到資料檔（shell 陣列或簡單 JSON），避免硬編碼；比較規則（分類允許部分匹配 vs 完整匹配）需在統一層定義。
 - 風險：環境是否有 `jq`（無則無法跑測試）；舊腳本習慣需緩衝期（shim）。
