@@ -13,8 +13,11 @@ NC='\033[0m'
 AUTO_MODE=false
 SUITE=""
 ONLY_PATTERN=""
+SMOKE_ONLY_PATTERN=""
 LIST_MODE=false
 DEBUG_MODE=false
+ALL_MODE=false
+SMOKE_MODE=false
 
 TOTAL_TESTS=0
 PASSED_TESTS=0
@@ -26,13 +29,16 @@ usage() {
 Unified test runner (functional suites)
 
 Usage:
-  ./run_tests.sh --suite <expense|multi_expense|advance_payment|date> [--auto|--manual] [--only <pattern>] [--list]
+  ./run_tests.sh --suite <expense|multi_expense|advance_payment|date> [--auto|--manual] [--only <pattern>] [--smoke] [--list]
+  ./run_tests.sh --all [--auto|--manual] [--only <pattern>] [--smoke] [--list]
 
 Options:
   --suite <name>    Suite name: expense, multi_expense, advance_payment, date
+  --all             Run all suites (expense, multi_expense, advance_payment, date)
   --auto            Auto-compare expected vs actual (default: manual)
   --manual          Manual mode (default)
   --only <pattern>  Run only tests whose id/name/message matches regex
+  --smoke           Run a small smoke subset per suite (can be combined with --suite/--all)
   --list            List matched tests and exit (no OpenAI calls)
   --debug           Print debug info on failures
   --help, -h        Show this help
@@ -62,12 +68,20 @@ parse_args() {
         SUITE="${2:-}"
         shift 2
         ;;
+      --all)
+        ALL_MODE=true
+        shift
+        ;;
       --auto)
         AUTO_MODE=true
         shift
         ;;
       --manual)
         AUTO_MODE=false
+        shift
+        ;;
+      --smoke)
+        SMOKE_MODE=true
         shift
         ;;
       --only)
@@ -101,8 +115,15 @@ parse_args() {
     esac
   done
 
-  if [[ -z "$SUITE" ]]; then
-    echo "Error: --suite is required" >&2
+  if [[ "$ALL_MODE" == true ]] && [[ -n "$SUITE" ]]; then
+    echo "Error: --all cannot be used with --suite" >&2
+    echo "" >&2
+    usage >&2
+    exit 2
+  fi
+
+  if [[ "$ALL_MODE" == false ]] && [[ -z "$SUITE" ]]; then
+    echo "Error: --suite or --all is required" >&2
     echo "" >&2
     usage >&2
     exit 2
@@ -111,10 +132,18 @@ parse_args() {
 
 should_run_case() {
   local tc_id="$1" tc_group="$2" tc_name="$3" tc_message="$4"
-  if [[ -z "$ONLY_PATTERN" ]]; then
-    return 0
+  local haystack
+  haystack="$tc_id $tc_group $tc_name $tc_message"
+
+  if [[ -n "$SMOKE_ONLY_PATTERN" ]]; then
+    printf '%s\n' "$haystack" | grep -qE -- "$SMOKE_ONLY_PATTERN" || return 1
   fi
-  printf '%s\n' "$tc_id $tc_group $tc_name $tc_message" | grep -qE -- "$ONLY_PATTERN"
+
+  if [[ -n "$ONLY_PATTERN" ]]; then
+    printf '%s\n' "$haystack" | grep -qE -- "$ONLY_PATTERN" || return 1
+  fi
+
+  return 0
 }
 
 suite_path() {
@@ -127,6 +156,16 @@ suite_path() {
       echo "Error: unknown suite: $SUITE" >&2
       exit 2
       ;;
+  esac
+}
+
+smoke_pattern_for_suite() {
+  case "$1" in
+    expense) echo 'TC-V1-001|TC-V17-015' ;;
+    date) echo 'TC-DATE-003|TC-DATE-006' ;;
+    multi_expense) echo 'TC-V15-010|TC-V15-030' ;;
+    advance_payment) echo 'TC-V17-001|TC-V17-005|TC-V17-010' ;;
+    *) echo "" ;;
   esac
 }
 
@@ -600,90 +639,118 @@ main() {
   parse_args "$@"
   require_jq
 
-  local suite_file
-  suite_file="$(suite_path)"
-  if [[ ! -f "$suite_file" ]]; then
-    echo "Error: suite file not found: $suite_file" >&2
-    exit 2
-  fi
-  validate_suite_jsonl "$suite_file"
-
-  echo "======================================================================"
-  echo "🧪 Test Suite: $SUITE"
-  echo "======================================================================"
-  echo ""
-  if [[ "$AUTO_MODE" == true ]]; then
-    echo "Mode: auto"
+  local suites=()
+  if [[ "$ALL_MODE" == true ]]; then
+    suites=(expense multi_expense advance_payment date)
   else
-    echo "Mode: manual"
-  fi
-  if [[ -n "$ONLY_PATTERN" ]]; then
-    echo "Filter: $ONLY_PATTERN"
-  fi
-  if [[ "$LIST_MODE" == true ]]; then
-    echo "Mode: list"
+    suites=("$SUITE")
   fi
 
-  if [[ "$LIST_MODE" == true ]]; then
-    local line tc_id tc_group tc_name tc_message listed=0
+  if [[ "$SMOKE_MODE" == true ]] && [[ -n "$ONLY_PATTERN" ]]; then
+    echo "Note: --smoke AND --only are both set; both filters must match." >&2
+  fi
+
+  for suite in "${suites[@]}"; do
+    SUITE="$suite"
+    if [[ "$SMOKE_MODE" == true ]]; then
+      SMOKE_ONLY_PATTERN="$(smoke_pattern_for_suite "$SUITE")"
+    else
+      SMOKE_ONLY_PATTERN=""
+    fi
+
+    local suite_file
+    suite_file="$(suite_path)"
+    if [[ ! -f "$suite_file" ]]; then
+      echo "Error: suite file not found: $suite_file" >&2
+      exit 2
+    fi
+    validate_suite_jsonl "$suite_file"
+
+    echo "======================================================================"
+    echo "🧪 Test Suite: $SUITE"
+    echo "======================================================================"
+    echo ""
+    if [[ "$AUTO_MODE" == true ]]; then
+      echo "Mode: auto"
+    else
+      echo "Mode: manual"
+    fi
+    if [[ -n "$SMOKE_ONLY_PATTERN" ]]; then
+      echo "Smoke: $SMOKE_ONLY_PATTERN"
+    fi
+    if [[ -n "$ONLY_PATTERN" ]]; then
+      echo "Filter: $ONLY_PATTERN"
+    fi
+    if [[ "$LIST_MODE" == true ]]; then
+      echo "Mode: list"
+    fi
+
+    if [[ "$LIST_MODE" == true ]]; then
+      local line tc_id tc_group tc_name tc_message listed=0
+      while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        [[ "$line" =~ ^# ]] && continue
+        tc_id="$(jq -r '.id // empty' <<<"$line")"
+        tc_group="$(jq -r '.group // empty' <<<"$line")"
+        tc_name="$(jq -r '.name // empty' <<<"$line")"
+        tc_message="$(jq -r '.message // empty' <<<"$line")"
+        if should_run_case "$tc_id" "$tc_group" "$tc_name" "$tc_message"; then
+          printf '%s\n' "$tc_id | $tc_group | $tc_name"
+          ((listed+=1))
+        fi
+      done <"$suite_file"
+      echo ""
+      echo "Matched: $listed"
+      echo ""
+      continue
+    fi
+
+    if [[ "$AUTO_MODE" == false ]]; then
+      echo ""
+      read -r -p "Press Enter to start..."
+    fi
+
+    local line
     while IFS= read -r line; do
       [[ -z "$line" ]] && continue
       [[ "$line" =~ ^# ]] && continue
+
+      local tc_id tc_group tc_name tc_message expected_desc
+      local expected_intent expected_item expected_amount expected_payment expected_category
+      local expected_item_count expected_advance_status expected_recipient expected_error_contains expected_date
+
       tc_id="$(jq -r '.id // empty' <<<"$line")"
       tc_group="$(jq -r '.group // empty' <<<"$line")"
       tc_name="$(jq -r '.name // empty' <<<"$line")"
       tc_message="$(jq -r '.message // empty' <<<"$line")"
-      if should_run_case "$tc_id" "$tc_group" "$tc_name" "$tc_message"; then
-        printf '%s\n' "$tc_id | $tc_group | $tc_name"
-        ((listed+=1))
+      expected_desc="$(jq -r '.expected_desc // empty' <<<"$line")"
+
+      expected_intent="$(jq -r '.expected.intent // empty' <<<"$line")"
+      expected_item="$(jq -r '.expected.bookkeeping.item // empty' <<<"$line")"
+      expected_amount="$(jq -r '.expected.bookkeeping.amount // empty' <<<"$line")"
+      expected_payment="$(jq -r '.expected.bookkeeping.payment // empty' <<<"$line")"
+      expected_category="$(jq -r '.expected.bookkeeping.category // empty' <<<"$line")"
+      expected_item_count="$(jq -r '.expected.bookkeeping.item_count // empty' <<<"$line")"
+      expected_advance_status="$(jq -r '.expected.bookkeeping.advance_status // empty' <<<"$line")"
+      expected_recipient="$(jq -r '.expected.bookkeeping.recipient // empty' <<<"$line")"
+      expected_error_contains="$(jq -r '.expected.error.contains // empty' <<<"$line")"
+      expected_date="$(jq -r '.expected.bookkeeping.date // empty' <<<"$line")"
+
+      if ! should_run_case "$tc_id" "$tc_group" "$tc_name" "$tc_message"; then
+        ((SKIPPED_TESTS+=1))
+        continue
       fi
+
+      run_case "$tc_group" "$tc_id: $tc_name" "$tc_message" "$expected_desc" \
+        "$expected_intent" "$expected_item" "$expected_amount" "$expected_payment" \
+        "$expected_category" "$expected_item_count" "$expected_advance_status" "$expected_recipient" \
+        "$expected_error_contains" "$expected_date"
     done <"$suite_file"
-    echo ""
-    echo "Matched: $listed"
+  done
+
+  if [[ "$LIST_MODE" == true ]]; then
     exit 0
   fi
-
-  if [[ "$AUTO_MODE" == false ]]; then
-    echo ""
-    read -r -p "Press Enter to start..."
-  fi
-
-  local line
-  while IFS= read -r line; do
-    [[ -z "$line" ]] && continue
-    [[ "$line" =~ ^# ]] && continue
-
-    local tc_id tc_group tc_name tc_message expected_desc
-    local expected_intent expected_item expected_amount expected_payment expected_category
-    local expected_item_count expected_advance_status expected_recipient expected_error_contains expected_date
-
-    tc_id="$(jq -r '.id // empty' <<<"$line")"
-    tc_group="$(jq -r '.group // empty' <<<"$line")"
-    tc_name="$(jq -r '.name // empty' <<<"$line")"
-    tc_message="$(jq -r '.message // empty' <<<"$line")"
-    expected_desc="$(jq -r '.expected_desc // empty' <<<"$line")"
-
-    expected_intent="$(jq -r '.expected.intent // empty' <<<"$line")"
-    expected_item="$(jq -r '.expected.bookkeeping.item // empty' <<<"$line")"
-    expected_amount="$(jq -r '.expected.bookkeeping.amount // empty' <<<"$line")"
-    expected_payment="$(jq -r '.expected.bookkeeping.payment // empty' <<<"$line")"
-    expected_category="$(jq -r '.expected.bookkeeping.category // empty' <<<"$line")"
-    expected_item_count="$(jq -r '.expected.bookkeeping.item_count // empty' <<<"$line")"
-    expected_advance_status="$(jq -r '.expected.bookkeeping.advance_status // empty' <<<"$line")"
-    expected_recipient="$(jq -r '.expected.bookkeeping.recipient // empty' <<<"$line")"
-    expected_error_contains="$(jq -r '.expected.error.contains // empty' <<<"$line")"
-    expected_date="$(jq -r '.expected.bookkeeping.date // empty' <<<"$line")"
-
-    if ! should_run_case "$tc_id" "$tc_group" "$tc_name" "$tc_message"; then
-      ((SKIPPED_TESTS+=1))
-      continue
-    fi
-
-    run_case "$tc_group" "$tc_id: $tc_name" "$tc_message" "$expected_desc" \
-      "$expected_intent" "$expected_item" "$expected_amount" "$expected_payment" \
-      "$expected_category" "$expected_item_count" "$expected_advance_status" "$expected_recipient" \
-      "$expected_error_contains" "$expected_date"
-  done <"$suite_file"
 
   echo ""
   echo "======================================================================"

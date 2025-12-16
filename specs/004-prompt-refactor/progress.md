@@ -53,12 +53,14 @@
 - `./run_tests.sh --suite date --list --only 'TC-DATE-003|TC-DATE-006'`
 - `./run_tests.sh --suite multi_expense --list --only 'TC-V15-010|TC-V15-030'`
 - `./run_tests.sh --suite advance_payment --list --only 'TC-V17-001|TC-V17-005|TC-V17-010'`
+- `./run_tests.sh --smoke --all --list`
 
 ### 2) smoke（建議先跑）
 - `./run_tests.sh --suite expense --auto --only 'TC-V1-001|TC-V17-015'`
 - `./run_tests.sh --suite date --auto --only 'TC-DATE-003|TC-DATE-006'`
 - `./run_tests.sh --suite multi_expense --auto --only 'TC-V15-010|TC-V15-030'`
 - `./run_tests.sh --suite advance_payment --auto --only 'TC-V17-001|TC-V17-005|TC-V17-010'`
+- `./run_tests.sh --smoke --all --auto`
 
 ### 3) full regression（確認 baseline）
 - `./run_tests.sh --suite expense --auto`

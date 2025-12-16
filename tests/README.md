@@ -53,17 +53,30 @@ python test_local.py --raw '11/12 午餐120元現金'
 ./run_tests.sh --suite advance_payment
 ./run_tests.sh --suite date
 
+# Run all suites
+./run_tests.sh --all
+
+# Smoke subset (per-suite)
+./run_tests.sh --smoke --all
+./run_tests.sh --suite expense --smoke
+
 # Auto compare (requires OpenAI)
 ./run_tests.sh --suite expense --auto
 ./run_tests.sh --suite multi_expense --auto
 ./run_tests.sh --suite advance_payment --auto
 ./run_tests.sh --suite date --auto
 
+# Auto compare smoke subset (requires OpenAI)
+./run_tests.sh --smoke --all --auto
+
 # List-only (offline, no OpenAI calls)
 ./run_tests.sh --suite expense --list
 ./run_tests.sh --suite multi_expense --list
 ./run_tests.sh --suite advance_payment --list
 ./run_tests.sh --suite date --list
+
+# List-only smoke subset
+./run_tests.sh --smoke --all --list
 ```
 
 **Suites**:
