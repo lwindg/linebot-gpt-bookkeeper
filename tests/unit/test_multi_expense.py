@@ -12,7 +12,7 @@ v1.5.0 多項目支出單元測試
 
 from unittest.mock import Mock, patch
 from app.gpt_processor import process_multi_expense
-from tests.test_utils import make_openai_client_with_content
+from tests.test_utils import set_openai_mock_content
 
 
 class TestMultiExpenseSingleItem:
@@ -1285,7 +1285,7 @@ class TestCompactFormatRecognition:
         ]
 
         for user_input, expected_item, expected_amount, expected_payment in test_cases:
-            mock_openai.return_value = make_openai_client_with_content(f'''
+            set_openai_mock_content(mock_openai, f'''
 {{
   "intent": "multi_bookkeeping",
   "payment_method": "{expected_payment}",

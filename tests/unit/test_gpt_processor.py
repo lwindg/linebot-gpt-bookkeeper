@@ -1,8 +1,9 @@
 # Test GPT Processor for multi-currency feature
 
 from unittest.mock import Mock, patch
+
 from app.gpt_processor import process_multi_expense
-from tests.test_utils import make_openai_client_with_content
+from tests.test_utils import set_openai_mock_content
 
 
 class TestForeignCurrencyParsing:
@@ -13,7 +14,7 @@ class TestForeignCurrencyParsing:
     def test_parse_usd_expense(self, mock_exchange_service, mock_openai):
         """Test parsing USD expense: WSJ 4.99 USD"""
         # Mock GPT response
-        mock_openai.return_value = make_openai_client_with_content('''{
+        set_openai_mock_content(mock_openai, '''{
             "intent": "multi_bookkeeping",
             "payment_method": "Credit Card",
             "items": [{
@@ -54,7 +55,7 @@ class TestForeignCurrencyParsing:
     def test_parse_eur_expense(self, mock_exchange_service, mock_openai):
         """Test parsing EUR expense"""
         # Mock GPT response
-        mock_openai.return_value = make_openai_client_with_content('''{
+        set_openai_mock_content(mock_openai, '''{
             "intent": "multi_bookkeeping",
             "payment_method": "Credit Card",
             "items": [{
@@ -91,7 +92,7 @@ class TestForeignCurrencyParsing:
     def test_twd_expense_no_rate_query(self, mock_exchange_service, mock_openai):
         """Test TWD expense doesn't query exchange rate"""
         # Mock GPT response
-        mock_openai.return_value = make_openai_client_with_content('''{
+        set_openai_mock_content(mock_openai, '''{
             "intent": "multi_bookkeeping",
             "payment_method": "Cash",
             "items": [{

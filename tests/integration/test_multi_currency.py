@@ -6,9 +6,10 @@ Tests the complete flow: message parsing -> exchange rate query -> webhook send
 """
 
 from unittest.mock import Mock, patch
+
 from app.gpt_processor import process_multi_expense
 from app.webhook_sender import send_to_webhook, send_multiple_webhooks
-from tests.test_utils import make_openai_client_with_content
+from tests.test_utils import set_openai_mock_content
 
 
 class TestSingleForeignCurrencyE2E:
@@ -20,7 +21,7 @@ class TestSingleForeignCurrencyE2E:
     def test_single_usd_expense_complete_flow(self, mock_openai, mock_exchange_get, mock_webhook_post):
         """Test: User sends 'WSJ 4.99美元 大戶' -> Full processing -> Webhook sent"""
         # Mock GPT response
-        mock_openai.return_value = make_openai_client_with_content('''{
+        set_openai_mock_content(mock_openai, '''{
             "intent": "multi_bookkeeping",
             "payment_method": "大戶",
             "items": [{
@@ -85,7 +86,7 @@ class TestSingleForeignCurrencyE2E:
     def test_eur_expense_with_fallback_to_csv(self, mock_openai, mock_exchange_service, mock_webhook_post):
         """Test: EUR expense with exchange rate service providing rate"""
         # Mock GPT response
-        mock_openai.return_value = make_openai_client_with_content('''{
+        set_openai_mock_content(mock_openai, '''{
             "intent": "multi_bookkeeping",
             "payment_method": "信用卡",
             "items": [{
@@ -125,12 +126,7 @@ class TestSingleForeignCurrencyE2E:
     def test_backup_rate_when_all_apis_fail(self, mock_openai, mock_exchange_service, mock_webhook_post):
         """Test: Use backup rate when both FinMind and CSV fail"""
         # Mock GPT response
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_completion = Mock()
-        mock_completion.choices = [Mock()]
-        mock_completion.choices[0].message.content = '''{
+        set_openai_mock_content(mock_openai, '''{
             "intent": "multi_bookkeeping",
             "payment_method": "信用卡",
             "items": [{
@@ -144,7 +140,7 @@ class TestSingleForeignCurrencyE2E:
                 "收款支付對象": ""
             }]
         }'''
-        mock_client.chat.completions.create.return_value = mock_completion
+        )
 
         # Mock exchange rate service with backup rate
         mock_rate_service = Mock()
@@ -170,12 +166,7 @@ class TestSingleForeignCurrencyE2E:
     def test_twd_expense_no_exchange_rate_query(self, mock_openai, mock_webhook_post):
         """Test: TWD expense doesn't query exchange rate"""
         # Mock GPT response
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_completion = Mock()
-        mock_completion.choices = [Mock()]
-        mock_completion.choices[0].message.content = '''{
+        set_openai_mock_content(mock_openai, '''{
             "intent": "multi_bookkeeping",
             "payment_method": "現金",
             "items": [{
@@ -189,7 +180,7 @@ class TestSingleForeignCurrencyE2E:
                 "收款支付對象": ""
             }]
         }'''
-        mock_client.chat.completions.create.return_value = mock_completion
+        )
 
         # Mock webhook response
         mock_webhook_response = Mock()
@@ -219,12 +210,7 @@ class TestMultiItemMixedCurrency:
     def test_mixed_twd_and_foreign_currency(self, mock_openai, mock_exchange_get, mock_webhook_post):
         """Test: Multiple items with TWD and foreign currency"""
         # Mock GPT response
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_completion = Mock()
-        mock_completion.choices = [Mock()]
-        mock_completion.choices[0].message.content = '''{
+        set_openai_mock_content(mock_openai, '''{
             "intent": "multi_bookkeeping",
             "payment_method": "信用卡",
             "items": [
@@ -250,7 +236,7 @@ class TestMultiItemMixedCurrency:
                 }
             ]
         }'''
-        mock_client.chat.completions.create.return_value = mock_completion
+        )
 
         # Mock FinMind API response for USD
         mock_exchange_response = Mock()
@@ -298,12 +284,7 @@ class TestErrorHandling:
     def test_unsupported_currency_returns_error(self, mock_openai, mock_exchange_service):
         """Test: Unsupported currency returns error"""
         # Mock GPT response with unsupported currency
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_completion = Mock()
-        mock_completion.choices = [Mock()]
-        mock_completion.choices[0].message.content = '''{
+        set_openai_mock_content(mock_openai, '''{
             "intent": "multi_bookkeeping",
             "payment_method": "信用卡",
             "items": [{
@@ -317,7 +298,7 @@ class TestErrorHandling:
                 "收款支付對象": ""
             }]
         }'''
-        mock_client.chat.completions.create.return_value = mock_completion
+        )
 
         # Mock exchange rate service returns None (no rate available)
         mock_rate_service = Mock()
