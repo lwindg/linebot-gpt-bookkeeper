@@ -17,6 +17,7 @@
   - 已提交：`refactor(tests): add shared OpenAI mock helper`（commit: `0e2390f`）
   - 已提交：`refactor(tests): use shared OpenAI mock helper`（commit: `866c848`）
   - 已提交：`refactor(tests): split advance payment unit tests`（commit: `fcd9021`）
+  - 已提交：`refactor(tests): add OpenAI mock setter`（commit: `4c16e70`）
 - suites（功能分類，改為 JSONL，避免 `|` 欄位位移）：
   - `tests/functional/suites/expense.jsonl`
   - `tests/functional/suites/date.jsonl`
