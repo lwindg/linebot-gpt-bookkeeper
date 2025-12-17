@@ -8,6 +8,11 @@
 
 ## 已完成變更（摘要）
 - 新增統一測試入口：`run_tests.sh`
+- pytest 整頓（已完成）：
+  - 自動依路徑標記 `unit/integration`（`tests/conftest.py`）
+  - 移除未使用的 legacy markers（`v1/v15`）
+  - 移除測試檔內 `__main__` 直跑入口（統一用 `uv run pytest`）
+  - 已提交：`refactor(tests): normalize pytest markers`（commit: `60e7844`）
 - suites（功能分類，改為 JSONL，避免 `|` 欄位位移）：
   - `tests/functional/suites/expense.jsonl`
   - `tests/functional/suites/date.jsonl`
@@ -86,7 +91,7 @@
 1. ✅ 已完成：v2 suites smoke 通過（會呼叫 OpenAI）。
 2. ✅ 已完成：移除 runner 對 v1（攤平 expected）的 fallback 支援，避免長期維護兩套格式。
 3.（可選）補一個純離線的 `--validate` 命令/腳本：只做 JSONL schema 驗證與 id 重複檢查，方便 CI 或 pre-commit。
-4. pytest 測試整頓（仍待）：markers 正規化、測試檔命名整理、處理空檔測試、抽共用 fixtures/helpers。
+4. pytest 測試整頓（部分完成）：已先完成 markers 正規化；其餘待辦為測試檔命名整理、處理空檔測試、抽共用 fixtures/helpers。
 5. full regression baseline（可選，會呼叫 OpenAI）：`./run_tests.sh --all --auto`。
 
 ### 盤點結果（v1 實際用法摘要）

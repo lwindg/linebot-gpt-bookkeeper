@@ -48,6 +48,20 @@
 
 ---
 
+## 進度與提交（必做）
+
+- 每次完成一段可交付變更後必須：
+  - 以符合規範的 commit message 提交「本次實際修改的檔案」
+  - 同步更新對應的進度檔（例如：`specs/004-prompt-refactor/progress.md`），在「已完成變更」內補上摘要與 commit hash
+
+## 指令：「讀取進度」
+
+- 當使用者下「讀取進度」且未指定路徑時：
+  - 預設讀取：`specs/004-prompt-refactor/progress.md`
+- 若使用者指定檔案/路徑，則以使用者指定為準。
+
+---
+
 ## Spec Kit 流程
 
 **暫時狀態**：Spec Kit 工具目前無法使用，開發期間可暫時跳過 `/speckit.*` 指令與 `specify check`；待工具恢復後再回到以下流程。
@@ -69,4 +83,3 @@
 - `/speckit.analyze`：一致性與品質檢查
 
 **恢復後規範**：工具恢復可用時，**必須**在功能視為就緒、提交或合併之前執行 `specify check`。
-
