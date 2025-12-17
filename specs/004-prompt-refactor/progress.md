@@ -100,6 +100,13 @@
 4. pytest 測試整頓（部分完成）：已先完成 markers 正規化；其餘待辦為測試檔命名整理、處理空檔測試、抽共用 fixtures/helpers。
 5. full regression baseline（可選，會呼叫 OpenAI）：`./run_tests.sh --all --auto`。
 
+### pytest 收尾待辦（下次接續）
+- [ ] `tests/unit/test_multi_expense.py`：將各測試中重複的 OpenAI mock/client/response 樣板改用 `tests/test_utils.py:set_openai_mock_content()`（目前僅部分案例已套用）。
+- [ ] `tests/test_utils.py`：補 `make_openai_client_with_json(payload)` 之類 helper（內部 `json.dumps` + `make_openai_client_with_content`），降低 Vision/JSON 測試樣板重複。
+- [ ] `tests/unit/test_image_handler.py`：用上述 helper 改寫重複的 `MagicMock()` + `choices/message/content` 組裝，並保留 API error 的 side_effect 測試。
+- [ ] `tests/unit/test_image_handler.py`：移除未使用的 `mocker` 參數（目前多數測試未使用）。
+- [ ]（可選）統一測試內 patch 字串/引號風格（single/double quotes）並做 `ruff`/格式整理（以最小變更為主）。
+
 ### 盤點結果（v1 實際用法摘要）
 - `expense.jsonl`：`intent=記帳` 主要用 `item/amount/payment/category`；`intent=對話` 不比對欄位。
 - `multi_expense.jsonl`：`intent=記帳` 主要用 `payment/item_count`；`intent=錯誤` 用 error message contains。
