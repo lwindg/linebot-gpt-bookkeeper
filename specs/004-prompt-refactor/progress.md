@@ -14,6 +14,7 @@
   - 移除測試檔內 `__main__` 直跑入口（統一用 `uv run pytest`）
   - 已提交：`refactor(tests): normalize pytest markers`（commit: `60e7844`）
   - 已提交：`refactor(tests): remove unused imports`（commit: `505950e`）
+  - 已提交：`refactor(tests): add shared OpenAI mock helper`（commit: `0e2390f`）
 - suites（功能分類，改為 JSONL，避免 `|` 欄位位移）：
   - `tests/functional/suites/expense.jsonl`
   - `tests/functional/suites/date.jsonl`
