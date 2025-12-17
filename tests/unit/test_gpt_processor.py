@@ -1,6 +1,5 @@
 # Test GPT Processor for multi-currency feature
 
-import pytest
 from unittest.mock import Mock, patch
 from app.gpt_processor import process_multi_expense
 

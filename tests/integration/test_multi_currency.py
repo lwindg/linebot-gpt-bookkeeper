@@ -5,8 +5,7 @@ End-to-End Integration Tests for Multi-Currency Feature
 Tests the complete flow: message parsing -> exchange rate query -> webhook send
 """
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from app.gpt_processor import process_multi_expense
 from app.webhook_sender import send_to_webhook, send_multiple_webhooks
 

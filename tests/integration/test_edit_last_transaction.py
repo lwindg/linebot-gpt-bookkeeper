@@ -10,10 +10,8 @@ Test coverage:
 - Error handling: empty fields, not found, expired, concurrency
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
 from app.line_handler import handle_update_last_entry
-from app.kv_store import KVStore
 
 
 class TestEditItemName:

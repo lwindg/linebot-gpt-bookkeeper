@@ -5,8 +5,7 @@ Test Exchange Rate Service
 Tests for multi-currency bookkeeping feature (v003-multi-currency)
 """
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from app.exchange_rate import ExchangeRateService
 
 
