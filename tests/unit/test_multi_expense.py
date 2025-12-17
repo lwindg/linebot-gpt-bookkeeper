@@ -11,7 +11,7 @@ v1.5.0 多項目支出單元測試
 """
 
 from unittest.mock import Mock, patch
-from app.gpt_processor import process_multi_expense, MultiExpenseResult, BookkeepingEntry
+from app.gpt_processor import process_multi_expense
 from tests.test_utils import make_openai_client_with_content
 
 
@@ -700,7 +700,7 @@ class TestMultiExpenseComplexScenarios:
         assert "點心" in result.entries[1].分類
 
 
-class TestAdvancePayment:
+class _MovedTestAdvancePayment:
     """測試代墊功能（v1.7 新增）"""
 
     @patch('app.gpt_processor.OpenAI')
@@ -850,7 +850,7 @@ class TestAdvancePayment:
         assert result.entries[0].付款方式 == "Line 轉帳"
 
 
-class TestNeedToPay:
+class _MovedTestNeedToPay:
     """測試需支付功能（v1.7 新增）"""
 
     @patch('app.gpt_processor.OpenAI')
@@ -963,7 +963,7 @@ class TestNeedToPay:
         assert result.entries[0].收款支付對象 == "同事"
 
 
-class TestNoCollection:
+class _MovedTestNoCollection:
     """測試不索取功能（v1.7 新增）"""
 
     @patch('app.gpt_processor.OpenAI')
@@ -1038,7 +1038,7 @@ class TestNoCollection:
         assert result.entries[0].收款支付對象 == "老婆"
 
 
-class TestMultiItemWithAdvance:
+class _MovedTestMultiItemWithAdvance:
     """測試多項目含代墊（v1.7 新增）"""
 
     @patch('app.gpt_processor.OpenAI')
