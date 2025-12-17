@@ -359,6 +359,3 @@ class TestWebhookErrorHandling:
             # 如果沒有異常處理，這個測試會失敗
             pytest.fail("send_multiple_webhooks() should handle exceptions gracefully")
 
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v", "--tb=short"])

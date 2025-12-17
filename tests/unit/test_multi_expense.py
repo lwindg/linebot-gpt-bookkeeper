@@ -1317,6 +1317,3 @@ class TestCompactFormatRecognition:
             assert result.entries[0].原幣金額 == expected_amount, f"Failed for: {user_input}"
             assert result.entries[0].付款方式 == expected_payment, f"Failed for: {user_input}"
 
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v", "--tb=short"])
