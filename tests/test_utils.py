@@ -13,3 +13,8 @@ def make_openai_client_with_content(content: str) -> Mock:
     mock_client.chat.completions.create.return_value = mock_completion
     return mock_client
 
+
+def set_openai_mock_content(mock_openai: Mock, content: str) -> Mock:
+    client = make_openai_client_with_content(content)
+    mock_openai.return_value = client
+    return client
