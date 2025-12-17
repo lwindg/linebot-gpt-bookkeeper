@@ -2,6 +2,7 @@
 
 from unittest.mock import Mock, patch
 from app.gpt_processor import process_multi_expense
+from tests.test_utils import make_openai_client_with_content
 
 
 class TestForeignCurrencyParsing:
@@ -12,12 +13,7 @@ class TestForeignCurrencyParsing:
     def test_parse_usd_expense(self, mock_exchange_service, mock_openai):
         """Test parsing USD expense: WSJ 4.99 USD"""
         # Mock GPT response
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_completion = Mock()
-        mock_completion.choices = [Mock()]
-        mock_completion.choices[0].message.content = '''{
+        mock_openai.return_value = make_openai_client_with_content('''{
             "intent": "multi_bookkeeping",
             "payment_method": "Credit Card",
             "items": [{
@@ -30,8 +26,7 @@ class TestForeignCurrencyParsing:
                 "代墊狀態": "無",
                 "收款支付對象": ""
             }]
-        }'''
-        mock_client.chat.completions.create.return_value = mock_completion
+        }''')
 
         # Mock exchange rate service
         mock_rate_service = Mock()
@@ -59,12 +54,7 @@ class TestForeignCurrencyParsing:
     def test_parse_eur_expense(self, mock_exchange_service, mock_openai):
         """Test parsing EUR expense"""
         # Mock GPT response
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_completion = Mock()
-        mock_completion.choices = [Mock()]
-        mock_completion.choices[0].message.content = '''{
+        mock_openai.return_value = make_openai_client_with_content('''{
             "intent": "multi_bookkeeping",
             "payment_method": "Credit Card",
             "items": [{
@@ -77,8 +67,7 @@ class TestForeignCurrencyParsing:
                 "代墊狀態": "無",
                 "收款支付對象": ""
             }]
-        }'''
-        mock_client.chat.completions.create.return_value = mock_completion
+        }''')
 
         # Mock exchange rate service
         mock_rate_service = Mock()
@@ -102,12 +91,7 @@ class TestForeignCurrencyParsing:
     def test_twd_expense_no_rate_query(self, mock_exchange_service, mock_openai):
         """Test TWD expense doesn't query exchange rate"""
         # Mock GPT response
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_completion = Mock()
-        mock_completion.choices = [Mock()]
-        mock_completion.choices[0].message.content = '''{
+        mock_openai.return_value = make_openai_client_with_content('''{
             "intent": "multi_bookkeeping",
             "payment_method": "Cash",
             "items": [{
@@ -120,8 +104,7 @@ class TestForeignCurrencyParsing:
                 "代墊狀態": "無",
                 "收款支付對象": ""
             }]
-        }'''
-        mock_client.chat.completions.create.return_value = mock_completion
+        }''')
 
         # Mock exchange rate service
         mock_rate_service = Mock()

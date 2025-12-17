@@ -8,6 +8,7 @@ Tests the complete flow: message parsing -> exchange rate query -> webhook send
 from unittest.mock import Mock, patch
 from app.gpt_processor import process_multi_expense
 from app.webhook_sender import send_to_webhook, send_multiple_webhooks
+from tests.test_utils import make_openai_client_with_content
 
 
 class TestSingleForeignCurrencyE2E:
@@ -19,12 +20,7 @@ class TestSingleForeignCurrencyE2E:
     def test_single_usd_expense_complete_flow(self, mock_openai, mock_exchange_get, mock_webhook_post):
         """Test: User sends 'WSJ 4.99美元 大戶' -> Full processing -> Webhook sent"""
         # Mock GPT response
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_completion = Mock()
-        mock_completion.choices = [Mock()]
-        mock_completion.choices[0].message.content = '''{
+        mock_openai.return_value = make_openai_client_with_content('''{
             "intent": "multi_bookkeeping",
             "payment_method": "大戶",
             "items": [{
@@ -37,8 +33,7 @@ class TestSingleForeignCurrencyE2E:
                 "代墊狀態": "無",
                 "收款支付對象": ""
             }]
-        }'''
-        mock_client.chat.completions.create.return_value = mock_completion
+        }''')
 
         # Mock FinMind API response for exchange rate
         mock_exchange_response = Mock()
@@ -90,12 +85,7 @@ class TestSingleForeignCurrencyE2E:
     def test_eur_expense_with_fallback_to_csv(self, mock_openai, mock_exchange_service, mock_webhook_post):
         """Test: EUR expense with exchange rate service providing rate"""
         # Mock GPT response
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_completion = Mock()
-        mock_completion.choices = [Mock()]
-        mock_completion.choices[0].message.content = '''{
+        mock_openai.return_value = make_openai_client_with_content('''{
             "intent": "multi_bookkeeping",
             "payment_method": "信用卡",
             "items": [{
@@ -108,8 +98,7 @@ class TestSingleForeignCurrencyE2E:
                 "代墊狀態": "無",
                 "收款支付對象": ""
             }]
-        }'''
-        mock_client.chat.completions.create.return_value = mock_completion
+        }''')
 
         # Mock exchange rate service (simulating CSV fallback)
         mock_rate_service = Mock()
