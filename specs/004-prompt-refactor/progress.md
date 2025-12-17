@@ -15,6 +15,7 @@
   - 已提交：`refactor(tests): normalize pytest markers`（commit: `60e7844`）
   - 已提交：`refactor(tests): remove unused imports`（commit: `505950e`）
   - 已提交：`refactor(tests): add shared OpenAI mock helper`（commit: `0e2390f`）
+  - 已提交：`refactor(tests): use shared OpenAI mock helper`（commit: `866c848`）
 - suites（功能分類，改為 JSONL，避免 `|` 欄位位移）：
   - `tests/functional/suites/expense.jsonl`
   - `tests/functional/suites/date.jsonl`
