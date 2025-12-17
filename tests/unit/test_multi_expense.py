@@ -10,9 +10,9 @@ v1.5.0 多項目支出單元測試
 - 錯誤處理（不同付款方式、缺少資訊等）
 """
 
-import pytest
 from unittest.mock import Mock, patch
 from app.gpt_processor import process_multi_expense, MultiExpenseResult, BookkeepingEntry
+from tests.test_utils import make_openai_client_with_content
 
 
 class TestMultiExpenseSingleItem:
@@ -1284,13 +1284,8 @@ class TestCompactFormatRecognition:
             ("菇類240現金", "菇類", 240, "現金"),
         ]
 
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
         for user_input, expected_item, expected_amount, expected_payment in test_cases:
-            mock_response = Mock()
-            mock_response.choices = [Mock()]
-            mock_response.choices[0].message.content = f'''
+            mock_openai.return_value = make_openai_client_with_content(f'''
 {{
   "intent": "multi_bookkeeping",
   "payment_method": "{expected_payment}",
@@ -1306,8 +1301,7 @@ class TestCompactFormatRecognition:
     }}
   ]
 }}
-'''
-            mock_client.chat.completions.create.return_value = mock_response
+''')
 
             result = process_multi_expense(user_input)
 
@@ -1316,4 +1310,3 @@ class TestCompactFormatRecognition:
             assert result.entries[0].品項 == expected_item, f"Failed for: {user_input}"
             assert result.entries[0].原幣金額 == expected_amount, f"Failed for: {user_input}"
             assert result.entries[0].付款方式 == expected_payment, f"Failed for: {user_input}"
-
