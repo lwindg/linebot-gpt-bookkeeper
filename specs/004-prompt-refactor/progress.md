@@ -9,6 +9,7 @@
 ## 目前狀態
 - 測試重構已完成：runner + suites（JSONL、expected v2）可用於回歸；pytest 全套可跑。
 - `update_last_entry` 已加入「分類不新建」保護：短分類會解析成既有分類路徑，未知/新分類會拒絕；並以原始訊息抽取分類做驗證，避免 GPT 轉寫繞過。
+- `專案` 已開始支援：`items[]` schema 增加 `專案` 欄位，程式端可依分類推導專案（健康/行程/禮物 → 專案映射；其餘日常），並保留使用者明示的活動專案字串。
 
 ## 已完成（里程碑）
 - Functional runner：`run_tests.sh`（`--suite/--all/--smoke/--only/--list/--auto`），執行前會驗 suite JSONL schema
@@ -16,6 +17,7 @@
 - pytest：`tests/` 分層與 markers 正規化；共用 helpers/fixtures 已抽出；全套 pytest 已可跑
 - `test_local.py`：支援 `--full/--raw/--kv/--clear`，且 dry-run 也會執行 `update_last_entry` 驗證流程
 - `update_last_entry` 分類驗證：新增 `app/category_resolver.py` + 在 `app/line_handler.py` 內驗證/正規化分類
+- `專案` 推導：新增 `app/project_resolver.py`，並在文字/收據流程補上 `專案`（優先使用 GPT/使用者明示，否則依分類推導；預設日常）
 - GPT 輸出穩定性補強：付款方式在程式端做正規化（避免暱稱），並調整部分 functional suites 的錯誤訊息比對更穩健（commit: `1fda8cc`）
 
 ## 待驗證（尚未執行）
@@ -52,7 +54,6 @@
 ## 接下來要做什麼（從 plan.md 推導）
 1. 信息盤點（必要性/分類/代墊/專案）：整理必填欄位、預設值、關鍵字映射與 few-shot 覆蓋範圍
 2. Prompt 重構：重寫 `app/prompts.py`（降低 token、提高欄位準確；用現有 suites 回歸）
-3. Schema 更新：`app/schemas.py` 的 `items` 增加 `專案`（並確保 runner/解析/對外 webhook 一致）
-4. 擴充 functional cases：補外幣、多項、代墊錯誤、專案預設等案例（依 `expected_v2.md` 編寫）
+3. 擴充 functional cases：補外幣、多項、代墊錯誤、專案預設等案例（依 `expected_v2.md` 編寫）
 5. 風險檢查與 baseline：跑 `./run_tests.sh --smoke --all --auto`，必要時再跑 full regression
 6.（可選）補純離線 `--validate`：CI 只做 suites JSONL/schema/id 檢查，不呼叫 OpenAI

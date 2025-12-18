@@ -23,6 +23,7 @@ from app.exchange_rate import ExchangeRateService
 from app.kv_store import KVStore
 from app.category_resolver import resolve_category_autocorrect
 from app.payment_resolver import normalize_payment_method
+from app.project_resolver import infer_project
 
 logger = logging.getLogger(__name__)
 
@@ -237,7 +238,7 @@ def process_message(user_message: str) -> BookkeepingEntry:
             return result.entries[0]
         # 多項目：回傳第一個 entry（v1 不支援多項目）
         else:
-            logger.warning(f"v1 API called with multi-item message, returning first item only")
+            logger.warning("v1 API called with multi-item message, returning first item only")
             return result.entries[0]
 
     elif result.intent == "conversation":
@@ -410,6 +411,11 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
 
                 # 補充預設值和共用欄位
                 分類 = resolve_category_autocorrect(item_data.get("分類", ""))
+                project_raw = item_data.get("專案")
+                project = project_raw.strip() if isinstance(project_raw, str) else ""
+                if not project:
+                    project = infer_project(分類)
+
                 entry = BookkeepingEntry(
                     intent="bookkeeping",
                     日期=shared_date,
@@ -421,7 +427,7 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
                     交易ID=transaction_id,
                     明細說明=item_data.get("明細說明", ""),
                     分類=分類,
-                    專案="日常",
+                    專案=project,
                     必要性=item_data.get("必要性", "必要日常支出"),
                     代墊狀態=item_data.get("代墊狀態", "無"),
                     收款支付對象=item_data.get("收款支付對象", ""),
@@ -613,6 +619,7 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
 
             # Normalize and enforce allow-list (auto-correct; fallback to 家庭支出)
             分類 = resolve_category_autocorrect(分類, fallback="家庭支出")
+            專案 = infer_project(分類)
 
             # 補充預設值和共用欄位
             # 附註包含批次時間戳（用於識別同一批次）
@@ -631,7 +638,7 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
                 交易ID=transaction_id,  # 使用實際日期的交易ID
                 明細說明=f"收據識別 {idx}/{len(receipt_items)}",
                 分類=分類,
-                專案="日常",
+                專案=專案,
                 必要性="必要日常支出",
                 代墊狀態="無",
                 收款支付對象="",

@@ -52,6 +52,10 @@ MULTI_BOOKKEEPING_SCHEMA = {
                             "type": "string",
                             "description": "Category path"
                         },
+                        "專案": {
+                            "type": "string",
+                            "description": "Project name (default: 日常; may be inferred from category)"
+                        },
                         "必要性": {
                             "type": "string",
                             "enum": ["必要日常支出", "想吃想買但合理", "療癒性支出", "衝動購物（提醒）"],
