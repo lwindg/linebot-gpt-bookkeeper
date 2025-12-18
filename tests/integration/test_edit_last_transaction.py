@@ -154,13 +154,72 @@ class TestEditCategory:
         # Assert
         assert "修改成功" in result_message
         assert "分類" in result_message
-        assert "交通" in result_message
+        assert "交通/接駁" in result_message
 
         # Verify webhook called with correct field
         mock_send_webhook.assert_called_once_with(
-            user_id, ["20251129-140000"], {"分類": "交通"}
+            user_id, ["20251129-140000"], {"分類": "交通/接駁"}
         )
         mock_delete_tx.assert_called_once_with(user_id)
+
+    @patch('app.line_handler.delete_last_transaction')
+    @patch('app.line_handler.send_update_webhook_batch')
+    @patch('app.line_handler.KVStore')
+    def test_edit_category_resolve_short_label(self, mock_kv_store_class, mock_send_webhook, mock_delete_tx):
+        """
+        TC-US2-003: Edit category with short label should resolve to existing path
+
+        Given: KV contains transaction
+        When: Call handle_update_last_entry(user_id, {"分類": "水果"})
+        Then: Category resolved to "家庭/水果" (existing category), webhook sent
+        """
+        user_id = "test_user_fruit"
+        original_transaction = {
+            "交易ID": "20251129-140000",
+            "品項": "蘋果",
+            "分類": "家庭/食材",
+            "原幣金額": 120.0
+        }
+
+        mock_kv_store = MagicMock()
+        mock_kv_store_class.return_value = mock_kv_store
+        mock_kv_store.get.side_effect = [original_transaction, original_transaction]
+        mock_send_webhook.return_value = (1, 0)
+
+        result_message = handle_update_last_entry(user_id, {"分類": "水果"})
+
+        assert "修改成功" in result_message
+        assert "家庭/水果" in result_message
+
+        mock_send_webhook.assert_called_once_with(
+            user_id, ["20251129-140000"], {"分類": "家庭/水果"}
+        )
+        mock_delete_tx.assert_called_once_with(user_id)
+
+    @patch('app.line_handler.send_update_webhook_batch')
+    @patch('app.line_handler.delete_last_transaction')
+    @patch('app.line_handler.KVStore')
+    def test_edit_category_reject_new_category(self, mock_kv_store_class, mock_delete_tx, mock_send_webhook):
+        """
+        TC-US2-004: Reject category updates that would create a new category
+        """
+        user_id = "test_user_new_cat"
+        original_transaction = {
+            "交易ID": "20251129-140000",
+            "品項": "蘋果",
+            "分類": "家庭/食材",
+            "原幣金額": 120.0
+        }
+
+        mock_kv_store = MagicMock()
+        mock_kv_store_class.return_value = mock_kv_store
+        mock_kv_store.get.return_value = original_transaction
+
+        result_message = handle_update_last_entry(user_id, {"分類": "水果/香蕉"})
+
+        assert "分類無效" in result_message
+        mock_send_webhook.assert_not_called()
+        mock_delete_tx.assert_not_called()
 
     @patch('app.line_handler.delete_last_transaction')
     @patch('app.line_handler.send_update_webhook_batch')

@@ -15,6 +15,7 @@ from app.webhook_sender import send_multiple_webhooks, send_update_webhook_batch
 from app.image_handler import download_image, process_receipt_image, ImageDownloadError, ImageTooLargeError, VisionAPIError
 from app.kv_store import KVStore, delete_last_transaction
 from app.config import LAST_TRANSACTION_TTL
+from app.category_resolver import resolve_category_input
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +197,24 @@ def handle_update_last_entry(user_id: str, fields_to_update: dict) -> str:
     logger.info(f"Updating transaction {target_id} for user {user_id}")
     logger.info(f"Original transaction: {original_tx}")
     logger.info(f"Fields to update: {fields_to_update}")
+
+    # Category validation/normalization: do not create new categories.
+    if "分類" in fields_to_update and fields_to_update.get("分類") not in (None, ""):
+        try:
+            resolved = resolve_category_input(
+                str(fields_to_update["分類"]),
+                original_category=original_tx.get("分類"),
+            )
+            fields_to_update = {**fields_to_update, "分類": resolved}
+        except ValueError as e:
+            logger.warning(f"Invalid category update for user {user_id}: {fields_to_update.get('分類')} ({e})")
+            return (
+                "❌ 分類無效：請從既有分類中選擇，且不要新建分類\n\n"
+                f"你輸入的是：{fields_to_update.get('分類')}\n"
+                "範例：\n"
+                "• 把分類改成 家庭/水果\n"
+                "• 把分類改成 交通/接駁\n"
+            )
 
     # Step 5: Update target fields in transaction dict (skip empty/None values)
     updated_tx = original_tx.copy()

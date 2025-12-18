@@ -1,0 +1,138 @@
+# -*- coding: utf-8 -*-
+"""
+Category resolving and validation utilities.
+
+This module enforces "do not create new categories" by resolving user-provided
+category inputs into an existing category path derived from the current
+classification rules.
+"""
+
+from __future__ import annotations
+
+import re
+from functools import lru_cache
+from typing import Iterable
+
+from app.prompts import CLASSIFICATION_RULES
+
+
+def _normalize_separators(value: str) -> str:
+    return value.replace("／", "/").strip()
+
+
+def _iter_category_tokens_from_rules(rules_text: str) -> Iterable[str]:
+    for token in re.findall(r"`([^`]+)`", rules_text):
+        token = token.strip()
+        if not token:
+            continue
+        if "/" in token or "／" in token or token == "家庭支出":
+            yield token
+
+
+@lru_cache(maxsize=1)
+def allowed_categories() -> set[str]:
+    categories = {_normalize_separators(token) for token in _iter_category_tokens_from_rules(CLASSIFICATION_RULES)}
+
+    expanded: set[str] = set()
+    for category in categories:
+        expanded.add(category)
+        if "/" in category:
+            parts = [part for part in category.split("/") if part]
+            for i in range(1, len(parts)):
+                expanded.add("/".join(parts[:i]))
+    return expanded
+
+
+def resolve_category_input(value: str, *, original_category: str | None = None) -> str:
+    """
+    Resolve a user-provided category input to an allowed category path.
+
+    - Accepts both "/" and "／" separators.
+    - If the input is a short label (e.g. "水果"), tries to map it to the most
+      suitable existing category path (e.g. "家庭/水果").
+    - Rejects unknown categories to avoid creating new categories.
+    """
+
+    raw = (value or "").strip()
+    if not raw:
+        raise ValueError("empty category")
+
+    normalized = _normalize_separators(raw)
+    allowed = allowed_categories()
+
+    if normalized in allowed:
+        if "/" not in normalized and normalized in _TOP_LEVEL_DEFAULTS:
+            return _TOP_LEVEL_DEFAULTS[normalized]
+        return normalized
+
+    original_normalized = _normalize_separators(original_category) if original_category else None
+
+    candidates = _candidates_for_short_label(normalized, allowed)
+    if candidates:
+        preferred = _pick_best_candidate(candidates, original_normalized)
+        if preferred:
+            return preferred
+
+    suggestions = _suggest_categories(normalized, allowed, limit=5)
+    suggestion_text = "、".join(suggestions) if suggestions else "（無）"
+    raise ValueError(f"unknown category: {raw} (suggestions: {suggestion_text})")
+
+
+_TOP_LEVEL_DEFAULTS: dict[str, str] = {
+    "交通": "交通/接駁",
+}
+
+
+def _candidates_for_short_label(label: str, allowed: set[str]) -> list[str]:
+    if "/" in label:
+        return []
+
+    candidates: list[str] = []
+    for category in allowed:
+        parts = category.split("/")
+        if not parts:
+            continue
+        if parts[-1] == label:
+            candidates.append(category)
+    return sorted(set(candidates))
+
+
+def _pick_best_candidate(candidates: list[str], original_category: str | None) -> str | None:
+    if len(candidates) == 1:
+        return candidates[0]
+
+    if original_category:
+        original_top = original_category.split("/")[0] if "/" in original_category else None
+        if original_top:
+            scoped = [c for c in candidates if c.startswith(f"{original_top}/") or c == original_top]
+            if len(scoped) == 1:
+                return scoped[0]
+
+    preferred_order = ("家庭/", "個人/", "行程/")
+    for prefix in preferred_order:
+        scoped = [c for c in candidates if c.startswith(prefix)]
+        if len(scoped) == 1:
+            return scoped[0]
+
+    return None
+
+
+def _suggest_categories(query: str, allowed: set[str], *, limit: int) -> list[str]:
+    if not query:
+        return []
+
+    query_lower = query.lower()
+
+    def score(category: str) -> tuple[int, int]:
+        category_lower = category.lower()
+        if category_lower == query_lower:
+            return (0, len(category))
+        if category_lower.endswith(f"/{query_lower}") or category_lower.endswith(query_lower):
+            return (1, len(category))
+        if query_lower in category_lower:
+            return (2, len(category))
+        return (3, len(category))
+
+    matches = [c for c in allowed if query_lower in c.lower()]
+    return [c for c in sorted(matches, key=score)[:limit]]
+
