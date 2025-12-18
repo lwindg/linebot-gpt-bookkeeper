@@ -59,6 +59,7 @@
   - 已提交：`style(tests): apply ruff fixes`（commit: `e8e0254`）
   - 已提交：`feat(linebot): validate category on update_last_entry`（commit: `b6f38cf`）
   - 已提交：`fix(linebot): validate category using raw message`（commit: `1f67f10`）
+  - 已提交：`fix(tools): validate update_last_entry in test_local dry-run`（commit: `92f4ff9`）
 
 ## 待驗證（尚未執行）
 > 以下命令會觸發 GPT 呼叫；需環境可連網、並具備必要環境變數（如 OpenAI key）。
