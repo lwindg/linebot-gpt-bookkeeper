@@ -16,6 +16,7 @@
 - pytest：`tests/` 分層與 markers 正規化；共用 helpers/fixtures 已抽出；全套 pytest 已可跑
 - `test_local.py`：支援 `--full/--raw/--kv/--clear`，且 dry-run 也會執行 `update_last_entry` 驗證流程
 - `update_last_entry` 分類驗證：新增 `app/category_resolver.py` + 在 `app/line_handler.py` 內驗證/正規化分類
+- GPT 輸出穩定性補強：付款方式在程式端做正規化（避免暱稱），並調整部分 functional suites 的錯誤訊息比對更穩健（commit: `1fda8cc`）
 
 ## 待驗證（尚未執行）
 > 以下命令會觸發 GPT 呼叫；需環境可連網、並具備必要環境變數（如 OpenAI key）。
