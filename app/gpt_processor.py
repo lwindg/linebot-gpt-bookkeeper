@@ -21,6 +21,7 @@ from app.prompts import MULTI_EXPENSE_PROMPT
 from app.schemas import MULTI_BOOKKEEPING_SCHEMA
 from app.exchange_rate import ExchangeRateService
 from app.kv_store import KVStore
+from app.category_resolver import resolve_category_autocorrect
 
 logger = logging.getLogger(__name__)
 
@@ -407,6 +408,7 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
                     transaction_id = batch_id
 
                 # 補充預設值和共用欄位
+                分類 = resolve_category_autocorrect(item_data.get("分類", ""))
                 entry = BookkeepingEntry(
                     intent="bookkeeping",
                     日期=shared_date,
@@ -417,7 +419,7 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
                     付款方式=payment_method,
                     交易ID=transaction_id,
                     明細說明=item_data.get("明細說明", ""),
-                    分類=item_data.get("分類", ""),
+                    分類=分類,
                     專案="日常",
                     必要性=item_data.get("必要性", "必要日常支出"),
                     代墊狀態=item_data.get("代墊狀態", "無"),
@@ -606,6 +608,9 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
                 # Vision API 未提供分類，使用 GPT 推斷
                 分類 = _infer_category(品項)
                 logger.info(f"使用 GPT 推斷分類：{品項} → {分類}")
+
+            # Normalize and enforce allow-list (auto-correct; fallback to 家庭支出)
+            分類 = resolve_category_autocorrect(分類, fallback="家庭支出")
 
             # 補充預設值和共用欄位
             # 附註包含批次時間戳（用於識別同一批次）

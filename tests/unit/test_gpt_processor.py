@@ -50,6 +50,85 @@ class TestForeignCurrencyParsing:
         # Verify exchange rate service was called
         mock_rate_service.get_rate.assert_called_once_with("USD")
 
+
+class TestCategoryAutocorrect:
+    """Test category normalization and allow-list autocorrect"""
+
+    @patch('app.gpt_processor.OpenAI')
+    @patch('app.gpt_processor.ExchangeRateService')
+    def test_category_normalize_fullwidth_separator(self, mock_exchange_service, mock_openai):
+        set_openai_mock_content(mock_openai, '''{
+            "intent": "multi_bookkeeping",
+            "payment_method": "現金",
+            "items": [{
+                "品項": "蘋果",
+                "原幣別": "TWD",
+                "原幣金額": 120,
+                "明細說明": "",
+                "分類": "家庭／水果",
+                "必要性": "必要日常支出",
+                "代墊狀態": "無",
+                "收款支付對象": ""
+            }]
+        }''')
+
+        mock_exchange_service.return_value = Mock()
+
+        result = process_multi_expense("蘋果120元現金")
+
+        assert result.intent == "multi_bookkeeping"
+        assert result.entries[0].分類 == "家庭/水果"
+
+    @patch('app.gpt_processor.OpenAI')
+    @patch('app.gpt_processor.ExchangeRateService')
+    def test_category_autocorrect_to_existing(self, mock_exchange_service, mock_openai):
+        set_openai_mock_content(mock_openai, '''{
+            "intent": "multi_bookkeeping",
+            "payment_method": "現金",
+            "items": [{
+                "品項": "香蕉",
+                "原幣別": "TWD",
+                "原幣金額": 50,
+                "明細說明": "",
+                "分類": "水果/香蕉",
+                "必要性": "必要日常支出",
+                "代墊狀態": "無",
+                "收款支付對象": ""
+            }]
+        }''')
+
+        mock_exchange_service.return_value = Mock()
+
+        result = process_multi_expense("香蕉50元現金")
+
+        assert result.intent == "multi_bookkeeping"
+        assert result.entries[0].分類 == "家庭/水果"
+
+    @patch('app.gpt_processor.OpenAI')
+    @patch('app.gpt_processor.ExchangeRateService')
+    def test_category_autocorrect_fallback(self, mock_exchange_service, mock_openai):
+        set_openai_mock_content(mock_openai, '''{
+            "intent": "multi_bookkeeping",
+            "payment_method": "現金",
+            "items": [{
+                "品項": "WSJ",
+                "原幣別": "TWD",
+                "原幣金額": 120,
+                "明細說明": "",
+                "分類": "Subscription",
+                "必要性": "想吃想買但合理",
+                "代墊狀態": "無",
+                "收款支付對象": ""
+            }]
+        }''')
+
+        mock_exchange_service.return_value = Mock()
+
+        result = process_multi_expense("WSJ 120現金")
+
+        assert result.intent == "multi_bookkeeping"
+        assert result.entries[0].分類 == "家庭支出"
+
     @patch('app.gpt_processor.OpenAI')
     @patch('app.gpt_processor.ExchangeRateService')
     def test_parse_eur_expense(self, mock_exchange_service, mock_openai):

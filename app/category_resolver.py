@@ -78,6 +78,49 @@ def resolve_category_input(value: str, *, original_category: str | None = None) 
     raise ValueError(f"unknown category: {raw} (suggestions: {suggestion_text})")
 
 
+def resolve_category_autocorrect(
+    value: str,
+    *,
+    original_category: str | None = None,
+    fallback: str = "家庭支出",
+) -> str:
+    """
+    Resolve a category to an allowed path, auto-correcting to the closest match.
+
+    Intended for new bookkeeping flows where we prefer a best-effort correction
+    rather than rejecting the record.
+    """
+
+    try:
+        return resolve_category_input(value, original_category=original_category)
+    except ValueError:
+        raw = (value or "").strip()
+        normalized = _normalize_separators(raw)
+        allowed = allowed_categories()
+
+        # If it looks like a path, try reducing specificity: "A/B/C" -> "A/B" -> "A"
+        if "/" in normalized:
+            parts = [part for part in normalized.split("/") if part]
+            for i in range(len(parts) - 1, 0, -1):
+                candidate = "/".join(parts[:i])
+                if candidate in allowed:
+                    return candidate
+
+            # Also try resolving the top token as a short label (e.g. "水果/香蕉" -> "水果" -> "家庭/水果")
+            short = parts[0] if parts else ""
+            if short:
+                candidates = _candidates_for_short_label(short, allowed)
+                best = _pick_best_candidate(candidates, _normalize_separators(original_category) if original_category else None)
+                if best:
+                    return best
+
+        # Fallback: best-effort suggestions
+        suggestions = _suggest_categories(normalized, allowed, limit=1)
+        if suggestions:
+            return suggestions[0]
+
+        return _normalize_separators(fallback)
+
 _TOP_LEVEL_DEFAULTS: dict[str, str] = {
     "交通": "交通/接駁",
 }
@@ -135,4 +178,3 @@ def _suggest_categories(query: str, allowed: set[str], *, limit: int) -> list[st
 
     matches = [c for c in allowed if query_lower in c.lower()]
     return [c for c in sorted(matches, key=score)[:limit]]
-
