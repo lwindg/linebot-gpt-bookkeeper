@@ -6,6 +6,7 @@ This module handles LINE message events and user interactions.
 """
 
 import logging
+import re
 from linebot.models import MessageEvent, TextSendMessage
 from linebot import LineBotApi
 from linebot.v3.messaging import MessagingApiBlob
@@ -18,6 +19,27 @@ from app.config import LAST_TRANSACTION_TTL
 from app.category_resolver import resolve_category_input
 
 logger = logging.getLogger(__name__)
+
+_UPDATE_CATEGORY_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"(?:把)?分類(?:改成|改為|改到|變成|設為)\s*(?P<value>.+)$"),
+    re.compile(r"分類\s*[:：]\s*(?P<value>.+)$"),
+)
+
+
+def _extract_category_from_update_message(message: str) -> str | None:
+    text = (message or "").strip()
+    if not text:
+        return None
+
+    for pattern in _UPDATE_CATEGORY_PATTERNS:
+        match = pattern.search(text)
+        if not match:
+            continue
+        value = (match.group("value") or "").strip()
+        value = value.strip(" \t\r\n\"'`")
+        return value or None
+
+    return None
 
 
 def format_confirmation_message(entry: BookkeepingEntry) -> str:
@@ -147,7 +169,7 @@ def format_multi_confirmation_message(result: MultiExpenseResult, success_count:
     return message
 
 
-def handle_update_last_entry(user_id: str, fields_to_update: dict) -> str:
+def handle_update_last_entry(user_id: str, fields_to_update: dict, *, raw_message: str | None = None) -> str:
     """
     Update last transaction with optimistic locking (v1.10.0 新增)
 
@@ -199,10 +221,12 @@ def handle_update_last_entry(user_id: str, fields_to_update: dict) -> str:
     logger.info(f"Fields to update: {fields_to_update}")
 
     # Category validation/normalization: do not create new categories.
-    if "分類" in fields_to_update and fields_to_update.get("分類") not in (None, ""):
+    raw_category = _extract_category_from_update_message(raw_message or "") if raw_message else None
+    category_value = raw_category if raw_category is not None else fields_to_update.get("分類")
+    if category_value not in (None, ""):
         try:
             resolved = resolve_category_input(
-                str(fields_to_update["分類"]),
+                str(category_value),
                 original_category=original_tx.get("分類"),
             )
             fields_to_update = {**fields_to_update, "分類": resolved}
@@ -329,7 +353,7 @@ def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
         elif result.intent == "update_last_entry":
             # 修改上一筆記帳（v1.10.0：使用 optimistic locking）
             logger.info(f"Update last entry request from user {user_id}")
-            reply_text = handle_update_last_entry(user_id, result.fields_to_update)
+            reply_text = handle_update_last_entry(user_id, result.fields_to_update, raw_message=user_message)
 
         elif result.intent == "conversation":
             # Conversation: return GPT response

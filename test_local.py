@@ -228,7 +228,7 @@ def simulate_full_flow(message: str, user_id: str = DEFAULT_TEST_USER_ID, show_j
 
             if live_mode:
                 # 呼叫實際的修改函式（會發送 webhook）
-                reply = handle_update_last_entry(user_id, result.fields_to_update)
+                reply = handle_update_last_entry(user_id, result.fields_to_update, raw_message=message)
             else:
                 # Dry-run 模式：只顯示 payload，不發送 webhook
                 print(f"\n⏭️  DRY-RUN: 跳過 UPDATE webhook 發送（使用 --live 實際發送）")

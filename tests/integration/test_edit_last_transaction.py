@@ -221,6 +221,38 @@ class TestEditCategory:
         mock_send_webhook.assert_not_called()
         mock_delete_tx.assert_not_called()
 
+    @patch('app.line_handler.send_update_webhook_batch')
+    @patch('app.line_handler.delete_last_transaction')
+    @patch('app.line_handler.KVStore')
+    def test_edit_category_reject_new_category_even_if_gpt_resolves(self, mock_kv_store_class, mock_delete_tx, mock_send_webhook):
+        """
+        TC-US2-005: Reject user-provided new category even if GPT resolves to an existing one
+
+        This mirrors real-world behavior where GPT might sanitize the category string.
+        The system must validate based on user's raw message to prevent implicit category creation.
+        """
+        user_id = "test_user_new_cat_gpt"
+        original_transaction = {
+            "交易ID": "20251129-140000",
+            "品項": "蘋果",
+            "分類": "家庭/食材",
+            "原幣金額": 120.0
+        }
+
+        mock_kv_store = MagicMock()
+        mock_kv_store_class.return_value = mock_kv_store
+        mock_kv_store.get.return_value = original_transaction
+
+        result_message = handle_update_last_entry(
+            user_id,
+            {"分類": "家庭/水果"},
+            raw_message="把分類改成水果/香蕉",
+        )
+
+        assert "分類無效" in result_message
+        mock_send_webhook.assert_not_called()
+        mock_delete_tx.assert_not_called()
+
     @patch('app.line_handler.delete_last_transaction')
     @patch('app.line_handler.send_update_webhook_batch')
     @patch('app.line_handler.KVStore')
