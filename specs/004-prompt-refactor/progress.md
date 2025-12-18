@@ -1,66 +1,21 @@
-# 進度紀錄（測試重構階段）
+# 進度紀錄（重啟友善版）
 
-## 狀態
-- smoke 已通過、依賴確認無誤；full regression 先暫緩（會呼叫 OpenAI）。
-- 已補強 suites 文件一致性與 runner 的 JSONL schema 驗證（可在離線模式提前擋錯）。
-- 已完成 `expected` v2 分型並遷移四個 suites；runner 已移除 v1 fallback（只接受 v2）。
-- 已新增 `--all` 與 `--smoke` 便於快速回歸與全量回歸。
+## 重啟指南（下次從這裡開始）
+- 先確認單元/整合測試：`uv run pytest`
+- 確認 tests lint（已用 ruff 修過）：`uv tool run ruff check tests`
+- 確認 suites 設定/篩選（不呼叫 OpenAI）：`./run_tests.sh --all --list`
+- 需要測「修改上一筆」分類驗證時（會呼叫 OpenAI）：`uv run python test_local.py --full --user test_local_user "<訊息>"`
 
-## 已完成變更（摘要）
-- 新增統一測試入口：`run_tests.sh`
-- pytest 整頓（已完成）：
-  - 自動依路徑標記 `unit/integration`（`tests/conftest.py`）
-  - 移除未使用的 legacy markers（`v1/v15`）
-  - 移除測試檔內 `__main__` 直跑入口（統一用 `uv run pytest`）
-  - 已提交：`refactor(tests): normalize pytest markers`（commit: `60e7844`）
-  - 已提交：`refactor(tests): remove unused imports`（commit: `505950e`）
-  - 已提交：`refactor(tests): add shared OpenAI mock helper`（commit: `0e2390f`）
-  - 已提交：`refactor(tests): use shared OpenAI mock helper`（commit: `866c848`）
-  - 已提交：`refactor(tests): split advance payment unit tests`（commit: `fcd9021`）
-  - 已提交：`refactor(tests): add OpenAI mock setter`（commit: `4c16e70`）
-  - 已提交：`refactor(tests): use OpenAI mock setter`（commit: `2cb9f7c`）
-- suites（功能分類，改為 JSONL，避免 `|` 欄位位移）：
-  - `tests/functional/suites/expense.jsonl`
-  - `tests/functional/suites/date.jsonl`
-  - `tests/functional/suites/multi_expense.jsonl`
-  - `tests/functional/suites/advance_payment.jsonl`
-- legacy shim：
-  - `run_v1_tests.sh` → `--suite expense`
-  - `run_v15_tests.sh` → `--suite multi_expense`
-  - `run_v17_tests.sh` → `--suite advance_payment`
-- runner 介面：
-  - `--only` 支援 regex（包含 `|`）與多次 `--only`（OR 合併）
-  - `--list/--dry-run`：只列出匹配案例（不呼叫 OpenAI）
-  - `--debug`：失敗時輸出 debug 資訊（協助排查解析/比對）
-- 解析依賴：`jq` 必備（缺少會直接報錯提示安裝）
-- 調整案例分組：
-  - 移除「向後相容」概念：每個 suite 只測該功能
-  - 移除重複案例：刪除 `TC-V15-032`，保留 `expense` 的 `TC-V17-015`
-  - 新增 `date` suite，並加入 `TC-DATE-006`（日期+時間，時間先不比對）
-- `test_local.py`：
-  - 新增 `--raw`：單次測試只輸出 JSON（runner 不需解析人類可讀輸出）
-  - CLI 改用 argparse，`--help` 可直接查參數用途
-  - 移除版本切換概念（統一使用同一套解析）
-- tests 目錄分層：
-  - `tests/unit/`、`tests/integration/`、`tests/functional/`、`tests/docs/`
-  - `pytest.ini` 更新 `testpaths` 並加入 `pythonpath=.`（`import app.*` 可用）
-- 文件與 runner 一致性：
-  - 更新 `tests/README.md` 與 `tests/docs/*`，統一以 suite 名稱描述（expense/multi_expense/date/advance_payment），並移除失效的版本切換說明。
-  - `run_tests.sh` 新增 suite JSONL schema 驗證（JSON 格式、必要欄位/型別、`expected.date` 格式、`intent=錯誤` 必填錯誤訊息 contains、id 重複檢查）。
-  - 已提交：`refactor(tests): validate suites and align docs`（commit: `3002bb7`）
-- Suite `expected` v2 分型（已完成）：
-  - v2 規格：`specs/004-prompt-refactor/expected_v2.md`
-  - `run_tests.sh` 僅支援 v2（分型）並在執行前做 schema 驗證（依 intent 分型檢查）
-  - 四個 suites 已遷移到 v2：`expense/multi_expense/advance_payment/date`
-  - 已提交：`refactor(tests): type expected v2 and migrate suites`（commit: `efd5385`）
-  - 已提交：`refactor(tests): remove v1 expected fallback`（commit: `f627c7b`）
-  - 已提交：`feat(tests): add --all and --smoke runners`（commit: `f1620c6`）
-  - 已提交：`refactor(tests): reduce OpenAI mock boilerplate`（commit: `a4284d8`）
-  - 已提交：`style(tests): apply ruff fixes`（commit: `e8e0254`）
-  - 已提交：`feat(linebot): validate category on update_last_entry`（commit: `b6f38cf`）
-  - 已提交：`fix(linebot): validate category using raw message`（commit: `1f67f10`）
-  - 已提交：`fix(tools): validate update_last_entry in test_local dry-run`（commit: `92f4ff9`）
-  - 已提交：`docs(specs): remove obsolete prompt-refactor notes`（commit: `f784f92`）
+## 目前狀態
+- 測試重構已完成：runner + suites（JSONL、expected v2）可用於回歸；pytest 全套可跑。
+- `update_last_entry` 已加入「分類不新建」保護：短分類會解析成既有分類路徑，未知/新分類會拒絕；並以原始訊息抽取分類做驗證，避免 GPT 轉寫繞過。
+
+## 已完成（里程碑）
+- Functional runner：`run_tests.sh`（`--suite/--all/--smoke/--only/--list/--auto`），執行前會驗 suite JSONL schema
+- Functional suites：`tests/functional/suites/*.jsonl`（expected v2 typed；見 `specs/004-prompt-refactor/expected_v2.md`）
+- pytest：`tests/` 分層與 markers 正規化；共用 helpers/fixtures 已抽出；全套 pytest 已可跑
+- `test_local.py`：支援 `--full/--raw/--kv/--clear`，且 dry-run 也會執行 `update_last_entry` 驗證流程
+- `update_last_entry` 分類驗證：新增 `app/category_resolver.py` + 在 `app/line_handler.py` 內驗證/正規化分類
 
 ## 待驗證（尚未執行）
 > 以下命令會觸發 GPT 呼叫；需環境可連網、並具備必要環境變數（如 OpenAI key）。
@@ -93,33 +48,10 @@
 - `date` 比對使用 `{YEAR}` 佔位（由執行當下年份展開）
 - `TC-DATE-006` 目前只驗證日期，不驗證時間（因程式端尚未明確支援時間提取/回填）
 
-## 後續預計重構（建議）
-- ✅ Functional cases：已將 `tests/docs/test_cases_v1*.md` 改為指向 JSONL suites（保留文件作為人工參考），避免維護兩套案例來源。
-- ✅ Functional runner：已補上 suite JSONL schema 驗證，在執行前驗證每筆 JSONL 欄位完整性。
-- ✅ 文件：已更新 `tests/README.md` 的「v1/v1.5」殘留文字，統一以 suite 名稱描述。
-- ✅ Suite 規格：已將 `expected` 從「一律攤平」改為針對 intent 分型（維持 intent=記帳/對話/錯誤 三類），降低誤填欄位機率。
-
-## 下一步（預計）
-1. ✅ 已完成：v2 suites smoke 通過（會呼叫 OpenAI）。
-2. ✅ 已完成：移除 runner 對 v1（攤平 expected）的 fallback 支援，避免長期維護兩套格式。
-3.（可選）補一個純離線的 `--validate` 命令/腳本：只做 JSONL schema 驗證與 id 重複檢查，方便 CI 或 pre-commit。
-4. ✅ 已完成：修改上一筆分類：若輸入簡短分類（如「水果」/「交通」），查分類表選擇最適當的既有分類路徑，禁止直接填入新分類字串（目前先落在 `update_last_entry` 流程）。
-5. ✅ 已完成：選擇分類時不要新建分類：在程式端加入分類白名單驗證／正規化，並以原始訊息抽取分類字串做驗證（目前先落在 `update_last_entry` 流程）。
-6. ✅ pytest 測試整頓（已完成）：已完成 markers 正規化、測試檔命名/分層整理、處理空檔測試、抽共用 fixtures/helpers。
-7. full regression baseline（可選，會呼叫 OpenAI）：`./run_tests.sh --all --auto`。
-
-### pytest 收尾待辦（下次接續）
-- [x] `tests/unit/test_multi_expense.py`：將各測試中重複的 OpenAI mock/client/response 樣板改用 `tests/test_utils.py:set_openai_mock_content()`（目前僅部分案例已套用）。
-- [x] `tests/test_utils.py`：補 `make_openai_client_with_json(payload)` 之類 helper（內部 `json.dumps` + `make_openai_client_with_content`），降低 Vision/JSON 測試樣板重複。
-- [x] `tests/unit/test_image_handler.py`：用上述 helper 改寫重複的 `MagicMock()` + `choices/message/content` 組裝，並保留 API error 的 side_effect 測試。
-- [x] `tests/unit/test_image_handler.py`：移除未使用的 `mocker` 參數（目前多數測試未使用）。
-- [x]（可選）已對 `tests/` 執行 `ruff check --fix`，清除未使用 imports 等可自動修正項目（其餘全專案 lint/format 暫不處理）。
-
-### 盤點結果（v1 實際用法摘要）
-- `expense.jsonl`：`intent=記帳` 主要用 `item/amount/payment/category`；`intent=對話` 不比對欄位。
-- `multi_expense.jsonl`：`intent=記帳` 主要用 `payment/item_count`；`intent=錯誤` 用 error message contains。
-- `advance_payment.jsonl`：`intent=記帳` 主要用 `item/amount/payment/advance_status/recipient`（少量用 `item_count/date`）。
-- `date.jsonl`：`intent=記帳` 主要用 `item/amount/payment/category/date`（少量用 `item_count`）。
-
-### v2 規格草案
-- 見 `specs/004-prompt-refactor/expected_v2.md`
+## 接下來要做什麼（從 plan.md 推導）
+1. 信息盤點（必要性/分類/代墊/專案）：整理必填欄位、預設值、關鍵字映射與 few-shot 覆蓋範圍
+2. Prompt 重構：重寫 `app/prompts.py`（降低 token、提高欄位準確；用現有 suites 回歸）
+3. Schema 更新：`app/schemas.py` 的 `items` 增加 `專案`（並確保 runner/解析/對外 webhook 一致）
+4. 擴充 functional cases：補外幣、多項、代墊錯誤、專案預設等案例（依 `expected_v2.md` 編寫）
+5. 風險檢查與 baseline：跑 `./run_tests.sh --smoke --all --auto`，必要時再跑 full regression
+6.（可選）補純離線 `--validate`：CI 只做 suites JSONL/schema/id 檢查，不呼叫 OpenAI
