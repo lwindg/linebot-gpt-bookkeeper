@@ -11,7 +11,7 @@ v1.5.0 Webhook 批次發送單元測試
 """
 
 import pytest
-from unittest.mock import Mock, patch, call
+from unittest.mock import patch
 from app.webhook_sender import send_multiple_webhooks
 from app.gpt_processor import BookkeepingEntry
 
