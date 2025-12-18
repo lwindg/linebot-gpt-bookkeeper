@@ -129,6 +129,35 @@ class TestCategoryAutocorrect:
         assert result.intent == "multi_bookkeeping"
         assert result.entries[0].分類 == "家庭支出"
 
+
+class TestPaymentNormalization:
+    """Test payment method normalization"""
+
+    @patch('app.gpt_processor.OpenAI')
+    @patch('app.gpt_processor.ExchangeRateService')
+    def test_payment_normalize_flygo_nickname(self, mock_exchange_service, mock_openai):
+        set_openai_mock_content(mock_openai, '''{
+            "intent": "multi_bookkeeping",
+            "payment_method": "灰狗卡",
+            "items": [{
+                "品項": "午餐",
+                "原幣別": "TWD",
+                "原幣金額": 120,
+                "明細說明": "",
+                "分類": "家庭/餐飲/午餐",
+                "必要性": "必要日常支出",
+                "代墊狀態": "無",
+                "收款支付對象": ""
+            }]
+        }''')
+
+        mock_exchange_service.return_value = Mock()
+
+        result = process_multi_expense("午餐120元灰狗")
+
+        assert result.intent == "multi_bookkeeping"
+        assert result.entries[0].付款方式 == "FlyGo 信用卡"
+
     @patch('app.gpt_processor.OpenAI')
     @patch('app.gpt_processor.ExchangeRateService')
     def test_parse_eur_expense(self, mock_exchange_service, mock_openai):

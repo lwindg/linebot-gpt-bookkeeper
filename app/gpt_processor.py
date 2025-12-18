@@ -22,6 +22,7 @@ from app.schemas import MULTI_BOOKKEEPING_SCHEMA
 from app.exchange_rate import ExchangeRateService
 from app.kv_store import KVStore
 from app.category_resolver import resolve_category_autocorrect
+from app.payment_resolver import normalize_payment_method
 
 logger = logging.getLogger(__name__)
 
@@ -320,7 +321,7 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
 
         if intent == "multi_bookkeeping":
             # 多項目記帳意圖：提取資料並驗證
-            payment_method = data.get("payment_method")
+            payment_method = normalize_payment_method(data.get("payment_method", ""))
             items = data.get("items", [])
 
             # 驗證必要欄位
@@ -530,7 +531,8 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
 
         # 取得共用付款方式（第一個項目的付款方式）
         # 如果 Vision API 無法識別，預設為「現金」（最常見情況）
-        payment_method = receipt_items[0].付款方式 if receipt_items[0].付款方式 else "現金"
+        payment_method_raw = receipt_items[0].付款方式 if receipt_items[0].付款方式 else "現金"
+        payment_method = normalize_payment_method(payment_method_raw)
         payment_method_is_default = not receipt_items[0].付款方式  # 標記是否使用預設值
 
         # v1.9.0: 生成批次時間戳（用於識別同一批次的項目）

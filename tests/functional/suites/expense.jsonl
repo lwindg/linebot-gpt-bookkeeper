@@ -25,9 +25,9 @@
 {"id":"TC-V1-051","group":"對話意圖","name":"詢問功能","message":"可以幫我做什麼？","expected_desc":"","expected":{"intent":"對話","conversation":{}}}
 {"id":"TC-V1-052","group":"對話意圖","name":"感謝","message":"謝謝","expected_desc":"","expected":{"intent":"對話","conversation":{}}}
 
-{"id":"TC-V1-060","group":"錯誤處理","name":"缺少金額","message":"午餐現金","expected_desc":"","expected":{"intent":"對話","conversation":{}}}
-{"id":"TC-V1-061","group":"錯誤處理","name":"缺少付款方式","message":"午餐120元","expected_desc":"","expected":{"intent":"對話","conversation":{}}}
-{"id":"TC-V1-062","group":"錯誤處理","name":"缺少品項","message":"120元現金","expected_desc":"","expected":{"intent":"對話","conversation":{}}}
+{"id":"TC-V1-060","group":"錯誤處理","name":"缺少金額","message":"午餐現金","expected_desc":"","expected":{"intent":"錯誤","error":{"contains":"缺少"}}}
+{"id":"TC-V1-061","group":"錯誤處理","name":"缺少付款方式","message":"午餐120元","expected_desc":"","expected":{"intent":"錯誤","error":{"contains":"缺少"}}}
+{"id":"TC-V1-062","group":"錯誤處理","name":"缺少品項","message":"120元現金","expected_desc":"","expected":{"intent":"錯誤","error":{"contains":"缺少品項"}}}
 
 {"id":"TC-V17-015","group":"複合品項","name":"三明治和咖啡","message":"三明治和咖啡80元現金","expected_desc":"","expected":{"intent":"記帳","bookkeeping":{"item":"三明治和咖啡","amount":"80","payment":"現金"}}}
 {"id":"TC-V17-016","group":"複合品項","name":"蛋糕跟飲料","message":"蛋糕跟飲料150元狗卡","expected_desc":"","expected":{"intent":"記帳","bookkeeping":{"item":"蛋糕跟飲料","amount":"150","payment":"台新狗卡"}}}

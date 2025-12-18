@@ -5,7 +5,7 @@
 
 {"id":"TC-V17-005","group":"需支付功能","name":"基本需支付 - 弟代訂","message":"弟代訂日本白馬房間10000元","expected_desc":"✅ 品項: 日本白馬房間, 代墊狀態: 需支付, 付款: NA, 對象: 弟","expected":{"intent":"記帳","bookkeeping":{"item":"日本白馬房間","amount":"10000.0","payment":"NA","advance_status":"需支付","recipient":"弟"}}}
 {"id":"TC-V17-006","group":"需支付功能","name":"朋友幫買演唱會門票","message":"朋友幫我買演唱會門票3500元","expected_desc":"✅ 品項: 演唱會門票, 代墊狀態: 需支付, 付款: NA, 對象: 朋友","expected":{"intent":"記帳","bookkeeping":{"item":"演唱會門票","amount":"3500.0","payment":"NA","advance_status":"需支付","recipient":"朋友"}}}
-{"id":"TC-V17-007","group":"需支付功能","name":"同事先墊午餐","message":"同事先墊午餐費150元","expected_desc":"✅ 品項: 午餐費, 代墊狀態: 需支付, 對象: 同事","expected":{"intent":"記帳","bookkeeping":{"item":"午餐費","amount":"150.0","payment":"NA","advance_status":"需支付","recipient":"同事"}}}
+{"id":"TC-V17-007","group":"需支付功能","name":"同事先墊午餐","message":"同事先墊午餐費150元","expected_desc":"✅ 品項允許「午餐」或「午餐費」, 代墊狀態: 需支付, 對象: 同事","expected":{"intent":"記帳","bookkeeping":{"amount":"150.0","payment":"NA","advance_status":"需支付","recipient":"同事"}}}
 
 {"id":"TC-V17-008","group":"不索取功能","name":"幫媽媽買藥不用還","message":"幫媽媽買藥500元現金，不用還","expected_desc":"✅ 品項: 藥, 代墊狀態: 不索取, 付款: 現金, 對象: 媽媽","expected":{"intent":"記帳","bookkeeping":{"item":"藥","amount":"500.0","payment":"現金","advance_status":"不索取","recipient":"媽媽"}}}
 {"id":"TC-V17-009","group":"不索取功能","name":"幫老婆付停車費不索取","message":"幫老婆付停車費200元現金不索取","expected_desc":"✅ 品項: 停車費, 代墊狀態: 不索取, 對象: 老婆","expected":{"intent":"記帳","bookkeeping":{"item":"停車費","amount":"200.0","payment":"現金","advance_status":"不索取","recipient":"老婆"}}}

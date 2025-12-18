@@ -63,7 +63,7 @@ class TestSingleForeignCurrencyE2E:
         assert entry.原幣別 == "USD"
         assert entry.原幣金額 == 4.99
         assert entry.匯率 == 31.50
-        assert entry.付款方式 == "大戶"
+        assert entry.付款方式 == "大戶信用卡"
 
         # Send to webhook
         success = send_to_webhook(entry)
@@ -78,7 +78,7 @@ class TestSingleForeignCurrencyE2E:
         assert payload['原幣別'] == "USD"
         assert payload['原幣金額'] == 4.99
         assert payload['匯率'] == 31.50
-        assert payload['付款方式'] == "大戶"
+        assert payload['付款方式'] == "大戶信用卡"
 
     @patch('app.webhook_sender.requests.post')
     @patch('app.gpt_processor.ExchangeRateService')

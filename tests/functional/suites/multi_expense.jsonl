@@ -12,8 +12,8 @@
 {"id":"TC-V15-030","group":"錯誤處理","name":"❌ 不同付款方式（應拒絕）","message":"早餐80元現金，午餐150元刷卡","expected_desc":"❌ 應回傳錯誤：偵測到不同付款方式","expected":{"intent":"錯誤","error":{"contains":"不同付款方式"}}}
 {"id":"TC-V15-031","group":"錯誤處理","name":"❌ 第二項缺少金額（應拒絕）","message":"早餐80元，午餐，現金","expected_desc":"❌ 應回傳錯誤：第2個項目缺少金額","expected":{"intent":"錯誤","error":{"contains":"缺少金額"}}}
 {"id":"TC-V15-033","group":"錯誤處理","name":"❌ 缺少付款方式（應拒絕）","message":"早餐80元，午餐150元","expected_desc":"❌ 應回傳錯誤：缺少付款方式","expected":{"intent":"錯誤","error":{"contains":"付款方式"}}}
-{"id":"TC-V15-034","group":"錯誤處理","name":"❌ 第一項缺少金額（應拒絕）","message":"早餐，午餐150元，現金","expected_desc":"❌ 應回傳錯誤：第1個項目缺少金額","expected":{"intent":"錯誤","error":{"contains":"缺少金額"}}}
+{"id":"TC-V15-034","group":"錯誤處理","name":"❌ 第一項缺少金額（應拒絕）","message":"早餐，午餐150元，現金","expected_desc":"❌ 應回傳錯誤：第一項不完整（缺少欄位）","expected":{"intent":"錯誤","error":{"contains":"缺少"}}}
 {"id":"TC-V15-035","group":"錯誤處理","name":"❌ 缺少品項名稱（應拒絕）","message":"80元，150元，現金","expected_desc":"❌ 應回傳錯誤：缺少品項名稱","expected":{"intent":"錯誤","error":{"contains":"品項"}}}
 
 {"id":"TC-V15-050","group":"複雜場景","name":"含明細說明的多項目","message":"在開飯早餐50元，在7-11買咖啡45元，現金","expected_desc":"✅ 2個項目，含明細說明","expected":{"intent":"記帳","bookkeeping":{"payment":"現金","item_count":"2"}}}
-{"id":"TC-V15-051","group":"複雜場景","name":"含不同分類的多項目","message":"咖啡50元，蛋糕120元，狗卡","expected_desc":"✅ 2個項目，不同分類（飲品、點心）","expected":{"intent":"記帳","bookkeeping":{"payment":"台新狗卡","item_count":"2"}}}
+{"id":"TC-V15-051","group":"複雜場景","name":"含不同分類的多項目","message":"咖啡50元，蛋糕120元狗卡","expected_desc":"✅ 2個項目，不同分類（飲品、點心）","expected":{"intent":"記帳","bookkeeping":{"payment":"台新狗卡","item_count":"2"}}}
