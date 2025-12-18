@@ -44,6 +44,7 @@ KV 儲存操作：
 import sys
 import json
 import argparse
+from unittest.mock import patch
 from app.gpt_processor import process_multi_expense, MultiExpenseResult, BookkeepingEntry
 from app.kv_store import get_last_transaction, KVStore
 from app.config import KV_ENABLED
@@ -230,9 +231,15 @@ def simulate_full_flow(message: str, user_id: str = DEFAULT_TEST_USER_ID, show_j
                 # 呼叫實際的修改函式（會發送 webhook）
                 reply = handle_update_last_entry(user_id, result.fields_to_update, raw_message=message)
             else:
-                # Dry-run 模式：只顯示 payload，不發送 webhook
-                print(f"\n⏭️  DRY-RUN: 跳過 UPDATE webhook 發送（使用 --live 實際發送）")
-                reply = f"✅ [DRY-RUN] 修改上一筆成功（模擬）\n更新欄位: {result.fields_to_update}"
+                # Dry-run 模式：仍執行完整的驗證/處理流程，但 mock 掉 webhook 與 KV 刪除
+                print(f"\n⏭️  DRY-RUN: 模擬執行修改上一筆（不發送 UPDATE webhook、不刪除 KV）")
+                success_tuple = (len([t for t in transaction_ids if t]), 0)
+                with patch('app.line_handler.send_update_webhook_batch', return_value=success_tuple), patch(
+                    'app.line_handler.delete_last_transaction', return_value=True
+                ):
+                    reply = handle_update_last_entry(user_id, result.fields_to_update, raw_message=message)
+                if reply.startswith("✅ "):
+                    reply = reply.replace("✅ ", "✅ [DRY-RUN] ", 1)
         else:
             print(f"\n⚠️ KV 中無交易記錄，無法顯示 UPDATE payload")
             reply = "❌ 找不到上一筆交易記錄"
