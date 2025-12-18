@@ -50,7 +50,12 @@
 
 ## 進度與提交（必做）
 
-- 每次完成一段可交付變更後必須：
+- 預設流程：先完成實作與驗證 → 等使用者確認 OK → 再進行提交與更新進度檔。
+- 只要使用者尚未明確確認（例如「OK/可以收尾/可以 commit」），**不要主動 commit**。
+- 同一件事情若需要多輪小修正，請避免拆成多個 commit：
+  - 優先將變更集中在單一 commit（同一個 action/module/message）
+  - 若已經產生多個 commit，除非使用者明確要求整理 history，否則不要自行 rebase/squash
+- 使用者確認後才進行：
   - 以符合規範的 commit message 提交「本次實際修改的檔案」
   - 同步更新對應的進度檔（例如：`specs/004-prompt-refactor/progress.md`），在「已完成變更」內補上摘要與 commit hash
 
