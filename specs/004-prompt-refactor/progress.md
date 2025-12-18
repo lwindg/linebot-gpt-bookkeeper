@@ -14,6 +14,7 @@
 ## 已完成（里程碑）
 - Functional runner：`run_tests.sh`（`--suite/--all/--smoke/--only/--list/--auto`），執行前會驗 suite JSONL schema
 - Functional suites：`tests/functional/suites/*.jsonl`（expected v2 typed；見 `specs/004-prompt-refactor/expected_v2.md`）
+- Functional suites v2：`expected.bookkeeping` 支援 `project`（可驗證「專案」推導/輸出；並新增 `TC-PROJ-001~004`）（commit: `5574ca6`）
 - pytest：`tests/` 分層與 markers 正規化；共用 helpers/fixtures 已抽出；全套 pytest 已可跑
 - `test_local.py`：支援 `--full/--raw/--kv/--clear`，且 dry-run 也會執行 `update_last_entry` 驗證流程
 - `update_last_entry` 分類驗證：新增 `app/category_resolver.py` + 在 `app/line_handler.py` 內驗證/正規化分類
