@@ -413,8 +413,11 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
                 分類 = resolve_category_autocorrect(item_data.get("分類", ""))
                 project_raw = item_data.get("專案")
                 project = project_raw.strip() if isinstance(project_raw, str) else ""
+                inferred_project = infer_project(分類)
                 if not project:
-                    project = infer_project(分類)
+                    project = inferred_project
+                elif project == "日常" and inferred_project != "日常":
+                    project = inferred_project
 
                 entry = BookkeepingEntry(
                     intent="bookkeeping",

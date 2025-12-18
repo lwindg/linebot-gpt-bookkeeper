@@ -215,6 +215,32 @@ class TestProjectInference:
 
     @patch('app.gpt_processor.OpenAI')
     @patch('app.gpt_processor.ExchangeRateService')
+    def test_override_daily_project_when_category_implies_non_daily(self, mock_exchange_service, mock_openai):
+        set_openai_mock_content(mock_openai, '''{
+            "intent": "multi_bookkeeping",
+            "payment_method": "現金",
+            "items": [{
+                "品項": "掛號費",
+                "原幣別": "TWD",
+                "原幣金額": 200,
+                "明細說明": "",
+                "分類": "健康/醫療/本人",
+                "專案": "日常",
+                "必要性": "必要日常支出",
+                "代墊狀態": "無",
+                "收款支付對象": ""
+            }]
+        }''')
+
+        mock_exchange_service.return_value = Mock()
+
+        result = process_multi_expense("掛號費200元現金")
+
+        assert result.intent == "multi_bookkeeping"
+        assert result.entries[0].專案 == "健康檢查"
+
+    @patch('app.gpt_processor.OpenAI')
+    @patch('app.gpt_processor.ExchangeRateService')
     def test_parse_eur_expense(self, mock_exchange_service, mock_openai):
         """Test parsing EUR expense"""
         # Mock GPT response
