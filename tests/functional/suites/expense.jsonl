@@ -36,3 +36,8 @@
 
 {"id":"TC-V17-020","group":"核心能力","name":"英文品項","message":"WSJ 499 大戶","expected_desc":"","expected":{"intent":"記帳","bookkeeping":{"item":"WSJ","amount":"499","payment":"大戶信用卡"}}}
 {"id":"TC-V17-021","group":"核心能力","name":"金額無貨幣符號","message":"早餐 21 大戶","expected_desc":"","expected":{"intent":"記帳","bookkeeping":{"item":"早餐","amount":"21","payment":"大戶信用卡"}}}
+
+{"id":"TC-PROJ-001","group":"專案推導","name":"健康分類 → 健康檢查","message":"掛號費200元現金","expected_desc":"","expected":{"intent":"記帳","bookkeeping":{"item":"掛號費","amount":"200","payment":"現金","category":"健康","project":"健康檢查"}}}
+{"id":"TC-PROJ-002","group":"專案推導","name":"行程分類 → 登山行程","message":"登山協作費2000元現金","expected_desc":"","expected":{"intent":"記帳","bookkeeping":{"item":"登山協作費","amount":"2000","payment":"現金","category":"行程","project":"登山行程"}}}
+{"id":"TC-PROJ-003","group":"專案推導","name":"禮物分類 → 紀念日／送禮","message":"送同事伴手禮500元現金","expected_desc":"","expected":{"intent":"記帳","bookkeeping":{"amount":"500","payment":"現金","category":"禮物","project":"紀念日／送禮"}}}
+{"id":"TC-PROJ-004","group":"專案推導","name":"其他分類 → 日常","message":"午餐120元現金","expected_desc":"","expected":{"intent":"記帳","bookkeeping":{"amount":"120","payment":"現金","project":"日常"}}}

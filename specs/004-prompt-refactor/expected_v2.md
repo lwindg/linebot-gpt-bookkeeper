@@ -48,6 +48,7 @@ Based on existing JSONL suites:
       "amount": "string (optional)",
       "payment": "string (optional)",
       "category": "string (optional)",
+      "project": "string (optional)",
       "item_count": "string (optional)",
       "advance_status": "string (optional)",
       "recipient": "string (optional)",

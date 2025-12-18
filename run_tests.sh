@@ -225,6 +225,7 @@ validate_suite_jsonl() {
           and ((.expected.bookkeeping.amount? // "" ) | type == "string")
           and ((.expected.bookkeeping.payment? // "" ) | type == "string")
           and ((.expected.bookkeeping.category? // "" ) | type == "string")
+          and ((.expected.bookkeeping.project? // "" ) | type == "string")
           and ((.expected.bookkeeping.item_count? // "" ) | type == "string")
           and ((.expected.bookkeeping.advance_status? // "" ) | type == "string")
           and ((.expected.bookkeeping.recipient? // "" ) | type == "string")
@@ -410,13 +411,14 @@ extract_fields() {
   local has_entries
   has_entries="$(json_has_entries "$json")"
 
-  local item amount payment category advance_status recipient error_message item_count date
+  local item amount payment category project advance_status recipient error_message item_count date
   if [[ "$has_entries" == "true" ]]; then
     item="$(json_get "$json" '.entries[0]["品項"] // empty')"
     date="$(json_get "$json" '.entries[0]["日期"] // empty')"
     amount="$(json_get "$json" '.entries[0]["原幣金額"] // empty')"
     payment="$(json_get "$json" '.entries[0]["付款方式"] // empty')"
     category="$(json_get "$json" '.entries[0]["分類"] // empty')"
+    project="$(json_get "$json" '.entries[0]["專案"] // empty')"
     advance_status="$(json_get "$json" '.entries[0]["代墊狀態"] // empty')"
     recipient="$(json_get "$json" '.entries[0]["收款支付對象"] // empty')"
     error_message="$(json_get "$json" '.error_message // .message // empty')"
@@ -426,6 +428,7 @@ extract_fields() {
     amount="$(json_get "$json" '.["原幣金額"] // empty')"
     payment="$(json_get "$json" '.["付款方式"] // empty')"
     category="$(json_get "$json" '.["分類"] // empty')"
+    project="$(json_get "$json" '.["專案"] // empty')"
     advance_status="$(json_get "$json" '.["代墊狀態"] // empty')"
     recipient="$(json_get "$json" '.["收款支付對象"] // empty')"
     error_message="$(json_get "$json" '.error_message // .message // empty')"
@@ -434,8 +437,8 @@ extract_fields() {
 
   # Use a non-whitespace delimiter so bash `read` does not collapse empty fields.
   # (IFS treats whitespace specially and will "eat" consecutive delimiters.)
-  printf '%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\n' \
-    "$item" "$amount" "$payment" "$category" "$advance_status" "$recipient" "$error_message" "$item_count" "$date"
+  printf '%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\n' \
+    "$item" "$amount" "$payment" "$category" "$project" "$advance_status" "$recipient" "$error_message" "$item_count" "$date"
 }
 
 debug_dump_output_and_json() {
@@ -534,8 +537,8 @@ run_case_manual() {
 run_case_auto() {
   local group="$1" name="$2" message="$3"
   local expected_intent="$4" expected_item="$5" expected_amount="$6" expected_payment="$7"
-  local expected_category="$8" expected_item_count="$9" expected_advance_status="${10}" expected_recipient="${11}"
-  local expected_error_contains="${12}" expected_date="${13}"
+  local expected_category="$8" expected_project="$9" expected_item_count="${10}" expected_advance_status="${11}" expected_recipient="${12}"
+  local expected_error_contains="${13}" expected_date="${14}"
 
   echo ""
   echo -e "${BLUE}======================================================================${NC}"
@@ -551,6 +554,7 @@ run_case_auto() {
   actual_intent="$(extract_intent_text "$output")"
 
   local item amount payment category advance_status recipient error_message item_count date
+  local project
   local extracted
   if ! extracted="$(extract_fields "$output")"; then
     echo -e "${RED}❌ FAIL${NC}"
@@ -563,7 +567,7 @@ run_case_auto() {
     ((FAILED_TESTS+=1))
     return
   fi
-  IFS=$'\037' read -r item amount payment category advance_status recipient error_message item_count date \
+  IFS=$'\037' read -r item amount payment category project advance_status recipient error_message item_count date \
     <<<"$extracted"
 
   local test_passed=true
@@ -588,6 +592,10 @@ run_case_auto() {
   if ! compare_category "${category:-}" "$expected_category"; then
     test_passed=false
     failures+=("category: expected[contains $expected_category] actual[${category:-}]")
+  fi
+  if ! compare_exact "${project:-}" "$expected_project"; then
+    test_passed=false
+    failures+=("project: expected[$expected_project] actual[${project:-}]")
   fi
   if ! compare_exact "${item_count:-}" "$expected_item_count"; then
     test_passed=false
@@ -717,6 +725,7 @@ main() {
 
       local tc_id tc_group tc_name tc_message expected_desc
       local expected_intent expected_item expected_amount expected_payment expected_category
+      local expected_project
       local expected_item_count expected_advance_status expected_recipient expected_error_contains expected_date
 
       tc_id="$(jq -r '.id // empty' <<<"$line")"
@@ -730,6 +739,7 @@ main() {
       expected_amount="$(jq -r '.expected.bookkeeping.amount // empty' <<<"$line")"
       expected_payment="$(jq -r '.expected.bookkeeping.payment // empty' <<<"$line")"
       expected_category="$(jq -r '.expected.bookkeeping.category // empty' <<<"$line")"
+      expected_project="$(jq -r '.expected.bookkeeping.project // empty' <<<"$line")"
       expected_item_count="$(jq -r '.expected.bookkeeping.item_count // empty' <<<"$line")"
       expected_advance_status="$(jq -r '.expected.bookkeeping.advance_status // empty' <<<"$line")"
       expected_recipient="$(jq -r '.expected.bookkeeping.recipient // empty' <<<"$line")"
@@ -743,7 +753,7 @@ main() {
 
       run_case "$tc_group" "$tc_id: $tc_name" "$tc_message" "$expected_desc" \
         "$expected_intent" "$expected_item" "$expected_amount" "$expected_payment" \
-        "$expected_category" "$expected_item_count" "$expected_advance_status" "$expected_recipient" \
+        "$expected_category" "$expected_project" "$expected_item_count" "$expected_advance_status" "$expected_recipient" \
         "$expected_error_contains" "$expected_date"
     done <"$suite_file"
   done
