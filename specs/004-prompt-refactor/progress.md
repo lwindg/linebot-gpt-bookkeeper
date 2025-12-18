@@ -60,6 +60,7 @@
   - 已提交：`feat(linebot): validate category on update_last_entry`（commit: `b6f38cf`）
   - 已提交：`fix(linebot): validate category using raw message`（commit: `1f67f10`）
   - 已提交：`fix(tools): validate update_last_entry in test_local dry-run`（commit: `92f4ff9`）
+  - 已提交：`docs(specs): remove obsolete prompt-refactor notes`（commit: `f784f92`）
 
 ## 待驗證（尚未執行）
 > 以下命令會觸發 GPT 呼叫；需環境可連網、並具備必要環境變數（如 OpenAI key）。
@@ -104,7 +105,7 @@
 3.（可選）補一個純離線的 `--validate` 命令/腳本：只做 JSONL schema 驗證與 id 重複檢查，方便 CI 或 pre-commit。
 4. ✅ 已完成：修改上一筆分類：若輸入簡短分類（如「水果」/「交通」），查分類表選擇最適當的既有分類路徑，禁止直接填入新分類字串（目前先落在 `update_last_entry` 流程）。
 5. ✅ 已完成：選擇分類時不要新建分類：在程式端加入分類白名單驗證／正規化，並以原始訊息抽取分類字串做驗證（目前先落在 `update_last_entry` 流程）。
-6. pytest 測試整頓（部分完成）：已先完成 markers 正規化；其餘待辦為測試檔命名整理、處理空檔測試、抽共用 fixtures/helpers。
+6. ✅ pytest 測試整頓（已完成）：已完成 markers 正規化、測試檔命名/分層整理、處理空檔測試、抽共用 fixtures/helpers。
 7. full regression baseline（可選，會呼叫 OpenAI）：`./run_tests.sh --all --auto`。
 
 ### pytest 收尾待辦（下次接續）
