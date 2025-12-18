@@ -57,6 +57,7 @@
   - 已提交：`feat(tests): add --all and --smoke runners`（commit: `f1620c6`）
   - 已提交：`refactor(tests): reduce OpenAI mock boilerplate`（commit: `a4284d8`）
   - 已提交：`style(tests): apply ruff fixes`（commit: `e8e0254`）
+  - 已提交：`feat(linebot): validate category on update_last_entry`（commit: `b6f38cf`）
 
 ## 待驗證（尚未執行）
 > 以下命令會觸發 GPT 呼叫；需環境可連網、並具備必要環境變數（如 OpenAI key）。
