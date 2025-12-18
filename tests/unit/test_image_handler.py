@@ -9,8 +9,9 @@
 """
 
 import pytest
-import json
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import MagicMock
+
+from tests.test_utils import make_openai_client_with_content, make_openai_client_with_json
 from app.image_handler import (
     download_image,
     encode_image_base64,
@@ -25,7 +26,7 @@ from app.image_handler import (
 class TestDownloadImage:
     """測試圖片下載功能"""
 
-    def test_download_image_success(self, mocker):
+    def test_download_image_success(self):
         """測試成功下載圖片"""
         # Mock LINE API
         mock_messaging_api_blob = MagicMock()
@@ -43,7 +44,7 @@ class TestDownloadImage:
         assert result == test_image_data
         mock_messaging_api_blob.get_message_content.assert_called_once_with("test_message_id")
 
-    def test_download_image_too_large(self, mocker):
+    def test_download_image_too_large(self):
         """測試圖片過大的情況"""
         # Mock LINE API
         mock_messaging_api_blob = MagicMock()
@@ -58,7 +59,7 @@ class TestDownloadImage:
         with pytest.raises(ImageTooLargeError):
             download_image("test_message_id", mock_messaging_api_blob)
 
-    def test_download_image_failure(self, mocker):
+    def test_download_image_failure(self):
         """測試圖片下載失敗"""
         # Mock LINE API
         mock_messaging_api_blob = MagicMock()
@@ -90,14 +91,8 @@ class TestEncodeImageBase64:
 class TestProcessReceiptImage:
     """測試收據圖片識別功能"""
 
-    def test_process_receipt_success_single_item(self, mocker):
+    def test_process_receipt_success_single_item(self):
         """測試成功識別收據（單筆項目）"""
-        # Mock OpenAI client
-        mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_choice = MagicMock()
-        mock_message = MagicMock()
-
         # 模擬 GPT Vision API 回應
         vision_response = {
             "status": "success",
@@ -109,10 +104,7 @@ class TestProcessReceiptImage:
             "total": 50,
             "payment_method": "現金"
         }
-        mock_message.content = json.dumps(vision_response)
-        mock_choice.message = mock_message
-        mock_response.choices = [mock_choice]
-        mock_client.chat.completions.create.return_value = mock_response
+        mock_client = make_openai_client_with_json(vision_response)
 
         # 執行測試
         test_image = b'fake_image_data'
@@ -126,14 +118,8 @@ class TestProcessReceiptImage:
         assert receipt_items[0].原幣金額 == 50
         assert receipt_items[0].付款方式 == "現金"
 
-    def test_process_receipt_success_multi_items(self, mocker):
+    def test_process_receipt_success_multi_items(self):
         """測試成功識別收據（多筆項目）"""
-        # Mock OpenAI client
-        mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_choice = MagicMock()
-        mock_message = MagicMock()
-
         # 模擬 GPT Vision API 回應（多筆項目）
         vision_response = {
             "status": "success",
@@ -146,10 +132,7 @@ class TestProcessReceiptImage:
             "total": 130,
             "payment_method": "現金"
         }
-        mock_message.content = json.dumps(vision_response)
-        mock_choice.message = mock_message
-        mock_response.choices = [mock_choice]
-        mock_client.chat.completions.create.return_value = mock_response
+        mock_client = make_openai_client_with_json(vision_response)
 
         # 執行測試
         test_image = b'fake_image_data'
@@ -165,23 +148,14 @@ class TestProcessReceiptImage:
         assert receipt_items[0].付款方式 == "現金"
         assert receipt_items[1].付款方式 == "現金"
 
-    def test_process_receipt_not_receipt(self, mocker):
+    def test_process_receipt_not_receipt(self):
         """測試非收據圖片（風景照）"""
-        # Mock OpenAI client
-        mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_choice = MagicMock()
-        mock_message = MagicMock()
-
         # 模擬 GPT Vision API 回應（非收據）
         vision_response = {
             "status": "not_receipt",
             "message": "這不是收據圖片"
         }
-        mock_message.content = json.dumps(vision_response)
-        mock_choice.message = mock_message
-        mock_response.choices = [mock_choice]
-        mock_client.chat.completions.create.return_value = mock_response
+        mock_client = make_openai_client_with_json(vision_response)
 
         # 執行測試
         test_image = b'fake_image_data'
@@ -192,23 +166,14 @@ class TestProcessReceiptImage:
         assert error_message == "這不是收據圖片"
         assert len(receipt_items) == 0
 
-    def test_process_receipt_unsupported_currency(self, mocker):
+    def test_process_receipt_unsupported_currency(self):
         """測試非台幣收據（日幣）"""
-        # Mock OpenAI client
-        mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_choice = MagicMock()
-        mock_message = MagicMock()
-
         # 模擬 GPT Vision API 回應（非台幣）
         vision_response = {
             "status": "unsupported_currency",
             "message": "收據幣別為 JPY，v1.5.0 僅支援台幣"
         }
-        mock_message.content = json.dumps(vision_response)
-        mock_choice.message = mock_message
-        mock_response.choices = [mock_choice]
-        mock_client.chat.completions.create.return_value = mock_response
+        mock_client = make_openai_client_with_json(vision_response)
 
         # 執行測試
         test_image = b'fake_image_data'
@@ -219,23 +184,14 @@ class TestProcessReceiptImage:
         assert "JPY" in error_message
         assert len(receipt_items) == 0
 
-    def test_process_receipt_unclear(self, mocker):
+    def test_process_receipt_unclear(self):
         """測試模糊收據圖片"""
-        # Mock OpenAI client
-        mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_choice = MagicMock()
-        mock_message = MagicMock()
-
         # 模擬 GPT Vision API 回應（圖片模糊）
         vision_response = {
             "status": "unclear",
             "message": "圖片模糊，無法辨識品項和金額"
         }
-        mock_message.content = json.dumps(vision_response)
-        mock_choice.message = mock_message
-        mock_response.choices = [mock_choice]
-        mock_client.chat.completions.create.return_value = mock_response
+        mock_client = make_openai_client_with_json(vision_response)
 
         # 執行測試
         test_image = b'fake_image_data'
@@ -246,23 +202,14 @@ class TestProcessReceiptImage:
         assert "模糊" in error_message
         assert len(receipt_items) == 0
 
-    def test_process_receipt_incomplete(self, mocker):
+    def test_process_receipt_incomplete(self):
         """測試資訊不完整的收據"""
-        # Mock OpenAI client
-        mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_choice = MagicMock()
-        mock_message = MagicMock()
-
         # 模擬 GPT Vision API 回應（資訊不完整）
         vision_response = {
             "status": "incomplete",
             "message": "無法辨識品項或金額"
         }
-        mock_message.content = json.dumps(vision_response)
-        mock_choice.message = mock_message
-        mock_response.choices = [mock_choice]
-        mock_client.chat.completions.create.return_value = mock_response
+        mock_client = make_openai_client_with_json(vision_response)
 
         # 執行測試
         test_image = b'fake_image_data'
@@ -272,10 +219,10 @@ class TestProcessReceiptImage:
         assert error_code == "incomplete"
         assert len(receipt_items) == 0
 
-    def test_process_receipt_api_error(self, mocker):
+    def test_process_receipt_api_error(self):
         """測試 Vision API 失敗"""
         # Mock OpenAI client
-        mock_client = MagicMock()
+        mock_client = make_openai_client_with_content("{}")
         mock_client.chat.completions.create.side_effect = Exception("API Error")
 
         # 執行測試並預期拋出異常
@@ -283,19 +230,9 @@ class TestProcessReceiptImage:
         with pytest.raises(VisionAPIError):
             process_receipt_image(test_image, mock_client)
 
-    def test_process_receipt_json_parse_error(self, mocker):
+    def test_process_receipt_json_parse_error(self):
         """測試 JSON 解析失敗"""
-        # Mock OpenAI client
-        mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_choice = MagicMock()
-        mock_message = MagicMock()
-
-        # 模擬無效的 JSON 回應
-        mock_message.content = "invalid json"
-        mock_choice.message = mock_message
-        mock_response.choices = [mock_choice]
-        mock_client.chat.completions.create.return_value = mock_response
+        mock_client = make_openai_client_with_content("invalid json")
 
         # 執行測試
         test_image = b'fake_image_data'

@@ -10,7 +10,7 @@ v1.5.0 多項目支出單元測試
 - 錯誤處理（不同付款方式、缺少資訊等）
 """
 
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 from app.gpt_processor import process_multi_expense
 from tests.test_utils import set_openai_mock_content
 
@@ -22,12 +22,7 @@ class TestMultiExpenseSingleItem:
     def test_single_item_standard_format(self, mock_openai):
         """TC-V15-001: v1 格式兼容 - 標準記帳"""
         # Mock GPT 回應
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "現金",
@@ -44,8 +39,7 @@ class TestMultiExpenseSingleItem:
     }
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         # 執行測試
         result = process_multi_expense("午餐120元現金")
@@ -61,12 +55,7 @@ class TestMultiExpenseSingleItem:
     @patch('app.gpt_processor.OpenAI')
     def test_single_item_with_nickname(self, mock_openai):
         """TC-V15-002: v1 格式兼容 - 含暱稱"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "台新狗卡",
@@ -83,8 +72,7 @@ class TestMultiExpenseSingleItem:
     }
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("點心200元狗卡")
 
@@ -97,12 +85,7 @@ class TestMultiExpenseSingleItem:
     @patch('app.gpt_processor.OpenAI')
     def test_single_item_natural_language(self, mock_openai):
         """TC-V15-003: v1 格式兼容 - 自然語句"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "Line 轉帳",
@@ -119,8 +102,7 @@ class TestMultiExpenseSingleItem:
     }
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("買了咖啡50元，Line轉帳")
 
@@ -136,12 +118,7 @@ class TestMultiExpenseMultipleItems:
     @patch('app.gpt_processor.OpenAI')
     def test_two_items_comma_separated(self, mock_openai):
         """TC-V15-010: 雙項目 - 逗號分隔"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "現金",
@@ -168,8 +145,7 @@ class TestMultiExpenseMultipleItems:
     }
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("早餐80元，午餐150元，現金")
 
@@ -196,12 +172,7 @@ class TestMultiExpenseMultipleItems:
     @patch('app.gpt_processor.OpenAI')
     def test_payment_method_at_beginning(self, mock_openai):
         """TC-V15-011: 雙項目 - 付款方式在前"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "台新狗卡",
@@ -228,8 +199,7 @@ class TestMultiExpenseMultipleItems:
     }
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("用狗卡，咖啡50，三明治35")
 
@@ -240,12 +210,7 @@ class TestMultiExpenseMultipleItems:
     @patch('app.gpt_processor.OpenAI')
     def test_three_items_breakfast_lunch_dinner(self, mock_openai):
         """TC-V15-012: 三項目 - 早午晚餐"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "現金",
@@ -282,8 +247,7 @@ class TestMultiExpenseMultipleItems:
     }
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("早餐50元，午餐120元，晚餐200元，現金")
 
@@ -301,12 +265,7 @@ class TestMultiExpenseMultipleItems:
     @patch('app.gpt_processor.OpenAI')
     def test_four_items_or_more(self, mock_openai):
         """TC-V15-052: 四項目以上"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "現金",
@@ -317,8 +276,7 @@ class TestMultiExpenseMultipleItems:
     {"品項": "果汁", "原幣別": "TWD", "原幣金額": 40, "分類": "家庭/飲品", "必要性": "想吃想買但合理", "明細說明": "", "代墊狀態": "無", "收款支付對象": ""}
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("咖啡50、三明治35、沙拉80、果汁40、現金")
 
@@ -337,12 +295,7 @@ class TestMultiExpenseSharedValidation:
     @patch('app.gpt_processor.OpenAI')
     def test_shared_transaction_id(self, mock_openai):
         """TC-V15-020: 共用交易ID驗證"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "現金",
@@ -351,8 +304,7 @@ class TestMultiExpenseSharedValidation:
     {"品項": "午餐", "原幣別": "TWD", "原幣金額": 150, "分類": "家庭/餐飲/午餐", "必要性": "必要日常支出", "明細說明": "", "代墊狀態": "無", "收款支付對象": ""}
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("早餐80元，午餐150元，現金")
 
@@ -377,12 +329,7 @@ class TestMultiExpenseSharedValidation:
     @patch('app.gpt_processor.OpenAI')
     def test_shared_date(self, mock_openai):
         """TC-V15-021: 共用日期驗證"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "現金",
@@ -391,8 +338,7 @@ class TestMultiExpenseSharedValidation:
     {"品項": "午餐", "原幣別": "TWD", "原幣金額": 150, "分類": "家庭/餐飲/午餐", "必要性": "必要日常支出", "明細說明": "", "代墊狀態": "無", "收款支付對象": ""}
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("早餐80元，午餐150元，現金")
 
@@ -406,12 +352,7 @@ class TestMultiExpenseSharedValidation:
     @patch('app.gpt_processor.OpenAI')
     def test_shared_note_markers(self, mock_openai):
         """TC-V15-023: 附註標記驗證"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "現金",
@@ -420,8 +361,7 @@ class TestMultiExpenseSharedValidation:
     {"品項": "午餐", "原幣別": "TWD", "原幣金額": 150, "分類": "家庭/餐飲/午餐", "必要性": "必要日常支出", "明細說明": "", "代墊狀態": "無", "收款支付對象": ""}
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("早餐80元，午餐150元，現金")
 
@@ -438,18 +378,12 @@ class TestMultiExpenseErrorHandling:
     @patch('app.gpt_processor.OpenAI')
     def test_different_payment_methods_error(self, mock_openai):
         """TC-V15-030: ❌ 不同付款方式（錯誤）"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "error",
   "message": "偵測到不同付款方式，請分開記帳"
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("早餐80元現金，午餐150元刷卡")
 
@@ -459,18 +393,12 @@ class TestMultiExpenseErrorHandling:
     @patch('app.gpt_processor.OpenAI')
     def test_missing_amount_error(self, mock_openai):
         """TC-V15-031: ❌ 第二項缺少金額（錯誤）"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "error",
   "message": "第2個項目缺少金額，請提供完整資訊"
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("早餐80元，午餐，現金")
 
@@ -480,12 +408,7 @@ class TestMultiExpenseErrorHandling:
     @patch('app.gpt_processor.OpenAI')
     def test_compound_item_with_and(self, mock_openai):
         """TC-V15-032: ✅ 「和」連接詞視為單項目"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "現金",
@@ -502,8 +425,7 @@ class TestMultiExpenseErrorHandling:
     }
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("三明治和咖啡80元現金")
 
@@ -515,18 +437,12 @@ class TestMultiExpenseErrorHandling:
     @patch('app.gpt_processor.OpenAI')
     def test_missing_payment_method_error(self, mock_openai):
         """TC-V15-033: ❌ 缺少付款方式"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "error",
   "message": "缺少付款方式，請提供完整資訊"
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("早餐80元，午餐150元")
 
@@ -540,18 +456,12 @@ class TestMultiExpenseConversation:
     @patch('app.gpt_processor.OpenAI')
     def test_greeting(self, mock_openai):
         """TC-V15-040: 打招呼"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "conversation",
   "response": "您好！有什麼可以協助您的嗎？"
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("你好")
 
@@ -562,18 +472,12 @@ class TestMultiExpenseConversation:
     @patch('app.gpt_processor.OpenAI')
     def test_function_inquiry(self, mock_openai):
         """TC-V15-041: 詢問功能"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "conversation",
   "response": "我可以幫您記錄日常開支，只要告訴我品項、金額和付款方式即可！"
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("可以幫我做什麼？")
 
@@ -583,18 +487,12 @@ class TestMultiExpenseConversation:
     @patch('app.gpt_processor.OpenAI')
     def test_thanks(self, mock_openai):
         """TC-V15-042: 感謝"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "conversation",
   "response": "不客氣！有需要隨時找我幫忙記帳喔！"
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("謝謝")
 
@@ -608,12 +506,7 @@ class TestMultiExpenseComplexScenarios:
     @patch('app.gpt_processor.OpenAI')
     def test_items_with_detail_description(self, mock_openai):
         """TC-V15-050: 含明細說明的多項目"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "現金",
@@ -640,8 +533,7 @@ class TestMultiExpenseComplexScenarios:
     }
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("在開飯早餐50元，在7-11買咖啡45元，現金")
 
@@ -655,12 +547,7 @@ class TestMultiExpenseComplexScenarios:
     @patch('app.gpt_processor.OpenAI')
     def test_items_with_different_categories(self, mock_openai):
         """TC-V15-051: 含不同分類的多項目"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "台新狗卡",
@@ -687,8 +574,7 @@ class TestMultiExpenseComplexScenarios:
     }
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("咖啡50元，蛋糕120元，狗卡")
 
@@ -706,12 +592,7 @@ class _MovedTestAdvancePayment:
     @patch('app.gpt_processor.OpenAI')
     def test_advance_payment_basic(self, mock_openai):
         """TC-V17-001: 基本代墊 - 代妹購買Pizza兌換券"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "現金",
@@ -728,8 +609,7 @@ class _MovedTestAdvancePayment:
     }
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("代妹購買Pizza兌換券979元現金")
 
@@ -744,12 +624,7 @@ class _MovedTestAdvancePayment:
     @patch('app.gpt_processor.OpenAI')
     def test_advance_payment_colleague(self, mock_openai):
         """TC-V17-002: 幫同事墊付計程車費"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "現金",
@@ -766,8 +641,7 @@ class _MovedTestAdvancePayment:
     }
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("幫同事墊付計程車費300元現金")
 
@@ -780,12 +654,7 @@ class _MovedTestAdvancePayment:
     @patch('app.gpt_processor.OpenAI')
     def test_advance_payment_lunch_with_card(self, mock_openai):
         """TC-V17-003: 代朋友買午餐刷狗卡"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "台新狗卡",
@@ -802,8 +671,7 @@ class _MovedTestAdvancePayment:
     }
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("代朋友買了午餐150元刷狗卡")
 
@@ -816,12 +684,7 @@ class _MovedTestAdvancePayment:
     @patch('app.gpt_processor.OpenAI')
     def test_advance_payment_coffee_line_transfer(self, mock_openai):
         """TC-V17-004: 代購咖啡給三位同事 Line轉帳"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "Line 轉帳",
@@ -838,8 +701,7 @@ class _MovedTestAdvancePayment:
     }
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("代購咖啡50元給三位同事，Line轉帳")
 
@@ -856,12 +718,7 @@ class _MovedTestNeedToPay:
     @patch('app.gpt_processor.OpenAI')
     def test_need_to_pay_basic(self, mock_openai):
         """TC-V17-005: 基本需支付 - 弟代訂房間"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "NA",
@@ -878,8 +735,7 @@ class _MovedTestNeedToPay:
     }
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("弟代訂日本白馬房間10000元")
 
@@ -894,12 +750,7 @@ class _MovedTestNeedToPay:
     @patch('app.gpt_processor.OpenAI')
     def test_need_to_pay_friend_ticket(self, mock_openai):
         """TC-V17-006: 朋友幫我買演唱會門票"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "NA",
@@ -916,8 +767,7 @@ class _MovedTestNeedToPay:
     }
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("朋友幫我買了演唱會門票3000元")
 
@@ -930,12 +780,7 @@ class _MovedTestNeedToPay:
     @patch('app.gpt_processor.OpenAI')
     def test_need_to_pay_colleague_lunch(self, mock_openai):
         """TC-V17-007: 同事先墊午餐費"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "NA",
@@ -952,8 +797,7 @@ class _MovedTestNeedToPay:
     }
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("同事先墊了午餐120元")
 
@@ -969,12 +813,7 @@ class _MovedTestNoCollection:
     @patch('app.gpt_processor.OpenAI')
     def test_no_collection_basic(self, mock_openai):
         """TC-V17-008: 基本不索取 - 幫媽媽買藥不用還"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "現金",
@@ -991,8 +830,7 @@ class _MovedTestNoCollection:
     }
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("幫媽媽買藥500元現金，不用還")
 
@@ -1005,12 +843,7 @@ class _MovedTestNoCollection:
     @patch('app.gpt_processor.OpenAI')
     def test_no_collection_parking(self, mock_openai):
         """TC-V17-009: 幫老婆付停車費不索取"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "現金",
@@ -1027,8 +860,7 @@ class _MovedTestNoCollection:
     }
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("幫老婆付停車費100元，不索取")
 
@@ -1044,12 +876,7 @@ class _MovedTestMultiItemWithAdvance:
     @patch('app.gpt_processor.OpenAI')
     def test_partial_advance_payment(self, mock_openai):
         """TC-V17-010: 部分項目代墊 - 早餐自己午餐代墊"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "現金",
@@ -1076,8 +903,7 @@ class _MovedTestMultiItemWithAdvance:
     }
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("早餐80元，午餐150元幫同事代墊，現金")
 
@@ -1095,12 +921,7 @@ class TestCompactFormatRecognition:
     @patch('app.gpt_processor.OpenAI')
     def test_item_dollar_amount_payment_compact(self, mock_openai):
         """TC-COMPACT-001: 品項+$+金額+付款方式（無空格）"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "現金",
@@ -1117,8 +938,7 @@ class TestCompactFormatRecognition:
     }
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("魚$395現金")
 
@@ -1131,12 +951,7 @@ class TestCompactFormatRecognition:
     @patch('app.gpt_processor.OpenAI')
     def test_item_amount_payment_fully_compact(self, mock_openai):
         """TC-COMPACT-002: 品項+金額+付款方式（完全連寫）"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "現金",
@@ -1153,8 +968,7 @@ class TestCompactFormatRecognition:
     }
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("豬肉1430現金")
 
@@ -1167,12 +981,7 @@ class TestCompactFormatRecognition:
     @patch('app.gpt_processor.OpenAI')
     def test_item_space_amount_payment_compact(self, mock_openai):
         """TC-COMPACT-003: 品項+空格+金額付款連寫"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "現金",
@@ -1189,8 +998,7 @@ class TestCompactFormatRecognition:
     }
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("菇 240現金")
 
@@ -1203,12 +1011,7 @@ class TestCompactFormatRecognition:
     @patch('app.gpt_processor.OpenAI')
     def test_long_item_dollar_amount_payment_compact(self, mock_openai):
         """TC-COMPACT-004: 長品項+$+金額+付款方式"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "現金",
@@ -1225,8 +1028,7 @@ class TestCompactFormatRecognition:
     }
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("蔬果菇類$240現金")
 
@@ -1239,12 +1041,7 @@ class TestCompactFormatRecognition:
     @patch('app.gpt_processor.OpenAI')
     def test_compact_format_with_nickname(self, mock_openai):
         """TC-COMPACT-005: 連寫格式+付款方式暱稱"""
-        mock_client = Mock()
-        mock_openai.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        set_openai_mock_content(mock_openai, '''
 {
   "intent": "multi_bookkeeping",
   "payment_method": "台新狗卡",
@@ -1261,8 +1058,7 @@ class TestCompactFormatRecognition:
     }
   ]
 }
-'''
-        mock_client.chat.completions.create.return_value = mock_response
+''')
 
         result = process_multi_expense("食材$500狗卡")
 
