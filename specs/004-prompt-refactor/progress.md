@@ -27,6 +27,7 @@
 - `專案` 推導：新增 `app/project_resolver.py`，並在文字/收據流程補上 `專案`（優先使用 GPT/使用者明示，否則依分類推導；預設日常）（commit: `0b2ce44`）
 - GPT 輸出穩定性補強：付款方式在程式端做正規化（避免暱稱），並調整部分 functional suites 的錯誤訊息比對更穩健（commit: `1fda8cc`）
 - Prompt 去重：移除 `MULTI_EXPENSE_PROMPT` 重複段落以精簡（commit: `0a667ca`）
+- Prompt 去重：精簡收據 prompt 重複提醒與輸出格式說明（commit: `b2f4bc5`）
 
 ## 已驗證（最近一次）
 > 以下命令會觸發 GPT 呼叫；需環境可連網、並具備必要環境變數（如 OpenAI key）。
