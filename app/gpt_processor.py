@@ -10,6 +10,7 @@ GPT 處理器模組
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Literal, Optional, List
 from datetime import datetime
@@ -102,8 +103,6 @@ def parse_semantic_date(date_str: str, taipei_tz: ZoneInfo) -> str:
         '2025-11-12'
     """
     from datetime import timedelta
-    import re
-
     # 如果已經是 YYYY-MM-DD 格式，直接返回
     if re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
         return date_str
