@@ -71,7 +71,7 @@ MULTI_BOOKKEEPING_SCHEMA = {
                             "description": "Person to receive or pay"
                         }
                     },
-                    "required": ["品項", "原幣別", "原幣金額", "明細說明", "分類", "必要性", "代墊狀態", "收款支付對象"],
+                    "required": ["品項", "原幣別", "原幣金額", "明細說明", "分類", "專案", "必要性", "代墊狀態", "收款支付對象"],
                     "additionalProperties": False
                 }
             },
