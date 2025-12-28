@@ -29,6 +29,8 @@
 - Prompt 去重：移除 `MULTI_EXPENSE_PROMPT` 重複段落以精簡（commit: `0a667ca`）
 - Prompt 去重：精簡收據 prompt 重複提醒與輸出格式說明（commit: `b2f4bc5`）
 - Prompt 強化：缺品項時必須回 error，禁止占位詞與純金額當品項（commit: `d8f6ad3`）
+- Prompt 去重：精簡多項規則與示例、重複描述（commit: `7af6268`）
+- Prompt 重排：主提示結構與段落順序調整（commit: `5c943b6`）
 
 ## 已驗證（最近一次）
 > 以下命令會觸發 GPT 呼叫；需環境可連網、並具備必要環境變數（如 OpenAI key）。
