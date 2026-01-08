@@ -1,0 +1,92 @@
+
+curl -X POST "https://hook.us2.make.com/9mz4ke8r17a8knwrbyoxr62dg4lz0u2k" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operation": "CREATE",
+    "日期": "2025-12-14",
+    "品項": "測試咖啡",
+    "原幣別": "TWD",
+    "原幣金額": 50,
+    "匯率": 1,
+    "付款方式": "現金",
+    "分類": "家庭／飲品",
+    "專案": "日常",
+    "必要性": "想吃想買但合理",
+    "代墊狀態": "無",
+    "交易ID": "20251214-999999-test",
+    "明細說明": "",
+    "附註": ""
+  }'
+
+curl -X POST "https://hook.us2.make.com/9mz4ke8r17a8knwrbyoxr62dg4lz0u2k" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operation": "UPDATE",
+    "user_id": "U1234567890abcdef",
+    "transaction_id": "20251209-999999-test",
+    "fields_to_update": {
+      "付款方式": "Line 轉帳"
+    }
+  }'
+
+curl -X POST "https://hook.us2.make.com/9mz4ke8r17a8knwrbyoxr62dg4lz0u2k" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operation": "UPDATE",
+    "user_id": "U1234567890abcdef",
+    "transaction_id": "20251209-999999-test",
+    "fields_to_update": {
+      "分類": "家庭／飲品"
+    }
+  }'
+
+curl -X POST "https://hook.us2.make.com/9mz4ke8r17a8knwrbyoxr62dg4lz0u2k" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operation": "UPDATE",
+    "user_id": "U1234567890abcdef",
+    "transaction_id": "20251209-999999-test",
+    "fields_to_update": {
+      "專案": "登山行程"
+    }
+  }'
+
+curl -X POST "https://hook.us2.make.com/9mz4ke8r17a8knwrbyoxr62dg4lz0u2k" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operation": "UPDATE",
+    "user_id": "U1234567890abcdef",
+    "transaction_id": "20251209-999999-test",
+    "fields_to_update": {
+      "原幣金額": 120
+    }
+  }'
+
+curl -X POST "https://hook.us2.make.com/9mz4ke8r17a8knwrbyoxr62dg4lz0u2k" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operation": "UPDATE",
+    "user_id": "U1234567890abcdef",
+    "transaction_id": "20251209-999999-test",
+    "fields_to_update": {
+      "品項": "咖啡測試"
+    }
+  }'
+
+curl -X POST "https://hook.us2.make.com/9mz4ke8r17a8knwrbyoxr62dg4lz0u2k" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operation": "UPDATE",
+    "user_id": "U1234567890abcdef",
+    "transaction_id": "20251209-999999-test",
+    "fields_to_update": {
+      "付款方式": "Line 轉帳"
+    },
+    "item_count": 2
+  }'
+
+{{if(1.fields_to_update.分類; 1.fields_to_update.分類; 12.properties_value.`分類`.name)}}
+{{if(1.fields_to_update.付款方式; 1.fields_to_update.付款方式; 12.properties_value.`付款方式`.name)}}
+{{if(1.fields_to_update.專案; 1.fields_to_update.專案; 12.properties_value.`專案`.name)}}
+{{if(1.fields_to_update.原幣金額; 1.fields_to_update.原幣金額; 12.properties_value.`原幣金額`)}}
+{{if(1.fields_to_update.品項; 1.fields_to_update.品項; 12.properties_value.`品項`[0].plain_text)}}

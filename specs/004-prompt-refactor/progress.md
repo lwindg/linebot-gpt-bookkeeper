@@ -66,8 +66,7 @@
 - 缺少品項時偶發未回傳 error（偶爾出現占位詞或不合理品項）。
 
 ## 接下來要做什麼（從 plan.md 推導）
-1. 信息盤點（必要性/分類/代墊/專案）：整理必填欄位、預設值、關鍵字映射與 few-shot 覆蓋範圍
-2. Prompt 重構（本輪主線）：重寫 `app/prompts.py`，優先穩定「分類、必要性」，並維持可拆分段落（供未來路由/多輪）
-3. 擴充 functional cases（保守）：補外幣、代墊錯誤、專案預設等**穩定可回歸**案例（避免納入高波動句型）
-5. 風險檢查與 baseline：跑 `./run_tests.sh --smoke --all --auto`，必要時再跑 full regression
-6.（可選）補純離線 `--validate`：CI 只做 suites JSONL/schema/id 檢查，不呼叫 OpenAI
+1. Schema 更新：`MULTI_BOOKKEEPING_SCHEMA` items 增加 `專案`
+2. Few-shot 規劃（若要做）：簡短示例（USD/EUR/JPY/TWD、代墊缺對象 error）
+3. Functional cases 擴充（若要做）：外幣/代墊缺對象/專案預設
+4. 風險檢查與 baseline（可選）：token 下降幅度、分類/必要性穩定度
