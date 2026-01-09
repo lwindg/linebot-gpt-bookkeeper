@@ -66,6 +66,7 @@ def entry_to_dict(entry: BookkeepingEntry) -> dict:
         "交易ID": entry.交易ID,
         "明細說明": entry.明細說明,
         "分類": entry.分類,
+        "交易類型": entry.交易類型,
         "專案": entry.專案,
         "必要性": entry.必要性,
         "代墊狀態": entry.代墊狀態,
@@ -83,7 +84,7 @@ def result_to_raw_json(result) -> dict:
     - For bookkeeping intents, returns `entries` (list) for uniform consumption by test runners.
     """
     intent = getattr(result, "intent", "")
-    if intent == "multi_bookkeeping":
+    if intent in ("multi_bookkeeping", "cashflow_intents"):
         return {"intent": intent, "intent_display": "記帳", "entries": [entry_to_dict(e) for e in result.entries]}
     if intent == "update_last_entry":
         return {"intent": intent, "intent_display": "修改上一筆", "fields_to_update": getattr(result, "fields_to_update", {})}
@@ -153,7 +154,7 @@ def simulate_full_flow(message: str, user_id: str = DEFAULT_TEST_USER_ID, show_j
     print(f"   意圖: {result.intent}")
 
     # Step 2: 根據意圖執行對應操作
-    if result.intent == "multi_bookkeeping":
+    if result.intent in ("multi_bookkeeping", "cashflow_intents"):
         print(f"\n📝 Step 2: 發送 webhook 並儲存 KV...")
         print(f"   項目數量: {len(result.entries)}")
 

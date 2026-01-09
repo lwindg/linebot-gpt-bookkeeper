@@ -30,7 +30,7 @@ description: "Task list template for feature implementation"
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Create cashflow functional suite scaffold in tests/functional/suites/cashflow_intents.jsonl
+- [X] T001 Create cashflow functional suite scaffold in tests/functional/suites/cashflow_intents.jsonl
 
 ---
 
@@ -40,12 +40,12 @@ description: "Task list template for feature implementation"
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T002 Update structured output schema to include cashflow intent fields in app/schemas.py
-- [ ] T003 [P] Add cashflow intent rules and transaction_type mapping in app/prompts.py
-- [ ] T004 Implement cashflow intent parsing pipeline in app/gpt_processor.py
-- [ ] T005 Add shared cashflow rules helper in app/cashflow_rules.py
-- [ ] T006 Update CREATE payload to include 交易類型 in app/webhook_sender.py
-- [ ] T007 Update confirmation output to show 交易類型 in app/line_handler.py
+- [X] T002 Update structured output schema to include cashflow intent fields in app/schemas.py
+- [X] T003 [P] Add cashflow intent rules and transaction_type mapping in app/prompts.py
+- [X] T004 Implement cashflow intent parsing pipeline in app/gpt_processor.py
+- [X] T005 Add shared cashflow rules helper in app/cashflow_rules.py
+- [X] T006 Update CREATE payload to include 交易類型 in app/webhook_sender.py
+- [X] T007 Update confirmation output to show 交易類型 in app/line_handler.py
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -59,12 +59,12 @@ description: "Task list template for feature implementation"
 
 ### Tests for User Story 1 (REQUIRED for user journeys / external APIs) ⚠️
 
-- [ ] T008 [P] [US1] Add withdrawal double-entry cases in tests/functional/suites/cashflow_intents.jsonl
+- [X] T008 [P] [US1] Add withdrawal double-entry cases in tests/functional/suites/cashflow_intents.jsonl
 
 ### Implementation for User Story 1
 
-- [ ] T009 [US1] Implement withdrawal double-entry generation in app/gpt_processor.py
-- [ ] T010 [US1] Map withdrawal default payment methods (account vs cash) in app/cashflow_rules.py
+- [X] T009 [US1] Implement withdrawal double-entry generation in app/gpt_processor.py
+- [X] T010 [US1] Map withdrawal default payment methods (account vs cash) in app/cashflow_rules.py
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 

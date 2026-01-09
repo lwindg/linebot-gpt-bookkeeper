@@ -14,7 +14,7 @@ MULTI_BOOKKEEPING_SCHEMA = {
         "properties": {
             "intent": {
                 "type": "string",
-                "enum": ["multi_bookkeeping", "update_last_entry", "conversation", "error"],
+                "enum": ["multi_bookkeeping", "cashflow_intents", "update_last_entry", "conversation", "error"],
                 "description": "User intent type"
             },
             "payment_method": {
@@ -72,6 +72,47 @@ MULTI_BOOKKEEPING_SCHEMA = {
                         }
                     },
                     "required": ["品項", "原幣別", "原幣金額", "明細說明", "分類", "專案", "必要性", "代墊狀態", "收款支付對象"],
+                    "additionalProperties": False
+                }
+            },
+            "cashflow_items": {
+                "type": "array",
+                "description": "List of cashflow items (for cashflow_intents)",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "現金流意圖": {
+                            "type": "string",
+                            "enum": ["withdrawal", "transfer", "income", "card_payment"],
+                            "description": "Cashflow intent type"
+                        },
+                        "品項": {
+                            "type": "string",
+                            "description": "Item name"
+                        },
+                        "原幣別": {
+                            "type": "string",
+                            "enum": ["TWD", "USD", "EUR", "JPY", "GBP", "AUD", "CAD", "CNY"],
+                            "description": "Currency code (ISO 4217)"
+                        },
+                        "原幣金額": {
+                            "type": "number",
+                            "description": "Amount in original currency"
+                        },
+                        "付款方式": {
+                            "type": "string",
+                            "description": "Payment method or account"
+                        },
+                        "分類": {
+                            "type": "string",
+                            "description": "Category path"
+                        },
+                        "日期": {
+                            "type": "string",
+                            "description": "Extracted date in MM/DD or semantic date"
+                        }
+                    },
+                    "required": ["現金流意圖", "品項", "原幣別", "原幣金額", "付款方式", "分類"],
                     "additionalProperties": False
                 }
             },

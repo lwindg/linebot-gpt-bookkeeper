@@ -25,8 +25,77 @@ from app.kv_store import KVStore
 from app.category_resolver import resolve_category_autocorrect
 from app.payment_resolver import normalize_payment_method
 from app.project_resolver import infer_project
+from app.cashflow_rules import (
+    infer_transfer_mode,
+    infer_transfer_accounts,
+    normalize_cashflow_payment_method,
+)
 
 logger = logging.getLogger(__name__)
+
+_CASHFLOW_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("card_payment", ("繳卡費", "信用卡費", "繳信用卡", "刷卡費")),
+    ("transfer", ("轉帳", "匯款", "轉入", "轉出")),
+    ("withdrawal", ("提款", "領現", "領錢", "ATM")),
+    ("income", ("收入", "入帳", "薪水", "退款", "退費", "收款")),
+)
+
+_CASHFLOW_CATEGORIES = {
+    "withdrawal": "提款",
+    "transfer": "轉帳",
+    "income": "收入",
+    "card_payment": "繳卡費",
+}
+
+_CASHFLOW_AMOUNT_PATTERN = re.compile(r"-?\d+(?:\.\d+)?")
+
+
+def _detect_cashflow_intent(message: str) -> str | None:
+    text = message or ""
+    for intent_type, keywords in _CASHFLOW_KEYWORDS:
+        if any(keyword in text for keyword in keywords):
+            return intent_type
+    return None
+
+
+def _normalize_cashflow_category(intent_type: str, raw_category: str) -> str:
+    category = (raw_category or "").strip()
+    allowed = set(_CASHFLOW_CATEGORIES.values())
+    if category in allowed:
+        return category
+    return _CASHFLOW_CATEGORIES.get(intent_type, category or "收入")
+
+
+def _fallback_cashflow_items_from_message(message: str, intent_type: str) -> list[dict]:
+    text = message or ""
+    amount_match = _CASHFLOW_AMOUNT_PATTERN.search(text)
+    amount = float(amount_match.group(0)) if amount_match else None
+    if not amount or amount <= 0:
+        return []
+
+    item_text = text
+    if amount_match:
+        item_text = item_text.replace(amount_match.group(0), "")
+    item_text = re.sub(r"(元|twd|ntd|nt\\$)", "", item_text, flags=re.IGNORECASE).strip()
+    item_text = item_text or text.strip()
+
+    payment = normalize_cashflow_payment_method(
+        infer_transfer_accounts(text)[0] or ""
+    )
+    if intent_type == "withdrawal" and payment == "NA":
+        payment = "NA"
+
+    return [
+        {
+            "現金流意圖": intent_type,
+            "品項": item_text,
+            "原幣金額": amount,
+            "原幣別": "TWD",
+            "付款方式": payment,
+            "分類": _CASHFLOW_CATEGORIES.get(intent_type, ""),
+            "日期": None,
+        }
+    ]
 
 
 @dataclass
@@ -46,6 +115,7 @@ class BookkeepingEntry:
     交易ID: Optional[str] = None           # YYYYMMDD-HHMMSS
     明細說明: Optional[str] = ""
     分類: Optional[str] = None
+    交易類型: Optional[str] = "支出"
     專案: Optional[str] = "日常"
     必要性: Optional[str] = None
     代墊狀態: Optional[str] = "無"
@@ -60,7 +130,7 @@ class BookkeepingEntry:
 class MultiExpenseResult:
     """多項目支出處理結果（v1.5.0 新增）"""
 
-    intent: Literal["multi_bookkeeping", "conversation", "error", "update_last_entry"]
+    intent: Literal["multi_bookkeeping", "cashflow_intents", "conversation", "error", "update_last_entry"]
 
     # 記帳項目列表（若 intent == "multi_bookkeeping" 則必填）
     entries: List[BookkeepingEntry] = field(default_factory=list)
@@ -231,7 +301,7 @@ def process_message(user_message: str) -> BookkeepingEntry:
     result = process_multi_expense(user_message)
 
     # 轉換回 v1 格式
-    if result.intent == "multi_bookkeeping":
+    if result.intent in ("multi_bookkeeping", "cashflow_intents"):
         # 單項目：直接回傳第一個 entry
         if len(result.entries) == 1:
             return result.entries[0]
@@ -277,6 +347,7 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
 
     支援的 intent：
         - multi_bookkeeping: 多項目或單項目記帳（items 陣列）
+        - cashflow_intents: 現金流意圖（cashflow_items 陣列）
         - conversation: 一般對話
         - error: 資訊不完整或包含多種付款方式
 
@@ -320,6 +391,26 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
         intent = data.get("intent")
 
         if intent == "multi_bookkeeping":
+            cashflow_intent = _detect_cashflow_intent(user_message)
+            if cashflow_intent:
+                payment_method = normalize_cashflow_payment_method(data.get("payment_method", ""))
+                items = data.get("items", [])
+                if items:
+                    first_item = items[0]
+                    cashflow_items = [
+                        {
+                            "現金流意圖": cashflow_intent,
+                            "品項": first_item.get("品項"),
+                            "原幣金額": first_item.get("原幣金額"),
+                            "原幣別": first_item.get("原幣別", "TWD"),
+                            "付款方式": payment_method,
+                            "分類": first_item.get("分類", _CASHFLOW_CATEGORIES.get(cashflow_intent, "")),
+                            "日期": data.get("date"),
+                        }
+                    ]
+                else:
+                    cashflow_items = _fallback_cashflow_items_from_message(user_message, cashflow_intent)
+                return _process_cashflow_items(cashflow_items, user_message)
             # 多項目記帳意圖：提取資料並驗證
             payment_method = normalize_payment_method(data.get("payment_method", ""))
             items = data.get("items", [])
@@ -429,6 +520,7 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
                     交易ID=transaction_id,
                     明細說明=item_data.get("明細說明", ""),
                     分類=分類,
+                    交易類型="支出",
                     專案=project,
                     必要性=item_data.get("必要性", "必要日常支出"),
                     代墊狀態=item_data.get("代墊狀態", "無"),
@@ -442,6 +534,13 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
                 intent="multi_bookkeeping",
                 entries=entries
             )
+
+        elif intent == "cashflow_intents":
+            cashflow_items = data.get("cashflow_items", [])
+            if not cashflow_items:
+                fallback_intent = _detect_cashflow_intent(user_message)
+                cashflow_items = _fallback_cashflow_items_from_message(user_message, fallback_intent) if fallback_intent else []
+            return _process_cashflow_items(cashflow_items, user_message)
 
         elif intent == "update_last_entry":
             # 修改上一筆記帳：提取要更新的欄位
@@ -494,6 +593,107 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
             intent="error",
             error_message="系統處理訊息時發生錯誤，請重試"
         )
+
+
+def _process_cashflow_items(cashflow_items: list[dict], user_message: str) -> MultiExpenseResult:
+    if not cashflow_items:
+        return MultiExpenseResult(
+            intent="error",
+            error_message="未識別到任何現金流項目"
+        )
+
+    taipei_tz = ZoneInfo('Asia/Taipei')
+    now = datetime.now(taipei_tz)
+
+    transfer_mode = infer_transfer_mode(user_message)
+    transfer_source, transfer_target = infer_transfer_accounts(user_message)
+
+    entries: list[BookkeepingEntry] = []
+
+    for item_data in cashflow_items:
+        intent_type = item_data.get("現金流意圖")
+        item_name = item_data.get("品項")
+        amount = item_data.get("原幣金額")
+        currency = item_data.get("原幣別", "TWD")
+        payment_method_raw = item_data.get("付款方式", "")
+        category_raw = item_data.get("分類", "")
+
+        if not intent_type or not item_name:
+            return MultiExpenseResult(
+                intent="error",
+                error_message="現金流資料不完整，請補充意圖與品項"
+            )
+
+        if amount is None or float(amount) <= 0:
+            return MultiExpenseResult(
+                intent="error",
+                error_message="金額必須為正數"
+            )
+
+        payment_method = normalize_cashflow_payment_method(payment_method_raw)
+        category = _normalize_cashflow_category(intent_type, category_raw)
+        project = infer_project(category)
+
+        date_str = item_data.get("日期")
+        shared_date = now.strftime("%Y-%m-%d")
+        if date_str:
+            try:
+                shared_date = parse_semantic_date(date_str, taipei_tz)
+            except Exception as e:
+                logger.warning(f"Cashflow date parse failed: {date_str}, error: {e}")
+
+        batch_id = generate_transaction_id(shared_date, None, item_name, use_current_time=not date_str)
+
+        def build_entry(tx_type: str, payment_method_value: str, transaction_id: str) -> BookkeepingEntry:
+            return BookkeepingEntry(
+                intent="bookkeeping",
+                日期=shared_date,
+                品項=item_name,
+                原幣別=currency,
+                原幣金額=float(amount),
+                匯率=1.0,
+                付款方式=payment_method_value,
+                交易ID=transaction_id,
+                明細說明=item_data.get("明細說明", ""),
+                分類=category,
+                交易類型=tx_type,
+                專案=project,
+                必要性="必要日常支出",
+                代墊狀態="無",
+                收款支付對象="",
+                附註=""
+            )
+
+        if intent_type == "withdrawal":
+            transaction_ids = [f"{batch_id}-01", f"{batch_id}-02"]
+            entries.append(build_entry("提款", payment_method, transaction_ids[0]))
+            entries.append(build_entry("收入", "現金", transaction_ids[1]))
+        elif intent_type == "transfer":
+            if transfer_mode == "account":
+                source = transfer_source or payment_method
+                target = transfer_target or "NA"
+                transaction_ids = [f"{batch_id}-01", f"{batch_id}-02"]
+                entries.append(build_entry("轉帳", source, transaction_ids[0]))
+                entries.append(build_entry("收入", target, transaction_ids[1]))
+            else:
+                entries.append(build_entry("支出", payment_method, batch_id))
+        elif intent_type == "income":
+            entries.append(build_entry("收入", payment_method, batch_id))
+        elif intent_type == "card_payment":
+            source = transfer_source or payment_method
+            transaction_ids = [f"{batch_id}-01", f"{batch_id}-02"]
+            entries.append(build_entry("轉帳", source, transaction_ids[0]))
+            entries.append(build_entry("收入", "信用卡", transaction_ids[1]))
+        else:
+            return MultiExpenseResult(
+                intent="error",
+                error_message=f"無法識別現金流意圖：{intent_type}"
+            )
+
+    return MultiExpenseResult(
+        intent="cashflow_intents",
+        entries=entries
+    )
 
 
 def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None) -> MultiExpenseResult:
@@ -640,6 +840,7 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
                 交易ID=transaction_id,  # 使用實際日期的交易ID
                 明細說明=f"收據識別 {idx}/{len(receipt_items)}",
                 分類=分類,
+                交易類型="支出",
                 專案=專案,
                 必要性="必要日常支出",
                 代墊狀態="無",

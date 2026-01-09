@@ -41,6 +41,7 @@ def build_create_payload(entry: BookkeepingEntry) -> dict:
         "必要性": entry.必要性,
         "代墊狀態": entry.代墊狀態,
         "收款支付對象": entry.收款支付對象,
+        "交易類型": entry.交易類型,
         "附註": entry.附註,
     }
 

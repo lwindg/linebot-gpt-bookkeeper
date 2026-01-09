@@ -76,6 +76,7 @@ def format_confirmation_message(entry: BookkeepingEntry) -> str:
 
     message += f"""
 💳 付款方式：{entry.付款方式}
+🧾 交易類型：{entry.交易類型}
 📂 分類：{entry.分類}
 ⭐ 必要性：{entry.必要性}"""
 
@@ -142,6 +143,9 @@ def format_multi_confirmation_message(result: MultiExpenseResult, success_count:
         else:
             # TWD: show amount only
             message += f"\n💰 {twd_amount:.0f} 元"
+
+        if entry.交易類型:
+            message += f"\n🧾 {entry.交易類型}"
 
         message += f"\n📂 {entry.分類}"
         message += f"\n⭐ {entry.必要性}"
@@ -351,7 +355,7 @@ def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
         # Process message via GPT (v1.5.0: using process_multi_expense)
         result = process_multi_expense(user_message)
 
-        if result.intent == "multi_bookkeeping":
+        if result.intent in ("multi_bookkeeping", "cashflow_intents"):
             # Multi-item or single-item bookkeeping
             entries = result.entries
             total_items = len(entries)
