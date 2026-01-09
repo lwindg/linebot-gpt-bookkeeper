@@ -69,22 +69,29 @@
 
 ## Spec Kit 流程
 
-**暫時狀態**：Spec Kit 工具目前無法使用，開發期間可暫時跳過 `/speckit.*` 指令與 `specify check`；待工具恢復後再回到以下流程。
+**暫時狀態**：Spec Kit 工具目前無法使用，開發期間可暫時跳過 `/prompts:specify-*` 指令與 `specify check`；待工具恢復後再回到以下流程。
 
-1. Specify：撰寫使用者故事與驗收標準（/speckit.specify）
-2. Plan：技術規劃（/speckit.plan）
-3. Clarify：釐清需求（/speckit.clarify）
-4. Tasks：拆解任務（/speckit.tasks）
-5. Implement：執行開發（/speckit.implement）
-6. Analyze：驗證一致性與品質（/speckit.analyze）
+1. Specify：撰寫使用者故事與驗收標準（/prompts:specify-specify）
+2. Plan：技術規劃（/prompts:specify-plan）
+3. Clarify：釐清需求（/prompts:specify-clarify）
+4. Tasks：拆解任務（/prompts:specify-tasks）
+5. Implement：執行開發（/prompts:specify-implement）
+6. Analyze：驗證一致性與品質（/prompts:specify-analyze）
 
 ### 快速參考
 
-- `/speckit.constitution`：憲章
-- `/speckit.specify`：功能規格
-- `/speckit.plan`：實作規劃
-- `/speckit.tasks`：任務清單
-- `/speckit.implement`：開發執行
-- `/speckit.analyze`：一致性與品質檢查
+- `/prompts:specify-constitution`：憲章
+- `/prompts:specify-specify`：功能規格
+- `/prompts:specify-plan`：實作規劃
+- `/prompts:specify-tasks`：任務清單
+- `/prompts:specify-implement`：開發執行
+- `/prompts:specify-analyze`：一致性與品質檢查
 
 **恢復後規範**：工具恢復可用時，**必須**在功能視為就緒、提交或合併之前執行 `specify check`。
+
+## Active Technologies
+- Python 3.11+ + Flask, OpenAI SDK, LINE Messaging API SDK (005-cashflow-intents)
+- SQLite（主要資料）、Vercel KV（最後一筆交易暫存） (005-cashflow-intents)
+
+## Recent Changes
+- 005-cashflow-intents: Added Python 3.11+ + Flask, OpenAI SDK, LINE Messaging API SDK
