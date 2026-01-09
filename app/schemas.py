@@ -91,6 +91,19 @@ MULTI_BOOKKEEPING_SCHEMA = {
                         "type": "string",
                         "description": "New project"
                     },
+                    "付款方式": {
+                        "type": "string",
+                        "description": "New payment method (must be canonical)"
+                    },
+                    "明細說明": {
+                        "type": "string",
+                        "description": "New detail note"
+                    },
+                    "必要性": {
+                        "type": "string",
+                        "enum": ["必要日常支出", "想吃想買但合理", "療癒性支出", "衝動購物（提醒）"],
+                        "description": "New necessity level"
+                    },
                     "原幣金額": {
                         "type": "number",
                         "minimum": 0,

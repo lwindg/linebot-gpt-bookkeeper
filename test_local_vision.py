@@ -22,9 +22,11 @@ project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
 from app.image_handler import process_receipt_image, ReceiptItem, compress_image
-from app.gpt_processor import process_receipt_data
+from app.gpt_processor import process_receipt_data, process_multi_expense
 from openai import OpenAI
 from app.config import OPENAI_API_KEY
+from app.kv_store import save_last_transaction, KV_ENABLED
+from app.line_handler import handle_update_last_entry
 
 
 def save_compressed_image(compressed_data: bytes, original_path: str) -> str:
@@ -50,17 +52,48 @@ def main():
     """主函式"""
     # 檢查參數
     if len(sys.argv) < 2:
-        print("❌ 使用方式: python test_local_vision.py <圖片路徑> [--no-compress]")
+        print("❌ 使用方式: python test_local_vision.py <圖片路徑> [--no-compress] [--user-id <id>] [--update <訊息>]")
         print("\n範例:")
         print("  python test_local_vision.py receipt.jpg")
         print("  python test_local_vision.py ~/Downloads/receipt.png")
         print("  python test_local_vision.py receipt.jpg --no-compress  # 測試不壓縮")
+        print("  python test_local_vision.py receipt.jpg --user-id U123 --update \"上一筆付款方式改為富邦\"")
         sys.exit(1)
 
-    image_path = sys.argv[1]
+    image_path = None
+    enable_compression = True
+    user_id = None
+    update_message = None
 
-    # 檢查是否停用壓縮
-    enable_compression = "--no-compress" not in sys.argv
+    args = sys.argv[1:]
+    idx = 0
+    while idx < len(args):
+        arg = args[idx]
+        if arg == "--no-compress":
+            enable_compression = False
+        elif arg in ("--user-id", "--update"):
+            if idx + 1 >= len(args):
+                print(f"❌ 缺少參數值: {arg}")
+                sys.exit(1)
+            value = args[idx + 1]
+            if arg == "--user-id":
+                user_id = value
+            else:
+                update_message = value
+            idx += 1
+        elif arg.startswith("--user-id="):
+            user_id = arg.split("=", 1)[1]
+        elif arg.startswith("--update="):
+            update_message = arg.split("=", 1)[1]
+        elif image_path is None:
+            image_path = arg
+        else:
+            print(f"⚠️  忽略未知參數: {arg}")
+        idx += 1
+
+    if not image_path:
+        print("❌ 請提供圖片路徑")
+        sys.exit(1)
 
     # 檢查檔案是否存在
     if not os.path.exists(image_path):
@@ -274,10 +307,10 @@ def main():
                     print(f"\n{result.response_text}")
 
                 # ========================================
-                # 模擬 KV 儲存和 Webhook 發送
+                # KV 儲存（用於「修改上一筆」功能）
                 # ========================================
                 print("\n" + "=" * 60)
-                print("🗄️  模擬 KV 儲存（用於「修改上一筆」功能）")
+                print("🗄️  KV 儲存（用於「修改上一筆」功能）")
                 print("=" * 60)
 
                 # 提取批次ID和交易ID列表
@@ -305,73 +338,45 @@ def main():
                     "item_count": total_items,
                 }
 
-                print("\n儲存的資料結構：")
-                print(json.dumps(kv_data, indent=2, ensure_ascii=False))
-                print(f"\nKV Key: last_transaction:<user_id>")
-                print(f"TTL: 600 秒（10 分鐘）")
+                if user_id:
+                    print("\n儲存的資料結構：")
+                    print(json.dumps(kv_data, indent=2, ensure_ascii=False))
+                    if KV_ENABLED:
+                        saved = save_last_transaction(user_id, kv_data)
+                        print(f"\nKV Key: last_transaction:{user_id}")
+                        print("TTL: 600 秒（10 分鐘）")
+                        if saved:
+                            print("✅ KV 寫入成功")
+                        else:
+                            print("❌ KV 寫入失敗，請確認 REDIS_URL")
+                    else:
+                        print("\n⚠️  KV 未啟用（REDIS_URL 未設定），略過寫入")
+                else:
+                    print("\n⚠️  未提供 user_id，略過 KV 寫入")
 
-                print("\n" + "=" * 60)
-                print("📤 模擬 Webhook 發送")
-                print("=" * 60)
-
-                print(f"\n將發送 {total_items} 筆 CREATE webhook：\n")
-
-                for idx, entry in enumerate(entries, start=1):
-                    webhook_payload = {
-                        "operation": "CREATE",
-                        "日期": entry.日期,
-                        "品項": entry.品項,
-                        "原幣別": entry.原幣別,
-                        "原幣金額": entry.原幣金額,
-                        "匯率": entry.匯率,
-                        "付款方式": entry.付款方式,
-                        "交易ID": entry.交易ID,
-                        "明細說明": entry.明細說明,
-                        "分類": entry.分類,
-                        "專案": entry.專案,
-                        "必要性": entry.必要性,
-                        "代墊狀態": entry.代墊狀態,
-                        "收款支付對象": entry.收款支付對象,
-                        "附註": entry.附註,
-                    }
-
-                    print(f"Webhook #{idx}:")
-                    print(json.dumps(webhook_payload, indent=2, ensure_ascii=False))
-
-                    if idx < total_items:
-                        print(f"\n⏱️  延遲 0.5 秒...\n")
-
-                print("\n" + "=" * 60)
-                print("🔄 模擬「修改上一筆」功能")
-                print("=" * 60)
-
-                print("\n假設使用者說：「改成Line轉帳」\n")
-
-                print(f"系統會從 KV 讀取：")
-                print(f"  - batch_id: {batch_id}")
-                print(f"  - transaction_ids: {transaction_ids}")
-                print(f"  - item_count: {total_items}")
-
-                print(f"\n然後發送 {total_items} 筆 UPDATE webhook：\n")
-
-                for idx, txn_id in enumerate(transaction_ids, start=1):
-                    update_payload = {
-                        "operation": "UPDATE",
-                        "user_id": "<user_id>",
-                        "transaction_id": txn_id,
-                        "fields_to_update": {
-                            "付款方式": "Line 轉帳"
-                        },
-                        "item_count": 1  # 每筆 UPDATE 只更新一個記錄
-                    }
-
-                    print(f"UPDATE Webhook #{idx}:")
-                    print(json.dumps(update_payload, indent=2, ensure_ascii=False))
-
-                    if idx < total_items:
-                        print(f"\n⏱️  延遲 0.1 秒...\n")
-
-                print("\n✅ 所有 {0} 筆記錄的付款方式都會被更新為「Line 轉帳」".format(total_items))
+                if update_message:
+                    if not user_id:
+                        print("\n❌ 未提供 user_id，無法執行修改測試")
+                    elif not KV_ENABLED:
+                        print("\n❌ KV 未啟用，無法執行修改測試（請設定 REDIS_URL）")
+                    else:
+                        print("\n" + "=" * 60)
+                        print("🔄 測試「修改上一筆」功能")
+                        print("=" * 60)
+                        print(f"\n使用者訊息：{update_message}\n")
+                        update_result = process_multi_expense(update_message)
+                        if update_result.intent != "update_last_entry":
+                            if update_result.intent == "error":
+                                print(f"❌ 修改解析失敗：{update_result.error_message}")
+                            else:
+                                print(f"❌ 解析結果非修改意圖：{update_result.intent}")
+                            return
+                        reply = handle_update_last_entry(
+                            user_id,
+                            update_result.fields_to_update,
+                            raw_message=update_message,
+                        )
+                        print(reply)
             else:
                 print(f"❌ 轉換失敗: {result.error_message}")
 

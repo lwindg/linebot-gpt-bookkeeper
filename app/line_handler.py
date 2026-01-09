@@ -17,6 +17,7 @@ from app.image_handler import download_image, process_receipt_image, ImageDownlo
 from app.kv_store import KVStore, delete_last_transaction
 from app.config import LAST_TRANSACTION_TTL
 from app.category_resolver import resolve_category_input
+from app.payment_resolver import normalize_payment_method
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +183,7 @@ def handle_update_last_entry(user_id: str, fields_to_update: dict, *, raw_messag
 
     Args:
         user_id: LINE user ID
-        fields_to_update: Fields to update (dict with keys: 品項, 分類, 專案, 原幣金額)
+        fields_to_update: Fields to update (dict with keys: 品項, 分類, 專案, 付款方式, 明細說明, 必要性, 原幣金額)
 
     Returns:
         str: Success or error message for LINE user
@@ -197,7 +198,15 @@ def handle_update_last_entry(user_id: str, fields_to_update: dict, *, raw_messag
     # Step 1: Validate fields_to_update is not empty
     if not fields_to_update:
         logger.warning(f"Empty fields_to_update for user {user_id}")
-        return "❌ 無法修改：未指定要更新的欄位\n\n請指定要修改的欄位，例如：\n• 品項\n• 分類\n• 專案\n• 金額"
+        return (
+            "❌ 無法修改：未指定要更新的欄位\n\n"
+            "請指定要修改的欄位，例如：\n"
+            "• 品項\n"
+            "• 分類\n"
+            "• 專案\n"
+            "• 付款方式\n"
+            "• 金額"
+        )
 
     # Step 2: Read original transaction from KV
     key = f"last_transaction:{user_id}"
@@ -239,6 +248,11 @@ def handle_update_last_entry(user_id: str, fields_to_update: dict, *, raw_messag
                 "• 把分類改成 家庭/水果\n"
                 "• 把分類改成 交通/接駁\n"
             )
+
+    payment_value = fields_to_update.get("付款方式")
+    if payment_value not in (None, ""):
+        normalized = normalize_payment_method(str(payment_value))
+        fields_to_update = {**fields_to_update, "付款方式": normalized}
 
     # Step 5: Update target fields in transaction dict (skip empty/None values)
     updated_tx = original_tx.copy()
