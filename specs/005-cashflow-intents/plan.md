@@ -10,6 +10,8 @@
 
 目標是新增現金流意圖（withdrawal/transfer/income/card_payment）與記錄規則，
 確保提款、帳戶間轉帳能生成雙筆資金流向，而對他人轉帳僅記單筆支出。
+驗證方式以 `python test_local.py` 為主，涵蓋：
+「合庫轉帳給媽媽 2000」、「合庫轉帳到富邦 2000」、「合庫繳卡費到富邦 1500」。
 
 ## Technical Context
 

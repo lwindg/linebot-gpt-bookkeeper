@@ -20,37 +20,37 @@ python test_local.py "合庫提款 5000"
 - 交易類型分別為「提款」與「收入」
 - 付款方式分別為「合庫轉帳」與「現金」
 
-### 2. 轉帳雙筆記錄
+### 2. 轉帳給他人
 
 ```bash
-python test_local.py "轉帳給媽媽 2000"
+python test_local.py "合庫轉帳給媽媽 2000"
 ```
 
 預期：
 - 產生單筆記錄
 - 交易類型為「支出」
 
-### 2b. 帳戶間轉帳
+### 3. 帳戶間轉帳
 
 ```bash
-python test_local.py "合庫轉帳到台新 2000"
+python test_local.py "合庫轉帳到富邦 2000"
 ```
 
 預期：
 - 產生兩筆記錄（轉帳/收入）
 - 金額一致
 
-### 3. 繳卡費
+### 4. 繳卡費
 
 ```bash
-python test_local.py "繳卡費 15000"
+python test_local.py "合庫繳卡費到富邦 1500"
 ```
 
 預期：
 - 交易類型為「轉帳／收入」
 - 方向為「帳戶 → 信用卡」
 
-### 4. 錯誤情境
+### 5. 錯誤情境
 
 ```bash
 python test_local.py "提款"

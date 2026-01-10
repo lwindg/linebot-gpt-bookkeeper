@@ -1,3 +1,6 @@
 # Cashflow intents functional suite
 {"id":"TC-CF-001","group":"提款","name":"合庫提款雙筆","message":"合庫提款 5000","expected_desc":"✅ 產生 2 筆記錄，第一筆付款方式為合庫轉帳","expected":{"intent":"記帳","bookkeeping":{"item":"合庫提款","amount":"5000","payment":"合庫轉帳","category":"提款","item_count":"2"}}}
 {"id":"TC-CF-002","group":"提款","name":"ATM 領現（無帳戶）","message":"ATM 領現 3000","expected_desc":"✅ 產生 2 筆記錄，第一筆付款方式為 NA","expected":{"intent":"記帳","bookkeeping":{"item":"ATM 領現","amount":"3000","payment":"NA","category":"提款","item_count":"2"}}}
+{"id":"TC-CF-003","group":"轉帳","name":"帳戶間轉帳","message":"合庫轉帳到富邦 2000","expected_desc":"✅ 產生 2 筆記錄，第一筆付款方式為合庫轉帳","expected":{"intent":"記帳","bookkeeping":{"item":"合庫轉帳到富邦","amount":"2000","payment":"合庫轉帳","category":"轉帳","item_count":"2"}}}
+{"id":"TC-CF-004","group":"轉帳","name":"對他人轉帳","message":"合庫轉帳給媽媽 2000","expected_desc":"✅ 產生 1 筆記錄，交易類型為支出","expected":{"intent":"記帳","bookkeeping":{"item":"合庫轉帳給媽媽","amount":"2000","payment":"合庫轉帳","category":"轉帳","item_count":"1"}}}
+{"id":"TC-CF-005","group":"繳卡費","name":"繳卡費到富邦","message":"合庫繳卡費到富邦 1500","expected_desc":"✅ 產生 2 筆記錄，第一筆付款方式為合庫轉帳","expected":{"intent":"記帳","bookkeeping":{"item":"合庫繳卡費到富邦","amount":"1500","payment":"合庫轉帳","category":"繳卡費","item_count":"2"}}}

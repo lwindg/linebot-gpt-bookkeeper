@@ -46,6 +46,7 @@ description: "Task list template for feature implementation"
 - [X] T005 Add shared cashflow rules helper in app/cashflow_rules.py
 - [X] T006 Update CREATE payload to include 交易類型 in app/webhook_sender.py
 - [X] T007 Update confirmation output to show 交易類型 in app/line_handler.py
+- [ ] T021 Add cashflow keyword routing (withdrawal/transfer/card_payment/income) to use dedicated cashflow prompt in app/prompts.py and app/gpt_processor.py
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -74,17 +75,17 @@ description: "Task list template for feature implementation"
 
 **Goal**: 轉帳依情境產生單筆支出或雙筆轉帳/收入
 
-**Independent Test**: 輸入「轉帳給媽媽」與「合庫轉帳到台新」皆符合規則
+**Independent Test**: 輸入「合庫轉帳給媽媽 2000」與「合庫轉帳到富邦 2000」皆符合規則
 
 ### Tests for User Story 2 (REQUIRED for user journeys / external APIs) ⚠️
 
-- [ ] T011 [P] [US2] Add transfer cases (to-person, account-to-account) in tests/functional/suites/cashflow_intents.jsonl
+- [X] T011 [P] [US2] Add transfer cases (to-person, account-to-account) in tests/functional/suites/cashflow_intents.jsonl
 
 ### Implementation for User Story 2
 
-- [ ] T012 [US2] Implement transfer classification rules in app/cashflow_rules.py
-- [ ] T013 [US2] Implement transfer entry generation in app/gpt_processor.py
-- [ ] T014 [US2] Ensure to-person transfers map to 交易類型「支出」 in app/gpt_processor.py
+- [X] T012 [US2] Implement transfer classification rules in app/cashflow_rules.py
+- [X] T013 [US2] Implement transfer entry generation in app/gpt_processor.py
+- [X] T014 [US2] Ensure to-person transfers map to 交易類型「支出」 in app/gpt_processor.py
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
 
@@ -94,17 +95,17 @@ description: "Task list template for feature implementation"
 
 **Goal**: 收入單筆與繳卡費雙筆記錄一致可用
 
-**Independent Test**: 輸入收入/繳卡費訊息後，輸出對應交易類型與金額
+**Independent Test**: 輸入「薪水入帳 60000」與「合庫繳卡費到富邦 1500」後，輸出對應交易類型與金額
 
 ### Tests for User Story 3 (REQUIRED for user journeys / external APIs) ⚠️
 
-- [ ] T015 [P] [US3] Add income and card_payment cases in tests/functional/suites/cashflow_intents.jsonl
+- [X] T015 [P] [US3] Add income and card_payment cases in tests/functional/suites/cashflow_intents.jsonl
 
 ### Implementation for User Story 3
 
-- [ ] T016 [US3] Implement income entry generation in app/gpt_processor.py
-- [ ] T017 [US3] Implement card_payment as transfer (轉帳/收入) in app/gpt_processor.py
-- [ ] T018 [US3] Normalize missing payment/account to NA in app/gpt_processor.py
+- [X] T016 [US3] Implement income entry generation in app/gpt_processor.py
+- [X] T017 [US3] Implement card_payment as transfer (轉帳/收入) in app/gpt_processor.py
+- [X] T018 [US3] Normalize missing payment/account to NA in app/gpt_processor.py
 
 **Checkpoint**: All user stories should now be independently functional
 
