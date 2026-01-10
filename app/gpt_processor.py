@@ -48,6 +48,7 @@ _CASHFLOW_CATEGORIES = {
 }
 
 _CASHFLOW_AMOUNT_PATTERN = re.compile(r"-?\d+(?:\.\d+)?")
+_SEMANTIC_DATE_TOKENS = ("今天", "昨日", "昨天", "前天", "大前天", "明天", "後天", "大後天")
 
 
 def _detect_cashflow_intent(message: str) -> str | None:
@@ -55,6 +56,14 @@ def _detect_cashflow_intent(message: str) -> str | None:
     for intent_type, keywords in _CASHFLOW_KEYWORDS:
         if any(keyword in text for keyword in keywords):
             return intent_type
+    return None
+
+
+def _extract_semantic_date_token(message: str) -> Optional[str]:
+    text = message or ""
+    for token in _SEMANTIC_DATE_TOKENS:
+        if token in text:
+            return token
     return None
 
 
@@ -182,6 +191,7 @@ def parse_semantic_date(date_str: str, taipei_tz: ZoneInfo) -> str:
     # 處理語義化日期
     semantic_dates = {
         '今天': 0,
+        '昨日': -1,
         '昨天': -1,
         '前天': -2,
         '大前天': -3,
@@ -640,8 +650,11 @@ def _process_cashflow_items(cashflow_items: list[dict], user_message: str) -> Mu
         date_str = item_data.get("日期")
         if isinstance(date_str, str) and date_str.strip().upper() == "NA":
             date_str = None
+        semantic_token = _extract_semantic_date_token(user_message)
         shared_date = now.strftime("%Y-%m-%d")
-        if date_str:
+        if semantic_token:
+            shared_date = parse_semantic_date(semantic_token, taipei_tz)
+        elif date_str:
             try:
                 shared_date = parse_semantic_date(date_str, taipei_tz)
             except Exception as e:
