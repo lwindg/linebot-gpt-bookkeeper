@@ -75,6 +75,11 @@ def entry_to_dict(entry: BookkeepingEntry) -> dict:
     }
 
 
+def normalize_error_message(result: MultiExpenseResult) -> str:
+    message = getattr(result, "error_message", None)
+    return message or "未知錯誤"
+
+
 def result_to_raw_json(result) -> dict:
     """
     Convert processing result to a stable, machine-readable JSON.
@@ -91,7 +96,7 @@ def result_to_raw_json(result) -> dict:
     if intent == "conversation":
         return {"intent": intent, "intent_display": "對話", "response_text": getattr(result, "response_text", "")}
     if intent == "error":
-        return {"intent": intent, "intent_display": "錯誤", "error_message": getattr(result, "error_message", "")}
+        return {"intent": intent, "intent_display": "錯誤", "error_message": normalize_error_message(result)}
     return {"intent": intent, "intent_display": intent}
 
 
@@ -251,7 +256,7 @@ def simulate_full_flow(message: str, user_id: str = DEFAULT_TEST_USER_ID, show_j
         print(f"\n💬 對話回應: {result.response_text}")
 
     elif result.intent == "error":
-        print(f"\n❌ 錯誤: {result.error_message}")
+        print(f"\n❌ 錯誤: {normalize_error_message(result)}")
 
     if show_json:
         print("\n📄 GPT 解析結果:")
@@ -269,7 +274,7 @@ def simulate_full_flow(message: str, user_id: str = DEFAULT_TEST_USER_ID, show_j
         elif result.intent == "conversation":
             data = {"intent": result.intent, "response": result.response_text}
         else:
-            data = {"intent": result.intent, "error": result.error_message}
+            data = {"intent": result.intent, "error": normalize_error_message(result)}
 
         print(json.dumps(data, ensure_ascii=False, indent=2))
 
@@ -415,7 +420,7 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
     """Pretty print result (multi-entry format)."""
 
     # Single item: show a compact format.
-    if result.intent == "multi_bookkeeping" and len(result.entries) == 1:
+    if result.intent in ("multi_bookkeeping", "cashflow_intents") and len(result.entries) == 1:
         print("\n" + "=" * 60)
         print("📝 單項目模式")
         print("=" * 60)
@@ -431,7 +436,7 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
 
     elif result.intent == "error":
         print(f"📝 意圖: 錯誤")
-        print(f"💬 錯誤訊息: {result.error_message}")
+        print(f"💬 錯誤訊息: {normalize_error_message(result)}")
 
     elif result.intent == "update_last_entry":
         print(f"📝 意圖: 修改上一筆")
@@ -442,7 +447,7 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
         else:
             print(f"  (無)")
 
-    elif result.intent == "multi_bookkeeping":
+    elif result.intent in ("multi_bookkeeping", "cashflow_intents"):
         entries = result.entries
         total_items = len(entries)
 
@@ -450,11 +455,12 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
         print(f"📊 項目數量: {total_items}")
 
         if total_items > 0:
-            # 顯示共用資訊
-            print(f"💳 共用付款方式: {entries[0].付款方式}")
-            print(f"🆔 交易ID: {entries[0].交易ID}（共用）")
-            print(f"📅 日期: {entries[0].日期}")
-            print()
+            if result.intent == "multi_bookkeeping":
+                # 顯示共用資訊
+                print(f"💳 共用付款方式: {entries[0].付款方式}")
+                print(f"🆔 交易ID: {entries[0].交易ID}（共用）")
+                print(f"📅 日期: {entries[0].日期}")
+                print()
 
             # 列出所有項目
             for idx, entry in enumerate(entries, start=1):
@@ -471,6 +477,8 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
                     print(f"  💰 金額: {entry.原幣金額} TWD")
 
                 print(f"  🏷️ 分類: {entry.分類}")
+                if entry.交易類型:
+                    print(f"  🧾 交易類型: {entry.交易類型}")
                 print(f"  📊 必要性: {entry.必要性}")
                 if entry.明細說明:
                     print(f"  📝 明細: {entry.明細說明}")
@@ -483,7 +491,7 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
 
     if show_json:
         print("\n📄 完整 JSON:")
-        if result.intent == "multi_bookkeeping":
+        if result.intent in ("multi_bookkeeping", "cashflow_intents"):
             data = {
                 "intent": result.intent,
                 "entries": [
@@ -502,6 +510,7 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
                         "代墊狀態": e.代墊狀態,
                         "收款支付對象": e.收款支付對象,
                         "附註": e.附註,
+                        "交易類型": e.交易類型,
                     }
                     for e in result.entries
                 ]
@@ -511,7 +520,7 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
         elif result.intent == "update_last_entry":
             data = {"intent": "update_last_entry", "fields_to_update": result.fields_to_update}
         else:  # error
-            data = {"intent": "error", "message": result.error_message}
+            data = {"intent": "error", "message": normalize_error_message(result)}
 
         print(json.dumps(data, ensure_ascii=False, indent=2))
 

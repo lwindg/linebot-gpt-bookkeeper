@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo
 from openai import OpenAI
 
 from app.config import OPENAI_API_KEY, GPT_MODEL
-from app.prompts import MULTI_EXPENSE_PROMPT
+from app.prompts import CASHFLOW_INTENTS_PROMPT, MULTI_EXPENSE_PROMPT
 from app.schemas import MULTI_BOOKKEEPING_SCHEMA
 from app.exchange_rate import ExchangeRateService
 from app.kv_store import KVStore
@@ -333,7 +333,7 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
     處理單一訊息的多項目支出（v1.5.0 新功能）
 
     流程：
-    1. 構建 GPT messages（使用 MULTI_EXPENSE_PROMPT）
+    1. 構建 GPT messages（依關鍵字選擇系統提示）
     2. 呼叫 OpenAI API
     3. 解析回應（判斷 intent）
     4. 若為多項記帳 → 驗證所有項目、生成共用交易ID、補充預設值
@@ -370,11 +370,14 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
         kv_store = KVStore()
         exchange_rate_service = ExchangeRateService(kv_store)
 
-        # 呼叫 Chat Completions API（使用 MULTI_EXPENSE_PROMPT + Structured Output）
+        cashflow_hint = _detect_cashflow_intent(user_message)
+        system_prompt = CASHFLOW_INTENTS_PROMPT if cashflow_hint else MULTI_EXPENSE_PROMPT
+
+        # 呼叫 Chat Completions API（使用 selected prompt + Structured Output）
         completion = client.chat.completions.create(
             model=GPT_MODEL,
             messages=[
-                {"role": "system", "content": MULTI_EXPENSE_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
             ],
             response_format={
@@ -635,6 +638,8 @@ def _process_cashflow_items(cashflow_items: list[dict], user_message: str) -> Mu
         project = infer_project(category)
 
         date_str = item_data.get("日期")
+        if isinstance(date_str, str) and date_str.strip().upper() == "NA":
+            date_str = None
         shared_date = now.strftime("%Y-%m-%d")
         if date_str:
             try:
@@ -681,9 +686,10 @@ def _process_cashflow_items(cashflow_items: list[dict], user_message: str) -> Mu
             entries.append(build_entry("收入", payment_method, batch_id))
         elif intent_type == "card_payment":
             source = transfer_source or payment_method
+            target = transfer_target or "信用卡"
             transaction_ids = [f"{batch_id}-01", f"{batch_id}-02"]
             entries.append(build_entry("轉帳", source, transaction_ids[0]))
-            entries.append(build_entry("收入", "信用卡", transaction_ids[1]))
+            entries.append(build_entry("收入", target, transaction_ids[1]))
         else:
             return MultiExpenseResult(
                 intent="error",

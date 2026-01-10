@@ -46,7 +46,7 @@ description: "Task list template for feature implementation"
 - [X] T005 Add shared cashflow rules helper in app/cashflow_rules.py
 - [X] T006 Update CREATE payload to include 交易類型 in app/webhook_sender.py
 - [X] T007 Update confirmation output to show 交易類型 in app/line_handler.py
-- [ ] T021 Add cashflow keyword routing (withdrawal/transfer/card_payment/income) to use dedicated cashflow prompt in app/prompts.py and app/gpt_processor.py
+- [X] T021 Add cashflow keyword routing (withdrawal/transfer/card_payment/income) to use dedicated cashflow prompt in app/prompts.py and app/gpt_processor.py
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
