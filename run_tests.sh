@@ -29,12 +29,12 @@ usage() {
 Unified test runner (functional suites)
 
 Usage:
-  ./run_tests.sh --suite <expense|multi_expense|advance_payment|date> [--auto|--manual] [--only <pattern>] [--smoke] [--list]
+  ./run_tests.sh --suite <expense|multi_expense|advance_payment|date|cashflow> [--auto|--manual] [--only <pattern>] [--smoke] [--list]
   ./run_tests.sh --all [--auto|--manual] [--only <pattern>] [--smoke] [--list]
 
 Options:
-  --suite <name>    Suite name: expense, multi_expense, advance_payment, date
-  --all             Run all suites (expense, multi_expense, advance_payment, date)
+  --suite <name>    Suite name: expense, multi_expense, advance_payment, date, cashflow
+  --all             Run all suites (expense, multi_expense, advance_payment, date, cashflow)
   --auto            Auto-compare expected vs actual (default: manual)
   --manual          Manual mode (default)
   --only <pattern>  Run only tests whose id/name/message matches regex
@@ -152,6 +152,7 @@ suite_path() {
     multi_expense) echo "tests/functional/suites/multi_expense.jsonl" ;;
     advance_payment) echo "tests/functional/suites/advance_payment.jsonl" ;;
     date) echo "tests/functional/suites/date.jsonl" ;;
+    cashflow) echo "tests/functional/suites/cashflow_intents.jsonl" ;;
     *)
       echo "Error: unknown suite: $SUITE" >&2
       exit 2
@@ -165,6 +166,7 @@ smoke_pattern_for_suite() {
     date) echo 'TC-DATE-003|TC-DATE-006' ;;
     multi_expense) echo 'TC-V15-010|TC-V15-030' ;;
     advance_payment) echo 'TC-V17-001|TC-V17-005|TC-V17-010' ;;
+    cashflow) echo 'TC-CF-001|TC-CF-003' ;;
     *) echo "" ;;
   esac
 }
@@ -208,14 +210,14 @@ validate_suite_jsonl() {
     has_conversation="$(jq -r '.expected | has("conversation")' <<<"$line")"
 
     case "$expected_intent" in
-      記帳)
+      記帳|現金流)
         if [[ "$has_bookkeeping" != "true" ]]; then
-          echo "Error: expected.bookkeeping is required when expected.intent is 記帳 at $suite_file:$line_num" >&2
+          echo "Error: expected.bookkeeping is required when expected.intent is 記帳/現金流 at $suite_file:$line_num" >&2
           echo "Line: $line" >&2
           exit 2
         fi
         if [[ "$has_error" == "true" || "$has_conversation" == "true" ]]; then
-          echo "Error: expected.error/conversation is not allowed when expected.intent is 記帳 at $suite_file:$line_num" >&2
+          echo "Error: expected.error/conversation is not allowed when expected.intent is 記帳/現金流 at $suite_file:$line_num" >&2
           echo "Line: $line" >&2
           exit 2
         fi
@@ -274,7 +276,7 @@ validate_suite_jsonl() {
         fi
         ;;
       *)
-        echo "Error: invalid expected.intent at $suite_file:$line_num (must be 記帳/對話/錯誤)" >&2
+        echo "Error: invalid expected.intent at $suite_file:$line_num (must be 記帳/現金流/對話/錯誤)" >&2
         echo "Line: $line" >&2
         exit 2
         ;;
@@ -649,7 +651,7 @@ main() {
 
   local suites=()
   if [[ "$ALL_MODE" == true ]]; then
-    suites=(expense multi_expense advance_payment date)
+    suites=(expense multi_expense advance_payment date cashflow)
   else
     suites=("$SUITE")
   fi

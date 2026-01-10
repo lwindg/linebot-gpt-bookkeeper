@@ -90,7 +90,8 @@ def result_to_raw_json(result) -> dict:
     """
     intent = getattr(result, "intent", "")
     if intent in ("multi_bookkeeping", "cashflow_intents"):
-        return {"intent": intent, "intent_display": "記帳", "entries": [entry_to_dict(e) for e in result.entries]}
+        intent_display = "現金流" if intent == "cashflow_intents" else "記帳"
+        return {"intent": intent, "intent_display": intent_display, "entries": [entry_to_dict(e) for e in result.entries]}
     if intent == "update_last_entry":
         return {"intent": intent, "intent_display": "修改上一筆", "fields_to_update": getattr(result, "fields_to_update", {})}
     if intent == "conversation":
@@ -356,7 +357,7 @@ def clear_kv(user_id: str = DEFAULT_TEST_USER_ID):
         print(f"❌ 清除 KV 失敗：{e}")
         return False
 
-def print_result(entry, show_json=False):
+def print_result(entry, show_json=False, intent_label="記帳"):
     """美化輸出測試結果（v1 單項目格式）"""
     print("\n" + "=" * 60)
 
@@ -364,7 +365,7 @@ def print_result(entry, show_json=False):
         print(f"📝 意圖: 對話")
         print(f"💬 回應: {entry.response_text}")
     else:
-        print(f"📝 意圖: 記帳")
+        print(f"📝 意圖: {intent_label}")
         print(f"📅 日期: {entry.日期}")
         print(f"🛍️ 品項: {entry.品項}")
 
@@ -424,7 +425,8 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
         print("\n" + "=" * 60)
         print("📝 單項目模式")
         print("=" * 60)
-        print_result(result.entries[0], show_json)
+        intent_label = "現金流" if result.intent == "cashflow_intents" else "記帳"
+        print_result(result.entries[0], show_json, intent_label=intent_label)
         return
 
     # Multi items or other intents: show multi-entry format.
@@ -451,7 +453,7 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
         entries = result.entries
         total_items = len(entries)
 
-        print(f"📝 意圖: 記帳")
+        print(f"📝 意圖: {'現金流' if result.intent == 'cashflow_intents' else '記帳'}")
         print(f"📊 項目數量: {total_items}")
 
         if total_items > 0:
@@ -459,6 +461,9 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
                 # 顯示共用資訊
                 print(f"💳 共用付款方式: {entries[0].付款方式}")
                 print(f"🆔 交易ID: {entries[0].交易ID}（共用）")
+                print(f"📅 日期: {entries[0].日期}")
+                print()
+            else:
                 print(f"📅 日期: {entries[0].日期}")
                 print()
 
@@ -476,6 +481,8 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
                 else:
                     print(f"  💰 金額: {entry.原幣金額} TWD")
 
+                if result.intent == "cashflow_intents":
+                    print(f"  💳 付款方式: {entry.付款方式}")
                 print(f"  🏷️ 分類: {entry.分類}")
                 if entry.交易類型:
                     print(f"  🧾 交易類型: {entry.交易類型}")
