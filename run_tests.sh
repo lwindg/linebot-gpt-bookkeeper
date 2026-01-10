@@ -487,6 +487,10 @@ compare_contains() {
   local actual="$1"
   local expected="$2"
   [[ -z "$expected" ]] && return 0
+  if [[ "$expected" == "*" ]]; then
+    [[ -n "$actual" ]]
+    return 0
+  fi
   [[ "$actual" == *"$expected"* ]]
 }
 
