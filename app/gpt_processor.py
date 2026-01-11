@@ -49,6 +49,7 @@ _CASHFLOW_CATEGORIES = {
 
 _CASHFLOW_AMOUNT_PATTERN = re.compile(r"-?\d+(?:\.\d+)?")
 _SEMANTIC_DATE_TOKENS = ("今天", "昨日", "昨天", "前天", "大前天", "明天", "後天", "大後天")
+_EXPLICIT_DATE_PATTERN = re.compile(r"(20\d{2})[/-](\d{1,2})[/-](\d{1,2})")
 
 
 def _detect_cashflow_intent(message: str) -> str | None:
@@ -65,6 +66,14 @@ def _extract_semantic_date_token(message: str) -> Optional[str]:
         if token in text:
             return token
     return None
+
+
+def _extract_explicit_date(message: str) -> Optional[str]:
+    match = _EXPLICIT_DATE_PATTERN.search(message or "")
+    if not match:
+        return None
+    year, month, day = (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    return f"{year:04d}-{month:02d}-{day:02d}"
 
 
 def _normalize_cashflow_category(intent_type: str, raw_category: str) -> str:
@@ -209,6 +218,12 @@ def parse_semantic_date(date_str: str, taipei_tz: ZoneInfo) -> str:
         parts = date_str.split('-')
         month, day = int(parts[0]), int(parts[1])
         return f"{now.year:04d}-{month:02d}-{day:02d}"
+
+    # 處理 YYYY/M/D 或 YYYY/MM/DD 格式
+    if re.match(r'^\d{4}/\d{1,2}/\d{1,2}$', date_str):
+        parts = date_str.split('/')
+        year, month, day = int(parts[0]), int(parts[1]), int(parts[2])
+        return f"{year:04d}-{month:02d}-{day:02d}"
 
     # 處理 M/D 或 MM/DD 格式
     if re.match(r'^\d{1,2}/\d{1,2}$', date_str):
@@ -446,8 +461,11 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
             now = datetime.now(taipei_tz)
 
             # 補充共用日期：優先使用 GPT 提取的日期，否則使用今天
+            explicit_date = _extract_explicit_date(user_message)
             date_str = data.get("date")
-            if date_str:
+            if explicit_date:
+                shared_date = explicit_date
+            elif date_str:
                 try:
                     shared_date = parse_semantic_date(date_str, taipei_tz)
                     logger.info(f"使用提取的日期：{date_str} → {shared_date}")
@@ -650,9 +668,12 @@ def _process_cashflow_items(cashflow_items: list[dict], user_message: str) -> Mu
         date_str = item_data.get("日期")
         if isinstance(date_str, str) and date_str.strip().upper() == "NA":
             date_str = None
+        explicit_date = _extract_explicit_date(user_message)
         semantic_token = _extract_semantic_date_token(user_message)
         shared_date = now.strftime("%Y-%m-%d")
-        if semantic_token:
+        if explicit_date:
+            shared_date = explicit_date
+        elif semantic_token:
             shared_date = parse_semantic_date(semantic_token, taipei_tz)
         elif date_str:
             try:
