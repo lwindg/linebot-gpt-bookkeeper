@@ -49,7 +49,7 @@ from app.gpt_processor import process_multi_expense, MultiExpenseResult, Bookkee
 from app.kv_store import get_last_transaction, KVStore
 from app.config import KV_ENABLED
 from app.webhook_sender import send_multiple_webhooks, build_create_payload, build_update_payload
-from app.line_handler import handle_update_last_entry
+from app.line_handler import handle_update_last_entry, format_multi_confirmation_message
 
 # Default test user ID for local testing
 DEFAULT_TEST_USER_ID = "test_local_user"
@@ -211,13 +211,7 @@ def simulate_full_flow(message: str, user_id: str = DEFAULT_TEST_USER_ID, show_j
                 print(f"   交易ID: {tx.get('交易ID') or tx.get('batch_id')}")
                 print(f"   品項: {tx.get('品項')}")
 
-        # 顯示回覆訊息
-        if len(result.entries) == 1:
-            entry = result.entries[0]
-            reply = f"✅ 記帳成功！\n品項：{entry.品項}\n金額：{entry.原幣金額} {entry.原幣別}\n付款方式：{entry.付款方式}"
-        else:
-            reply = f"✅ 已記錄 {len(result.entries)} 筆支出"
-
+        reply = format_multi_confirmation_message(result, success_count, failure_count)
         print(f"\n💬 回覆訊息:\n{reply}")
 
     elif result.intent == "update_last_entry":
@@ -427,6 +421,8 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
         print("=" * 60)
         intent_label = "現金流" if result.intent == "cashflow_intents" else "記帳"
         print_result(result.entries[0], show_json, intent_label=intent_label)
+        reply_preview = format_multi_confirmation_message(result, 1, 0)
+        print(f"\n📩 LINE 回應預覽:\n{reply_preview}")
         return
 
     # Multi items or other intents: show multi-entry format.
@@ -495,6 +491,10 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
                         print(f"  👤 對象: {entry.收款支付對象}")
                 if idx < total_items:
                     print()
+
+        if total_items > 0:
+            reply_preview = format_multi_confirmation_message(result, total_items, 0)
+            print(f"\n📩 LINE 回應預覽:\n{reply_preview}")
 
     if show_json:
         print("\n📄 完整 JSON:")

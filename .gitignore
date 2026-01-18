@@ -85,3 +85,4 @@ IMG_*.jpg
 .codex/history.jsonl
 .codex/log/
 .codex/sessions/
+.codex/tmp/

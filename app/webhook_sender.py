@@ -5,8 +5,9 @@ Webhook Sender Module
 This module sends bookkeeping data to Make.com webhook.
 """
 
-import requests
 import logging
+import re
+import requests
 import time
 from typing import List, Tuple, Optional
 from app.config import WEBHOOK_URL, WEBHOOK_TIMEOUT
@@ -14,6 +15,14 @@ from app.gpt_processor import BookkeepingEntry
 from app.kv_store import save_last_transaction
 
 logger = logging.getLogger(__name__)
+
+_BATCH_ID_SUFFIX = re.compile(r"-\d{2}$")
+
+
+def _extract_batch_id(transaction_id: str) -> Optional[str]:
+    if _BATCH_ID_SUFFIX.search(transaction_id):
+        return transaction_id.rsplit("-", 1)[0]
+    return None
 
 
 def build_create_payload(entry: BookkeepingEntry) -> dict:
@@ -26,7 +35,7 @@ def build_create_payload(entry: BookkeepingEntry) -> dict:
     Returns:
         dict: Payload dictionary ready for JSON serialization
     """
-    return {
+    payload = {
         "operation": "CREATE",  # v1.5.0: 用於 Make.com Router 區分操作類型
         "日期": entry.日期,
         "品項": entry.品項,
@@ -44,6 +53,10 @@ def build_create_payload(entry: BookkeepingEntry) -> dict:
         "交易類型": entry.交易類型,
         "附註": entry.附註,
     }
+    batch_id = _extract_batch_id(entry.交易ID)
+    if batch_id:
+        payload["批次ID"] = batch_id
+    return payload
 
 
 def build_update_payload(user_id: str, transaction_id: str, fields_to_update: dict, item_count: int = 1) -> dict:

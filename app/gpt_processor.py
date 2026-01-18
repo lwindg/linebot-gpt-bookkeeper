@@ -703,29 +703,32 @@ def _process_cashflow_items(cashflow_items: list[dict], user_message: str) -> Mu
                 附註=""
             )
 
+        entry_specs: list[tuple[str, str]] = []
         if intent_type == "withdrawal":
-            entries.append(build_entry("提款", payment_method, batch_id))
-            entries.append(build_entry("收入", "現金", batch_id))
+            entry_specs = [("提款", payment_method), ("收入", "現金")]
         elif intent_type == "transfer":
             if transfer_mode == "account":
                 source = transfer_source or payment_method
                 target = transfer_target or "NA"
-                entries.append(build_entry("轉帳", source, batch_id))
-                entries.append(build_entry("收入", target, batch_id))
+                entry_specs = [("轉帳", source), ("收入", target)]
             else:
-                entries.append(build_entry("支出", payment_method, batch_id))
+                entry_specs = [("支出", payment_method)]
         elif intent_type == "income":
-            entries.append(build_entry("收入", payment_method, batch_id))
+            entry_specs = [("收入", payment_method)]
         elif intent_type == "card_payment":
             source = transfer_source or payment_method
             target = transfer_target or "信用卡"
-            entries.append(build_entry("轉帳", source, batch_id))
-            entries.append(build_entry("收入", target, batch_id))
+            entry_specs = [("轉帳", source), ("收入", target)]
         else:
             return MultiExpenseResult(
                 intent="error",
                 error_message=f"無法識別現金流意圖：{intent_type}"
             )
+
+        total_entries = len(entry_specs)
+        for idx, (tx_type, payment_method_value) in enumerate(entry_specs, start=1):
+            transaction_id = batch_id if total_entries == 1 else f"{batch_id}-{idx:02d}"
+            entries.append(build_entry(tx_type, payment_method_value, transaction_id))
 
     return MultiExpenseResult(
         intent="cashflow_intents",

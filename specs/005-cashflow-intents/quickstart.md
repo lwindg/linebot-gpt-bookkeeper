@@ -19,6 +19,11 @@ python test_local.py "合庫提款 5000"
 - 產生兩筆記錄
 - 交易類型分別為「提款」與「收入」
 - 付款方式分別為「合庫轉帳」與「現金」
+- 交易ID 以同批次 `-01` / `-02` 結尾，且 webhook payload 會包含 `批次ID`
+- LINE 回應摘要：
+  - `🏧 提款：合庫轉帳 → 現金 5000`
+  - `📅 日期：YYYY-MM-DD`
+  - `🔖 批次ID：YYYYMMDD-HHMMSS`
 
 ### 2. 轉帳給他人
 
@@ -39,6 +44,11 @@ python test_local.py "合庫轉帳到富邦 2000"
 預期：
 - 產生兩筆記錄（轉帳/收入）
 - 金額一致
+- 交易ID 以同批次 `-01` / `-02` 結尾，且 webhook payload 會包含 `批次ID`
+- LINE 回應摘要：
+  - `🔁 轉帳：合庫轉帳 → 富邦 2000`
+  - `📅 日期：YYYY-MM-DD`
+  - `🔖 批次ID：YYYYMMDD-HHMMSS`
 
 ### 4. 繳卡費
 
@@ -50,6 +60,11 @@ python test_local.py "合庫繳卡費到富邦 1500"
 - 交易類型為「轉帳／收入」
 - 第二筆付款方式為「富邦 Costco」
 - 方向為「帳戶 → 目標帳戶（未指定時為信用卡）」
+- 交易ID 以同批次 `-01` / `-02` 結尾，且 webhook payload 會包含 `批次ID`
+- LINE 回應摘要：
+  - `🔁 轉帳：合庫轉帳 → 富邦 Costco 1500`
+  - `📅 日期：YYYY-MM-DD`
+  - `🔖 批次ID：YYYYMMDD-HHMMSS`
 
 ### 5. 錯誤情境
 

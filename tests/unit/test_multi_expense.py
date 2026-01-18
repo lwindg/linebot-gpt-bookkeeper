@@ -372,6 +372,35 @@ class TestMultiExpenseSharedValidation:
         assert "批次ID:" in result.entries[1].附註
 
 
+class TestCashflowTransactionIds:
+    """現金流交易ID測試"""
+
+    def test_cashflow_withdrawal_transaction_ids(self):
+        """提款雙筆：交易ID應使用批次ID-序號"""
+        result = process_multi_expense("合庫提款 5000")
+
+        assert result.intent == "cashflow_intents"
+        assert len(result.entries) == 2
+        assert result.entries[0].交易ID.endswith("-01")
+        assert result.entries[1].交易ID.endswith("-02")
+
+        batch_id_1 = result.entries[0].交易ID.rsplit("-", 1)[0]
+        batch_id_2 = result.entries[1].交易ID.rsplit("-", 1)[0]
+        assert batch_id_1 == batch_id_2
+
+    def test_cashflow_transfer_account_transaction_ids(self):
+        """帳戶間轉帳：交易ID應使用批次ID-序號"""
+        result = process_multi_expense("合庫轉帳到富邦 2000")
+
+        assert result.intent == "cashflow_intents"
+        assert len(result.entries) == 2
+        assert result.entries[0].交易ID.endswith("-01")
+        assert result.entries[1].交易ID.endswith("-02")
+
+        batch_id_1 = result.entries[0].交易ID.rsplit("-", 1)[0]
+        batch_id_2 = result.entries[1].交易ID.rsplit("-", 1)[0]
+        assert batch_id_1 == batch_id_2
+
 class TestMultiExpenseErrorHandling:
     """測試錯誤處理與邊界案例"""
 

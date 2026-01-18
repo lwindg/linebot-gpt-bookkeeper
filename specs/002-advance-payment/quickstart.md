@@ -181,7 +181,7 @@ for item in gpt_response["items"]:
 
 #### 3.1 修改 format_confirmation_message 函式
 
-在「必要性」之後，「交易ID」之前，插入代墊資訊：
+在「必要性」之後，「日期」之前，插入代墊資訊：
 
 ```python
 def format_confirmation_message(entry: BookkeepingEntry) -> str:
@@ -190,7 +190,7 @@ def format_confirmation_message(entry: BookkeepingEntry) -> str:
     message = f"""✅ 記帳成功！
 
 📋 {entry.品項}
-💰 金額：{twd_amount:.0f} 元 TWD
+💵 新台幣：{twd_amount:.0f} 元
 💳 付款方式：{entry.付款方式}
 📂 分類：{entry.分類}
 ⭐ 必要性：{entry.必要性}"""
@@ -204,8 +204,8 @@ def format_confirmation_message(entry: BookkeepingEntry) -> str:
         message += f"\n🎁 不索取（代墊給：{entry.收款支付對象}）"
 
     message += f"""
-🔖 交易ID：{entry.交易ID}
-📅 日期：{entry.日期}"""
+📅 日期：{entry.日期}
+🔖 交易ID：{entry.交易ID}"""
 
     if entry.明細說明:
         message += f"\n📝 明細說明：{entry.明細說明}"
