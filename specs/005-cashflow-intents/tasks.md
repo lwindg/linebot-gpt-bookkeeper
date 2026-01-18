@@ -115,8 +115,8 @@ description: "Task list template for feature implementation"
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T019 [P] Add error edge cases (missing/zero/negative amount) in tests/functional/suites/cashflow_intents.jsonl
-- [ ] T020 [P] Validate quickstart examples against implementation in specs/005-cashflow-intents/quickstart.md
+- [X] T019 [P] Add error edge cases (missing/zero/negative amount) in tests/functional/suites/cashflow_intents.jsonl
+- [X] T020 [P] Validate quickstart examples against implementation in specs/005-cashflow-intents/quickstart.md
 
 ---
 

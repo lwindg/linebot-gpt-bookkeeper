@@ -27,6 +27,8 @@ _ACCOUNT_ALIASES: tuple[tuple[str, str], ...] = (
     ("line", "Line 轉帳"),
     ("richart", "台新 Richart"),
     ("台新", "台新 Richart"),
+    ("華南紅卡", "華南紅"),
+    ("華南紅", "華南紅"),
     ("富邦", "富邦 Costco"),
     ("costco", "富邦 Costco"),
     ("大戶", "大戶信用卡"),

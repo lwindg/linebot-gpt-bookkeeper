@@ -704,16 +704,14 @@ def _process_cashflow_items(cashflow_items: list[dict], user_message: str) -> Mu
             )
 
         if intent_type == "withdrawal":
-            transaction_ids = [f"{batch_id}-01", f"{batch_id}-02"]
-            entries.append(build_entry("提款", payment_method, transaction_ids[0]))
-            entries.append(build_entry("收入", "現金", transaction_ids[1]))
+            entries.append(build_entry("提款", payment_method, batch_id))
+            entries.append(build_entry("收入", "現金", batch_id))
         elif intent_type == "transfer":
             if transfer_mode == "account":
                 source = transfer_source or payment_method
                 target = transfer_target or "NA"
-                transaction_ids = [f"{batch_id}-01", f"{batch_id}-02"]
-                entries.append(build_entry("轉帳", source, transaction_ids[0]))
-                entries.append(build_entry("收入", target, transaction_ids[1]))
+                entries.append(build_entry("轉帳", source, batch_id))
+                entries.append(build_entry("收入", target, batch_id))
             else:
                 entries.append(build_entry("支出", payment_method, batch_id))
         elif intent_type == "income":
@@ -721,9 +719,8 @@ def _process_cashflow_items(cashflow_items: list[dict], user_message: str) -> Mu
         elif intent_type == "card_payment":
             source = transfer_source or payment_method
             target = transfer_target or "信用卡"
-            transaction_ids = [f"{batch_id}-01", f"{batch_id}-02"]
-            entries.append(build_entry("轉帳", source, transaction_ids[0]))
-            entries.append(build_entry("收入", target, transaction_ids[1]))
+            entries.append(build_entry("轉帳", source, batch_id))
+            entries.append(build_entry("收入", target, batch_id))
         else:
             return MultiExpenseResult(
                 intent="error",

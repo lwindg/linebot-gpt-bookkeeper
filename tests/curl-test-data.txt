@@ -85,6 +85,27 @@ curl -X POST "https://hook.us2.make.com/9mz4ke8r17a8knwrbyoxr62dg4lz0u2k" \
     "item_count": 2
   }'
 
+curl -X POST "https://hook.us2.make.com/9mz4ke8r17a8knwrbyoxr62dg4lz0u2k" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operation": "CREATE",
+    "日期": "2026-01-10",
+    "品項": "合庫提款",
+    "原幣別": "TWD",
+    "原幣金額": 5000.0,
+    "匯率": 1.0,
+    "付款方式": "現金",
+    "交易ID": "20260110-235900-02",
+    "明細說明": "",
+    "分類": "提款",
+    "專案": "日常",
+    "必要性": "必要日常支出",
+    "代墊狀態": "無",
+    "收款支付對象": "",
+    "附註": "",
+    "交易類型": "收入"
+  }'
+
 {{if(1.fields_to_update.分類; 1.fields_to_update.分類; 12.properties_value.`分類`.name)}}
 {{if(1.fields_to_update.付款方式; 1.fields_to_update.付款方式; 12.properties_value.`付款方式`.name)}}
 {{if(1.fields_to_update.專案; 1.fields_to_update.專案; 12.properties_value.`專案`.name)}}

@@ -1,2 +1,5 @@
 [projects."/Users/aeluinchen-mac/Work/linebot-gpt-bookkeeper"]
 trust_level = "trusted"
+
+[mcp_servers.Notion]
+url = "https://mcp.notion.com/mcp"
