@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Update Intent Response",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["intent", "fields_to_update"],
+      "properties": {
+        "intent": {"const": "update_last_entry"},
+        "fields_to_update": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 1,
+          "properties": {
+            "品項": {"type": "string"},
+            "分類": {"type": "string"},
+            "專案": {"type": "string"},
+            "原幣金額": {"type": "number", "minimum": 0},
+            "付款方式": {"type": "string"},
+            "明細說明": {"type": "string"},
+            "必要性": {"type": "string"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": ["intent", "message"],
+      "properties": {
+        "intent": {"const": "error"},
+        "message": {"type": "string"}
+      },
+      "additionalProperties": false
+    }
+  ]
+}
