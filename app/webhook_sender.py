@@ -194,21 +194,8 @@ def send_multiple_webhooks(entries: List[BookkeepingEntry], user_id: Optional[st
     item_count = len(entries)
     transaction_ids = [entry.交易ID for entry in entries]
 
-    # 提取批次識別符（v1.9.0：從附註中提取或使用第一個交易ID）
-    # 優先從附註中提取批次時間戳（收據識別或文字記帳）
-    if item_count > 1 and entries[0].附註:
-        # 嘗試從附註中提取批次時間戳
-        # 格式：「多項目支出 1/2 (批次ID: 20251125-143027)」或「收據圖片識別 1/4 (批次: 20251125-143027)」
-        import re
-        match = re.search(r'批次[ID]*[:：]\s*(\d{8}-\d{6})', entries[0].附註)
-        if match:
-            batch_id = match.group(1)
-        else:
-            # 無法從附註提取，使用第一個交易ID（去掉序號）
-            batch_id = entries[0].交易ID.rsplit('-', 1)[0] if '-' in entries[0].交易ID.rsplit('-', 2)[-1] and len(entries[0].交易ID.rsplit('-', 2)[-1]) == 2 else entries[0].交易ID
-    else:
-        # 單項目：批次ID就是交易ID
-        batch_id = entries[0].交易ID
+    # 批次ID一律由交易ID推斷（不再依賴附註）
+    batch_id = _extract_batch_id(entries[0].交易ID) or entries[0].交易ID
 
     for idx, entry in enumerate(entries, start=1):
         logger.info(f"Sending webhook {idx}/{len(entries)}: {entry.品項} - {entry.原幣金額} TWD (交易ID: {entry.交易ID})")

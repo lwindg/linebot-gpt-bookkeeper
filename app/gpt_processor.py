@@ -567,7 +567,7 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
                     必要性=item_data.get("必要性", "必要日常支出"),
                     代墊狀態=item_data.get("代墊狀態", "無"),
                     收款支付對象=item_data.get("收款支付對象", ""),
-                    附註=f"多項目支出 {idx}/{len(items)} (批次ID: {batch_id})" if len(items) > 1 else ""
+                    附註=""
                 )
 
                 entries.append(entry)
@@ -874,12 +874,6 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
             分類 = resolve_category_autocorrect(分類, fallback="家庭支出")
             專案 = infer_project(分類)
 
-            # 補充預設值和共用欄位
-            # 附註包含批次時間戳（用於識別同一批次）
-            附註_內容 = f"收據圖片識別 {idx}/{len(receipt_items)} (批次: {batch_timestamp})"
-            if payment_method_is_default:
-                附註_內容 += "；付款方式預設為現金"
-
             entry = BookkeepingEntry(
                 intent="bookkeeping",
                 日期=item_date,  # 使用項目自己的日期
@@ -896,7 +890,7 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
                 必要性="必要日常支出",
                 代墊狀態="無",
                 收款支付對象="",
-                附註=附註_內容
+                附註=""
             )
 
             entries.append(entry)
