@@ -52,6 +52,15 @@ _SEMANTIC_DATE_TOKENS = ("今天", "昨日", "昨天", "前天", "大前天", "�
 _EXPLICIT_DATE_PATTERN = re.compile(r"(20\d{2})[/-](\d{1,2})[/-](\d{1,2})")
 
 
+def _normalize_message_spacing(message: str) -> str:
+    text = message or ""
+    text = re.sub(r"\$(\d)", r"\1", text)
+    text = re.sub(r"([\u4e00-\u9fff])([0-9A-Za-z])", r"\1 \2", text)
+    text = re.sub(r"([0-9A-Za-z])([\u4e00-\u9fff])", r"\1 \2", text)
+    text = re.sub(r"(\d+(?:\.\d+)?)\s*現金", r"\1 元 現金", text)
+    return text
+
+
 def _detect_cashflow_intent(message: str) -> str | None:
     text = message or ""
     for intent_type, keywords in _CASHFLOW_KEYWORDS:
@@ -388,6 +397,8 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
         '現金'
     """
     try:
+        user_message = _normalize_message_spacing(user_message)
+
         # 初始化 OpenAI client
         client = OpenAI(api_key=OPENAI_API_KEY)
 
