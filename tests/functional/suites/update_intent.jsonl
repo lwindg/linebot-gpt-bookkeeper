@@ -1,0 +1,10 @@
+# Update intent functional suite
+
+{"id":"TC-UP-001","group":"更新意圖","name":"付款方式更新","message":"修改付款方式為狗卡","expected_desc":"✅ update_last_entry, 付款方式: 台新狗卡","expected":{"intent":"修改上一筆","update":{"field":"付款方式","value":"台新狗卡"}}}
+{"id":"TC-UP-002","group":"更新意圖","name":"指向詞+付款方式","message":"前一筆付款方式改 狗卡","expected_desc":"✅ update_last_entry, 付款方式: 台新狗卡","expected":{"intent":"修改上一筆","update":{"field":"付款方式","value":"台新狗卡"}}}
+{"id":"TC-UP-003","group":"更新意圖","name":"金額更新","message":"剛剛改金額 350","expected_desc":"✅ update_last_entry, 原幣金額: 350","expected":{"intent":"修改上一筆","update":{"field":"原幣金額","value":"350"}}}
+
+{"id":"TC-UP-004","group":"錯誤","name":"缺少新值","message":"修改付款方式","expected_desc":"❌ 缺少欄位名稱或新值","expected":{"intent":"錯誤","error":{"contains":"缺少欄位名稱或新值"}}}
+{"id":"TC-UP-005","group":"錯誤","name":"多欄位更新","message":"改付款方式與分類","expected_desc":"❌ 一次只允許更新一個欄位","expected":{"intent":"錯誤","error":{"contains":"一次只允許更新一個欄位"}}}
+{"id":"TC-UP-006","group":"錯誤","name":"負數金額","message":"更新金額 -100","expected_desc":"❌ 金額不可為負數","expected":{"intent":"錯誤","error":{"contains":"金額不可為負數"}}}
+{"id":"TC-UP-007","group":"錯誤","name":"缺少欄位名稱","message":"改成狗卡","expected_desc":"❌ 缺少欄位名稱或新值","expected":{"intent":"錯誤","error":{"contains":"缺少欄位名稱或新值"}}}

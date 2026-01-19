@@ -18,7 +18,7 @@ description: "Task list for Update Intent Prompt Split"
 
 **Purpose**: 對齊規格與測試基礎
 
-- [ ] T001 Align update-intent test data layout in tests/functional/suites/
+- [x] T001 Align update-intent test data layout in tests/functional/suites/
 
 ---
 
@@ -26,8 +26,8 @@ description: "Task list for Update Intent Prompt Split"
 
 **Purpose**: 更新意圖分流的共用基礎
 
-- [ ] T002 Define update intent contract checks using specs/007-update-intent/contracts/update-intent.schema.json
-- [ ] T003 Add shared update intent fixtures in tests/functional/fixtures/update_intent.json
+- [x] T002 Define update intent contract checks using specs/007-update-intent/contracts/update-intent.schema.json
+- [x] T003 Add shared update intent fixtures in tests/functional/fixtures/update_intent.json
 
 ---
 
@@ -39,16 +39,16 @@ description: "Task list for Update Intent Prompt Split"
 
 ### Tests for User Story 1 (REQUIRED) ⚠️
 
-- [ ] T004 [P] [US1] Add contract tests for update intent in tests/contract/test_update_intent.py
-- [ ] T005 [P] [US1] Add integration tests for update messages in tests/functional/suites/update_intent.jsonl
+- [x] T004 [P] [US1] Add contract tests for update intent in tests/contract/test_update_intent.py
+- [x] T005 [P] [US1] Add integration tests for update messages in tests/functional/suites/update_intent.jsonl
 
 ### Implementation for User Story 1
 
-- [ ] T006 [US1] Add update intent prompt split in app/prompts.py
-- [ ] T007 [US1] Implement update intent routing in app/gpt_processor.py
-- [ ] T008 [US1] Ensure update outputs normalize payment methods via app/payment_resolver.py
-- [ ] T009 [US1] Update update_last_entry examples in app/prompts.py to cover dog card variants
-- [ ] T010 [US1] Prune update-related rules/examples from main bookkeeping prompt in app/prompts.py
+- [x] T006 [US1] Add update intent prompt split in app/prompts.py
+- [x] T007 [US1] Implement update intent routing in app/gpt_processor.py
+- [x] T008 [US1] Ensure update outputs normalize payment methods via app/payment_resolver.py
+- [x] T009 [US1] Update update_last_entry examples in app/prompts.py to cover dog card variants
+- [x] T010 [US1] Prune update-related rules/examples from main bookkeeping prompt in app/prompts.py
 
 ---
 
@@ -60,11 +60,11 @@ description: "Task list for Update Intent Prompt Split"
 
 ### Tests for User Story 2 (REQUIRED) ⚠️
 
-- [ ] T011 [P] [US2] Extend update intent suite for pointer terms in tests/functional/suites/update_intent.jsonl
+- [x] T011 [P] [US2] Extend update intent suite for pointer terms in tests/functional/suites/update_intent.jsonl
 
 ### Implementation for User Story 2
 
-- [ ] T012 [US2] Add pointer-term rules to update intent prompt in app/prompts.py
+- [x] T012 [US2] Add pointer-term rules to update intent prompt in app/prompts.py
 
 ---
 
@@ -76,18 +76,18 @@ description: "Task list for Update Intent Prompt Split"
 
 ### Tests for User Story 3 (REQUIRED) ⚠️
 
-- [ ] T013 [P] [US3] Add error cases to update intent suite in tests/functional/suites/update_intent.jsonl
+- [x] T013 [P] [US3] Add error cases to update intent suite in tests/functional/suites/update_intent.jsonl
 
 ### Implementation for User Story 3
 
-- [ ] T014 [US3] Standardize update error messages in app/prompts.py
-- [ ] T015 [US3] Enforce single-field update rule in app/gpt_processor.py
+- [x] T014 [US3] Standardize update error messages in app/prompts.py
+- [x] T015 [US3] Enforce single-field update rule in app/gpt_processor.py
 
 ---
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T016 [P] Sync quickstart examples with update intent prompt in specs/007-update-intent/quickstart.md
+- [x] T016 [P] Sync quickstart examples with update intent prompt in specs/007-update-intent/quickstart.md
 - [ ] T017 Run quickstart checks referenced in specs/007-update-intent/quickstart.md
 
 ---

@@ -52,6 +52,7 @@ python test_local.py --raw '11/12 午餐120元現金'
 ./run_tests.sh --suite multi_expense
 ./run_tests.sh --suite advance_payment
 ./run_tests.sh --suite date
+./run_tests.sh --suite update_intent
 
 # Run all suites
 ./run_tests.sh --all
@@ -65,6 +66,8 @@ python test_local.py --raw '11/12 午餐120元現金'
 ./run_tests.sh --suite multi_expense --auto
 ./run_tests.sh --suite advance_payment --auto
 ./run_tests.sh --suite date --auto
+./run_tests.sh --suite update_intent --auto
+./run_tests.sh --suite update_intent --auto
 
 # Auto compare smoke subset (requires OpenAI)
 ./run_tests.sh --smoke --all --auto
@@ -74,6 +77,7 @@ python test_local.py --raw '11/12 午餐120元現金'
 ./run_tests.sh --suite multi_expense --list
 ./run_tests.sh --suite advance_payment --list
 ./run_tests.sh --suite date --list
+./run_tests.sh --suite update_intent --list
 
 # List-only smoke subset
 ./run_tests.sh --smoke --all --list
@@ -84,6 +88,7 @@ python test_local.py --raw '11/12 午餐120元現金'
 - `multi_expense`: multiple expenses (and related error handling)
 - `advance_payment`: advance payment tracking
 - `date`: date extraction / normalization
+- `update_intent`: update intent parsing and validation
 
 **Comparison notes**:
 - `transaction_id` is not compared (non-deterministic)
@@ -130,6 +135,7 @@ python test_local.py --raw '11/12 午餐120元現金'
 ./run_tests.sh --suite multi_expense
 ./run_tests.sh --suite advance_payment
 ./run_tests.sh --suite date
+./run_tests.sh --suite update_intent
 ```
 
 每個測試案例會逐個執行，按 Enter 查看下一個測試。

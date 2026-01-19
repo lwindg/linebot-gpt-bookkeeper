@@ -29,12 +29,12 @@ usage() {
 Unified test runner (functional suites)
 
 Usage:
-  ./run_tests.sh --suite <expense|multi_expense|advance_payment|date|cashflow> [--auto|--manual] [--only <pattern>] [--smoke] [--list]
+  ./run_tests.sh --suite <expense|multi_expense|advance_payment|date|cashflow|update_intent> [--auto|--manual] [--only <pattern>] [--smoke] [--list]
   ./run_tests.sh --all [--auto|--manual] [--only <pattern>] [--smoke] [--list]
 
 Options:
-  --suite <name>    Suite name: expense, multi_expense, advance_payment, date, cashflow
-  --all             Run all suites (expense, multi_expense, advance_payment, date, cashflow)
+  --suite <name>    Suite name: expense, multi_expense, advance_payment, date, cashflow, update_intent
+  --all             Run all suites (expense, multi_expense, advance_payment, date, cashflow, update_intent)
   --auto            Auto-compare expected vs actual (default: manual)
   --manual          Manual mode (default)
   --only <pattern>  Run only tests whose id/name/message matches regex
@@ -153,6 +153,7 @@ suite_path() {
     advance_payment) echo "tests/functional/suites/advance_payment.jsonl" ;;
     date) echo "tests/functional/suites/date.jsonl" ;;
     cashflow) echo "tests/functional/suites/cashflow_intents.jsonl" ;;
+    update_intent) echo "tests/functional/suites/update_intent.jsonl" ;;
     *)
       echo "Error: unknown suite: $SUITE" >&2
       exit 2
@@ -167,6 +168,7 @@ smoke_pattern_for_suite() {
     multi_expense) echo 'TC-V15-010|TC-V15-030' ;;
     advance_payment) echo 'TC-V17-001|TC-V17-005|TC-V17-010' ;;
     cashflow) echo 'TC-CF-001|TC-CF-003' ;;
+    update_intent) echo 'TC-UP-001|TC-UP-004' ;;
     *) echo "" ;;
   esac
 }
@@ -204,10 +206,11 @@ validate_suite_jsonl() {
     local expected_intent
     expected_intent="$(jq -r '.expected.intent' <<<"$line")"
 
-    local has_bookkeeping has_error has_conversation
+    local has_bookkeeping has_error has_conversation has_update
     has_bookkeeping="$(jq -r '.expected | has("bookkeeping")' <<<"$line")"
     has_error="$(jq -r '.expected | has("error")' <<<"$line")"
     has_conversation="$(jq -r '.expected | has("conversation")' <<<"$line")"
+    has_update="$(jq -r '.expected | has("update")' <<<"$line")"
 
     case "$expected_intent" in
       記帳|現金流)
@@ -263,6 +266,27 @@ validate_suite_jsonl() {
           exit 2
         fi
         ;;
+      修改上一筆)
+        if [[ "$has_update" != "true" ]]; then
+          echo "Error: expected.update is required when expected.intent is 修改上一筆 at $suite_file:$line_num" >&2
+          echo "Line: $line" >&2
+          exit 2
+        fi
+        if [[ "$has_bookkeeping" == "true" || "$has_error" == "true" || "$has_conversation" == "true" ]]; then
+          echo "Error: expected.bookkeeping/error/conversation is not allowed when expected.intent is 修改上一筆 at $suite_file:$line_num" >&2
+          echo "Line: $line" >&2
+          exit 2
+        fi
+        if ! echo "$line" | jq -e '
+          (.expected.update | type == "object")
+          and (.expected.update.field | type == "string" and length > 0)
+          and ((.expected.update.value | type == "string") or (.expected.update.value | type == "number"))
+        ' >/dev/null 2>&1; then
+          echo "Error: invalid expected.update schema at $suite_file:$line_num" >&2
+          echo "Line: $line" >&2
+          exit 2
+        fi
+        ;;
       對話)
         if [[ "$has_bookkeeping" == "true" || "$has_error" == "true" ]]; then
           echo "Error: expected.bookkeeping/error is not allowed when expected.intent is 對話 at $suite_file:$line_num" >&2
@@ -276,7 +300,7 @@ validate_suite_jsonl() {
         fi
         ;;
       *)
-        echo "Error: invalid expected.intent at $suite_file:$line_num (must be 記帳/現金流/對話/錯誤)" >&2
+        echo "Error: invalid expected.intent at $suite_file:$line_num (must be 記帳/現金流/修改上一筆/對話/錯誤)" >&2
         echo "Line: $line" >&2
         exit 2
         ;;
@@ -414,6 +438,7 @@ extract_fields() {
   has_entries="$(json_has_entries "$json")"
 
   local item amount payment category project advance_status recipient error_message item_count date
+  local update_field update_value
   if [[ "$has_entries" == "true" ]]; then
     item="$(json_get "$json" '.entries[0]["品項"] // empty')"
     date="$(json_get "$json" '.entries[0]["日期"] // empty')"
@@ -424,6 +449,8 @@ extract_fields() {
     advance_status="$(json_get "$json" '.entries[0]["代墊狀態"] // empty')"
     recipient="$(json_get "$json" '.entries[0]["收款支付對象"] // empty')"
     error_message="$(json_get "$json" '.error_message // .message // empty')"
+    update_field="$(json_get "$json" '.fields_to_update | to_entries[0].key // empty')"
+    update_value="$(json_get "$json" '.fields_to_update | to_entries[0].value // empty')"
   else
     item="$(json_get "$json" '.["品項"] // empty')"
     date="$(json_get "$json" '.["日期"] // empty')"
@@ -434,13 +461,15 @@ extract_fields() {
     advance_status="$(json_get "$json" '.["代墊狀態"] // empty')"
     recipient="$(json_get "$json" '.["收款支付對象"] // empty')"
     error_message="$(json_get "$json" '.error_message // .message // empty')"
+    update_field="$(json_get "$json" '.fields_to_update | to_entries[0].key // empty')"
+    update_value="$(json_get "$json" '.fields_to_update | to_entries[0].value // empty')"
   fi
   item_count="$(actual_item_count "$json")"
 
   # Use a non-whitespace delimiter so bash `read` does not collapse empty fields.
   # (IFS treats whitespace specially and will "eat" consecutive delimiters.)
-  printf '%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\n' \
-    "$item" "$amount" "$payment" "$category" "$project" "$advance_status" "$recipient" "$error_message" "$item_count" "$date"
+  printf '%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\n' \
+    "$item" "$amount" "$payment" "$category" "$project" "$advance_status" "$recipient" "$error_message" "$item_count" "$date" "$update_field" "$update_value"
 }
 
 debug_dump_output_and_json() {
@@ -544,7 +573,7 @@ run_case_auto() {
   local group="$1" name="$2" message="$3"
   local expected_intent="$4" expected_item="$5" expected_amount="$6" expected_payment="$7"
   local expected_category="$8" expected_project="$9" expected_item_count="${10}" expected_advance_status="${11}" expected_recipient="${12}"
-  local expected_error_contains="${13}" expected_date="${14}"
+  local expected_error_contains="${13}" expected_date="${14}" expected_update_field="${15}" expected_update_value="${16}"
 
   echo ""
   echo -e "${BLUE}======================================================================${NC}"
@@ -560,6 +589,7 @@ run_case_auto() {
   actual_intent="$(extract_intent_text "$output")"
 
   local item amount payment category advance_status recipient error_message item_count date
+  local update_field update_value
   local project
   local extracted
   if ! extracted="$(extract_fields "$output")"; then
@@ -573,7 +603,7 @@ run_case_auto() {
     ((FAILED_TESTS+=1))
     return
   fi
-  IFS=$'\037' read -r item amount payment category project advance_status recipient error_message item_count date \
+  IFS=$'\037' read -r item amount payment category project advance_status recipient error_message item_count date update_field update_value \
     <<<"$extracted"
 
   local test_passed=true
@@ -583,45 +613,63 @@ run_case_auto() {
     test_passed=false
     failures+=("intent: expected[$expected_intent] actual[$actual_intent]")
   fi
-  if ! compare_exact "${item:-}" "$expected_item"; then
-    test_passed=false
-    failures+=("item: expected[$expected_item] actual[${item:-}]")
-  fi
-  if ! compare_amount "${amount:-}" "$expected_amount"; then
-    test_passed=false
-    failures+=("amount: expected[$expected_amount] actual[${amount:-}]")
-  fi
-  if ! compare_exact "${payment:-}" "$expected_payment"; then
-    test_passed=false
-    failures+=("payment: expected[$expected_payment] actual[${payment:-}]")
-  fi
-  if ! compare_category "${category:-}" "$expected_category"; then
-    test_passed=false
-    failures+=("category: expected[contains $expected_category] actual[${category:-}]")
-  fi
-  if ! compare_exact "${project:-}" "$expected_project"; then
-    test_passed=false
-    failures+=("project: expected[$expected_project] actual[${project:-}]")
-  fi
-  if ! compare_exact "${item_count:-}" "$expected_item_count"; then
-    test_passed=false
-    failures+=("item_count: expected[$expected_item_count] actual[${item_count:-}]")
-  fi
-  if ! compare_exact "${advance_status:-}" "$expected_advance_status"; then
-    test_passed=false
-    failures+=("advance_status: expected[$expected_advance_status] actual[${advance_status:-}]")
-  fi
-  if ! compare_exact "${recipient:-}" "$expected_recipient"; then
-    test_passed=false
-    failures+=("recipient: expected[$expected_recipient] actual[${recipient:-}]")
-  fi
-  if ! compare_contains "${error_message:-}" "$expected_error_contains"; then
-    test_passed=false
-    failures+=("error_message: expected[contains $expected_error_contains] actual[${error_message:-}]")
-  fi
-  if ! compare_date "${date:-}" "$expected_date"; then
-    test_passed=false
-    failures+=("date: expected[$(normalize_expected_date "$expected_date")] actual[${date:-}]")
+  if [[ "$expected_intent" == "修改上一筆" ]]; then
+    if ! compare_exact "${update_field:-}" "$expected_update_field"; then
+      test_passed=false
+      failures+=("update_field: expected[$expected_update_field] actual[${update_field:-}]")
+    fi
+    if [[ "$expected_update_field" == "原幣金額" ]]; then
+      if ! compare_amount "${update_value:-}" "$expected_update_value"; then
+        test_passed=false
+        failures+=("update_value: expected[$expected_update_value] actual[${update_value:-}]")
+      fi
+    else
+      if ! compare_exact "${update_value:-}" "$expected_update_value"; then
+        test_passed=false
+        failures+=("update_value: expected[$expected_update_value] actual[${update_value:-}]")
+      fi
+    fi
+  else
+    if ! compare_exact "${item:-}" "$expected_item"; then
+      test_passed=false
+      failures+=("item: expected[$expected_item] actual[${item:-}]")
+    fi
+    if ! compare_amount "${amount:-}" "$expected_amount"; then
+      test_passed=false
+      failures+=("amount: expected[$expected_amount] actual[${amount:-}]")
+    fi
+    if ! compare_exact "${payment:-}" "$expected_payment"; then
+      test_passed=false
+      failures+=("payment: expected[$expected_payment] actual[${payment:-}]")
+    fi
+    if ! compare_category "${category:-}" "$expected_category"; then
+      test_passed=false
+      failures+=("category: expected[contains $expected_category] actual[${category:-}]")
+    fi
+    if ! compare_exact "${project:-}" "$expected_project"; then
+      test_passed=false
+      failures+=("project: expected[$expected_project] actual[${project:-}]")
+    fi
+    if ! compare_exact "${item_count:-}" "$expected_item_count"; then
+      test_passed=false
+      failures+=("item_count: expected[$expected_item_count] actual[${item_count:-}]")
+    fi
+    if ! compare_exact "${advance_status:-}" "$expected_advance_status"; then
+      test_passed=false
+      failures+=("advance_status: expected[$expected_advance_status] actual[${advance_status:-}]")
+    fi
+    if ! compare_exact "${recipient:-}" "$expected_recipient"; then
+      test_passed=false
+      failures+=("recipient: expected[$expected_recipient] actual[${recipient:-}]")
+    fi
+    if ! compare_contains "${error_message:-}" "$expected_error_contains"; then
+      test_passed=false
+      failures+=("error_message: expected[contains $expected_error_contains] actual[${error_message:-}]")
+    fi
+    if ! compare_date "${date:-}" "$expected_date"; then
+      test_passed=false
+      failures+=("date: expected[$(normalize_expected_date "$expected_date")] actual[${date:-}]")
+    fi
   fi
 
   if [[ "$test_passed" == true ]]; then
@@ -655,7 +703,7 @@ main() {
 
   local suites=()
   if [[ "$ALL_MODE" == true ]]; then
-    suites=(expense multi_expense advance_payment date cashflow)
+    suites=(expense multi_expense advance_payment date cashflow update_intent)
   else
     suites=("$SUITE")
   fi
@@ -733,6 +781,7 @@ main() {
       local expected_intent expected_item expected_amount expected_payment expected_category
       local expected_project
       local expected_item_count expected_advance_status expected_recipient expected_error_contains expected_date
+      local expected_update_field expected_update_value
 
       tc_id="$(jq -r '.id // empty' <<<"$line")"
       tc_group="$(jq -r '.group // empty' <<<"$line")"
@@ -751,6 +800,8 @@ main() {
       expected_recipient="$(jq -r '.expected.bookkeeping.recipient // empty' <<<"$line")"
       expected_error_contains="$(jq -r '.expected.error.contains // empty' <<<"$line")"
       expected_date="$(jq -r '.expected.bookkeeping.date // empty' <<<"$line")"
+      expected_update_field="$(jq -r '.expected.update.field // empty' <<<"$line")"
+      expected_update_value="$(jq -r '.expected.update.value // empty' <<<"$line")"
 
       if ! should_run_case "$tc_id" "$tc_group" "$tc_name" "$tc_message"; then
         ((SKIPPED_TESTS+=1))
@@ -760,7 +811,7 @@ main() {
       run_case "$tc_group" "$tc_id: $tc_name" "$tc_message" "$expected_desc" \
         "$expected_intent" "$expected_item" "$expected_amount" "$expected_payment" \
         "$expected_category" "$expected_project" "$expected_item_count" "$expected_advance_status" "$expected_recipient" \
-        "$expected_error_contains" "$expected_date"
+        "$expected_error_contains" "$expected_date" "$expected_update_field" "$expected_update_value"
     done <"$suite_file"
   done
 

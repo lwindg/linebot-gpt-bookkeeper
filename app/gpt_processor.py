@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo
 from openai import OpenAI
 
 from app.config import OPENAI_API_KEY, GPT_MODEL
-from app.prompts import CASHFLOW_INTENTS_PROMPT, MULTI_EXPENSE_PROMPT
+from app.prompts import CASHFLOW_INTENTS_PROMPT, MULTI_EXPENSE_PROMPT, UPDATE_INTENT_PROMPT
 from app.schemas import MULTI_BOOKKEEPING_SCHEMA
 from app.exchange_rate import ExchangeRateService
 from app.kv_store import KVStore
@@ -47,6 +47,19 @@ _CASHFLOW_CATEGORIES = {
     "card_payment": "繳卡費",
 }
 
+_UPDATE_KEYWORDS = ("修改", "更改", "改", "更新")
+_UPDATE_FIELD_KEYWORDS = (
+    "品項",
+    "分類",
+    "專案",
+    "原幣金額",
+    "金額",
+    "付款方式",
+    "明細說明",
+    "明細",
+    "必要性",
+)
+
 _CASHFLOW_AMOUNT_PATTERN = re.compile(r"-?\d+(?:\.\d+)?")
 _SEMANTIC_DATE_TOKENS = ("今天", "昨日", "昨天", "前天", "大前天", "明天", "後天", "大後天")
 _EXPLICIT_DATE_PATTERN = re.compile(r"(20\d{2})[/-](\d{1,2})[/-](\d{1,2})")
@@ -67,6 +80,13 @@ def _detect_cashflow_intent(message: str) -> str | None:
         if any(keyword in text for keyword in keywords):
             return intent_type
     return None
+
+
+def _detect_update_intent(message: str) -> bool:
+    text = message or ""
+    return any(keyword in text for keyword in _UPDATE_KEYWORDS) and any(
+        field in text for field in _UPDATE_FIELD_KEYWORDS
+    )
 
 
 def _extract_semantic_date_token(message: str) -> Optional[str]:
@@ -382,6 +402,7 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
     支援的 intent：
         - multi_bookkeeping: 多項目或單項目記帳（items 陣列）
         - cashflow_intents: 現金流意圖（cashflow_items 陣列）
+        - update_last_entry: 修改上一筆記帳（fields_to_update 物件）
         - conversation: 一般對話
         - error: 資訊不完整或包含多種付款方式
 
@@ -406,8 +427,12 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
         kv_store = KVStore()
         exchange_rate_service = ExchangeRateService(kv_store)
 
-        cashflow_hint = _detect_cashflow_intent(user_message)
-        system_prompt = CASHFLOW_INTENTS_PROMPT if cashflow_hint else MULTI_EXPENSE_PROMPT
+        update_hint = _detect_update_intent(user_message)
+        cashflow_hint = _detect_cashflow_intent(user_message) if not update_hint else None
+        if update_hint:
+            system_prompt = UPDATE_INTENT_PROMPT
+        else:
+            system_prompt = CASHFLOW_INTENTS_PROMPT if cashflow_hint else MULTI_EXPENSE_PROMPT
 
         # 呼叫 Chat Completions API（使用 selected prompt + Structured Output）
         completion = client.chat.completions.create(
@@ -588,15 +613,67 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
             # 修改上一筆記帳：提取要更新的欄位
             fields_to_update = data.get("fields_to_update", {})
 
-            if not fields_to_update:
+            if not isinstance(fields_to_update, dict) or not fields_to_update:
                 return MultiExpenseResult(
                     intent="error",
-                    error_message="未識別到要更新的欄位"
+                    error_message="缺少欄位名稱或新值，請提供要修改的欄位與內容。"
                 )
+
+            if len(fields_to_update) != 1:
+                return MultiExpenseResult(
+                    intent="error",
+                    error_message="一次只允許更新一個欄位，請分開修改。"
+                )
+
+            field_name, field_value = next(iter(fields_to_update.items()))
+            field_aliases = {
+                "金額": "原幣金額",
+                "明細": "明細說明",
+            }
+            field_name = field_aliases.get(field_name, field_name)
+
+            allowed_fields = {
+                "品項",
+                "分類",
+                "專案",
+                "原幣金額",
+                "付款方式",
+                "明細說明",
+                "必要性",
+            }
+            if field_name not in allowed_fields:
+                return MultiExpenseResult(
+                    intent="error",
+                    error_message="欄位不支援，請提供可修改的欄位名稱。"
+                )
+
+            if field_value in (None, ""):
+                return MultiExpenseResult(
+                    intent="error",
+                    error_message="缺少欄位名稱或新值，請提供要修改的欄位與內容。"
+                )
+
+            if field_name == "付款方式":
+                field_value = normalize_payment_method(str(field_value))
+
+            if field_name == "原幣金額":
+                try:
+                    amount_value = float(field_value)
+                except (TypeError, ValueError):
+                    return MultiExpenseResult(
+                        intent="error",
+                        error_message="缺少欄位名稱或新值，請提供要修改的欄位與內容。"
+                    )
+                if amount_value < 0:
+                    return MultiExpenseResult(
+                        intent="error",
+                        error_message="金額不可為負數"
+                    )
+                field_value = amount_value
 
             return MultiExpenseResult(
                 intent="update_last_entry",
-                fields_to_update=fields_to_update
+                fields_to_update={field_name: field_value}
             )
 
         elif intent == "conversation":
