@@ -29,11 +29,11 @@ usage() {
 Unified test runner (functional suites)
 
 Usage:
-  ./run_tests.sh --suite <expense|multi_expense|advance_payment|date|cashflow|update_intent> [--auto|--manual] [--only <pattern>] [--smoke] [--list]
+  ./run_tests.sh --suite <expense|multi_expense|advance_payment|date|cashflow|update> [--auto|--manual] [--only <pattern>] [--smoke] [--list]
   ./run_tests.sh --all [--auto|--manual] [--only <pattern>] [--smoke] [--list]
 
 Options:
-  --suite <name>    Suite name: expense, multi_expense, advance_payment, date, cashflow, update_intent
+  --suite <name>    Suite name: expense, multi_expense, advance_payment, date, cashflow, update
   --all             Run all suites (expense, multi_expense, advance_payment, date, cashflow, update_intent)
   --auto            Auto-compare expected vs actual (default: manual)
   --manual          Manual mode (default)
@@ -153,7 +153,7 @@ suite_path() {
     advance_payment) echo "tests/functional/suites/advance_payment.jsonl" ;;
     date) echo "tests/functional/suites/date.jsonl" ;;
     cashflow) echo "tests/functional/suites/cashflow_intents.jsonl" ;;
-    update_intent) echo "tests/functional/suites/update_intent.jsonl" ;;
+    update) echo "tests/functional/suites/update_intent.jsonl" ;;
     *)
       echo "Error: unknown suite: $SUITE" >&2
       exit 2
@@ -168,7 +168,7 @@ smoke_pattern_for_suite() {
     multi_expense) echo 'TC-V15-010|TC-V15-030' ;;
     advance_payment) echo 'TC-V17-001|TC-V17-005|TC-V17-010' ;;
     cashflow) echo 'TC-CF-001|TC-CF-003' ;;
-    update_intent) echo 'TC-UP-001|TC-UP-004' ;;
+    update) echo 'TC-UP-001|TC-UP-004' ;;
     *) echo "" ;;
   esac
 }
@@ -703,7 +703,7 @@ main() {
 
   local suites=()
   if [[ "$ALL_MODE" == true ]]; then
-    suites=(expense multi_expense advance_payment date cashflow update_intent)
+    suites=(expense multi_expense advance_payment date cashflow update)
   else
     suites=("$SUITE")
   fi

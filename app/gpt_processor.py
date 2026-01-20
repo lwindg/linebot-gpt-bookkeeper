@@ -60,6 +60,15 @@ _UPDATE_FIELD_KEYWORDS = (
     "必要性",
 )
 
+_ADVANCE_OVERRIDE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"(?P<who>[\u4e00-\u9fff]{1,6})先墊"), "需支付"),
+    (re.compile(r"(?P<who>[\u4e00-\u9fff]{1,6})幫我買"), "需支付"),
+    (re.compile(r"(?P<who>[\u4e00-\u9fff]{1,6})代訂"), "需支付"),
+    (re.compile(r"(?P<who>[\u4e00-\u9fff]{1,6})代付"), "需支付"),
+    (re.compile(r"幫(?P<who>[\u4e00-\u9fff]{1,6})代墊"), "代墊"),
+    (re.compile(r"幫(?P<who>[\u4e00-\u9fff]{1,6})墊付"), "代墊"),
+)
+
 _CASHFLOW_AMOUNT_PATTERN = re.compile(r"-?\d+(?:\.\d+)?")
 _SEMANTIC_DATE_TOKENS = ("今天", "昨日", "昨天", "前天", "大前天", "明天", "後天", "大後天")
 _EXPLICIT_DATE_PATTERN = re.compile(r"(20\d{2})[/-](\d{1,2})[/-](\d{1,2})")
@@ -89,12 +98,42 @@ def _detect_update_intent(message: str) -> bool:
     )
 
 
+def _detect_advance_override(message: str) -> dict | None:
+    text = message or ""
+    for pattern, status in _ADVANCE_OVERRIDE_PATTERNS:
+        match = pattern.search(text)
+        if not match:
+            continue
+        recipient = (match.group("who") or "").strip()
+        if recipient:
+            return {"代墊狀態": status, "收款支付對象": recipient}
+    return None
+
+
+def _strip_advance_subject(message: str) -> str:
+    text = message or ""
+    for pattern, _status in _ADVANCE_OVERRIDE_PATTERNS:
+        text = pattern.sub("", text)
+    return text.strip()
+
+
 def _extract_semantic_date_token(message: str) -> Optional[str]:
     text = message or ""
     for token in _SEMANTIC_DATE_TOKENS:
         if token in text:
             return token
     return None
+
+
+def _extract_first_amount(message: str) -> Optional[float]:
+    text = message or ""
+    amount_match = _CASHFLOW_AMOUNT_PATTERN.search(text)
+    if not amount_match:
+        return None
+    amount_value = float(amount_match.group(0))
+    if amount_value <= 0:
+        return None
+    return amount_value
 
 
 def _extract_explicit_date(message: str) -> Optional[str]:
@@ -187,6 +226,7 @@ class MultiExpenseResult:
 
     # 錯誤訊息（若 intent == "error" 則必填）
     error_message: Optional[str] = None
+    error_reason: Optional[str] = None
 
     # 對話回應（若 intent == "conversation" 則必填）
     response_text: Optional[str] = None
@@ -382,7 +422,7 @@ def process_message(user_message: str) -> BookkeepingEntry:
         raise ValueError(f"Unknown intent from process_multi_expense: {result.intent}")
 
 
-def process_multi_expense(user_message: str) -> MultiExpenseResult:
+def process_multi_expense(user_message: str, *, debug: bool = False) -> MultiExpenseResult:
     """
     處理單一訊息的多項目支出（v1.5.0 新功能）
 
@@ -419,6 +459,7 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
     """
     try:
         user_message = _normalize_message_spacing(user_message)
+        base_message = user_message
 
         # 初始化 OpenAI client
         client = OpenAI(api_key=OPENAI_API_KEY)
@@ -427,54 +468,60 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
         kv_store = KVStore()
         exchange_rate_service = ExchangeRateService(kv_store)
 
-        update_hint = _detect_update_intent(user_message)
-        cashflow_hint = _detect_cashflow_intent(user_message) if not update_hint else None
+        update_hint = _detect_update_intent(base_message)
+        cashflow_hint = _detect_cashflow_intent(base_message) if not update_hint else None
+        advance_override = _detect_advance_override(base_message)
         if update_hint:
             system_prompt = UPDATE_INTENT_PROMPT
         else:
             system_prompt = CASHFLOW_INTENTS_PROMPT if cashflow_hint else MULTI_EXPENSE_PROMPT
+        if debug:
+            prompt_type = "update" if update_hint else ("cashflow" if cashflow_hint else "multi")
+            logger.info(
+                f"[debug] prompt_type={prompt_type} update_hint={update_hint} cashflow_hint={cashflow_hint} "
+                f"advance_override={advance_override}"
+            )
 
-        # 呼叫 Chat Completions API（使用 selected prompt + Structured Output）
-        completion = client.chat.completions.create(
-            model=GPT_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message}
-            ],
-            response_format={
-                "type": "json_schema",
-                "json_schema": MULTI_BOOKKEEPING_SCHEMA
-            }
-        )
+        if advance_override:
+            stripped_message = _strip_advance_subject(user_message)
+            if stripped_message:
+                user_message = stripped_message
+            parsed_amount = _extract_first_amount(base_message)
+            user_message = (
+                f"{user_message}\n"
+                f"（已判定代墊狀態:{advance_override['代墊狀態']}；"
+                f"收款支付對象:{advance_override['收款支付對象']}；"
+                + (f"已解析金額:{parsed_amount}；" if parsed_amount is not None else "")
+                + "付款方式若未提供請填 NA；"
+                "多項目時僅套用最近項目）"
+            )
+        if debug:
+            logger.info(f"[debug] gpt_user_message={user_message}")
+
+        def _run_completion(message_text: str) -> str:
+            completion = client.chat.completions.create(
+                model=GPT_MODEL,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": message_text},
+                ],
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": MULTI_BOOKKEEPING_SCHEMA,
+                },
+            )
+            return completion.choices[0].message.content
 
         # 取得回應並解析 JSON
-        response_text = completion.choices[0].message.content
+        response_text = _run_completion(user_message)
+        if debug:
+            logger.info(f"[debug] gpt_raw_response={response_text}")
         logger.info(f"GPT multi-expense response: {response_text}")
 
         data = json.loads(response_text)
         intent = data.get("intent")
 
         if intent == "multi_bookkeeping":
-            cashflow_intent = _detect_cashflow_intent(user_message)
-            if cashflow_intent:
-                payment_method = normalize_cashflow_payment_method(data.get("payment_method", ""))
-                items = data.get("items", [])
-                if items:
-                    first_item = items[0]
-                    cashflow_items = [
-                        {
-                            "現金流意圖": cashflow_intent,
-                            "品項": first_item.get("品項"),
-                            "原幣金額": first_item.get("原幣金額"),
-                            "原幣別": first_item.get("原幣別", "TWD"),
-                            "付款方式": payment_method,
-                            "分類": first_item.get("分類", _CASHFLOW_CATEGORIES.get(cashflow_intent, "")),
-                            "日期": data.get("date"),
-                        }
-                    ]
-                else:
-                    cashflow_items = _fallback_cashflow_items_from_message(user_message, cashflow_intent)
-                return _process_cashflow_items(cashflow_items, user_message)
             # 多項目記帳意圖：提取資料並驗證
             payment_method = normalize_payment_method(data.get("payment_method", ""))
             items = data.get("items", [])
@@ -597,10 +644,11 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
 
                 entries.append(entry)
 
-            return MultiExpenseResult(
+            result = MultiExpenseResult(
                 intent="multi_bookkeeping",
                 entries=entries
             )
+            return result
 
         elif intent == "cashflow_intents":
             cashflow_items = data.get("cashflow_items", [])
@@ -629,6 +677,7 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
             field_aliases = {
                 "金額": "原幣金額",
                 "明細": "明細說明",
+                "帳戶": "付款方式",
             }
             field_name = field_aliases.get(field_name, field_name)
 
@@ -687,9 +736,11 @@ def process_multi_expense(user_message: str) -> MultiExpenseResult:
         elif intent == "error":
             # 錯誤：提取錯誤訊息
             error_msg = data.get("message", "無法處理您的訊息，請檢查輸入格式")
+            error_reason = data.get("reason")
             return MultiExpenseResult(
                 intent="error",
-                error_message=error_msg
+                error_message=error_msg,
+                error_reason=error_reason
             )
 
         else:

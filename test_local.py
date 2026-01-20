@@ -42,6 +42,7 @@ KV 儲存操作：
 """
 
 import sys
+import logging
 import json
 import argparse
 from unittest.mock import patch
@@ -80,6 +81,10 @@ def normalize_error_message(result: MultiExpenseResult) -> str:
     return message or "未知錯誤"
 
 
+def normalize_error_reason(result: MultiExpenseResult) -> str | None:
+    return getattr(result, "error_reason", None)
+
+
 def result_to_raw_json(result) -> dict:
     """
     Convert processing result to a stable, machine-readable JSON.
@@ -97,18 +102,23 @@ def result_to_raw_json(result) -> dict:
     if intent == "conversation":
         return {"intent": intent, "intent_display": "對話", "response_text": getattr(result, "response_text", "")}
     if intent == "error":
-        return {"intent": intent, "intent_display": "錯誤", "error_message": normalize_error_message(result)}
+        return {
+            "intent": intent,
+            "intent_display": "錯誤",
+            "error_message": normalize_error_message(result),
+            "reason": normalize_error_reason(result),
+        }
     return {"intent": intent, "intent_display": intent}
 
 
-def single_test_raw(message: str) -> int:
+def single_test_raw(message: str, *, debug: bool = False) -> int:
     """
     Raw single-test mode: print JSON only (no extra text).
 
     This is designed for automated test runners (e.g., run_tests.sh).
     """
     try:
-        result = process_multi_expense(message)
+        result = process_multi_expense(message, debug=debug)
         data = result_to_raw_json(result)
         print(json.dumps(data, ensure_ascii=False))
         return 0
@@ -128,12 +138,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--live", action="store_true", help="Enable LIVE webhook sending (only with --full).")
     parser.add_argument("--raw", action="store_true", help="Print JSON only for single-run mode (no extra text).")
     parser.add_argument("--user", default=DEFAULT_TEST_USER_ID, help="Test user id used for KV/full flow.")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logs for prompt routing and GPT output.")
     parser.add_argument("--kv", action="store_true", help="Show last transaction stored in KV and exit.")
     parser.add_argument("--clear", action="store_true", help="Clear KV record for the user and exit.")
     return parser
 
 
-def simulate_full_flow(message: str, user_id: str = DEFAULT_TEST_USER_ID, show_json: bool = True, live_mode: bool = False):
+def simulate_full_flow(message: str, user_id: str = DEFAULT_TEST_USER_ID, show_json: bool = True, live_mode: bool = False, debug: bool = False):
     """
     模擬完整的 LINE handler 流程
 
@@ -156,7 +167,7 @@ def simulate_full_flow(message: str, user_id: str = DEFAULT_TEST_USER_ID, show_j
 
     # Step 1: GPT 解析
     print("\n📝 Step 1: GPT 解析...")
-    result = process_multi_expense(message)
+    result = process_multi_expense(message, debug=debug)
     print(f"   意圖: {result.intent}")
 
     # Step 2: 根據意圖執行對應操作
@@ -269,7 +280,11 @@ def simulate_full_flow(message: str, user_id: str = DEFAULT_TEST_USER_ID, show_j
         elif result.intent == "conversation":
             data = {"intent": result.intent, "response": result.response_text}
         else:
-            data = {"intent": result.intent, "error": normalize_error_message(result)}
+            data = {
+                "intent": result.intent,
+                "error": normalize_error_message(result),
+                "reason": normalize_error_reason(result),
+            }
 
         print(json.dumps(data, ensure_ascii=False, indent=2))
 
@@ -527,7 +542,11 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
         elif result.intent == "update_last_entry":
             data = {"intent": "update_last_entry", "fields_to_update": result.fields_to_update}
         else:  # error
-            data = {"intent": "error", "message": normalize_error_message(result)}
+            data = {
+                "intent": "error",
+                "message": normalize_error_message(result),
+                "reason": normalize_error_reason(result),
+            }
 
         print(json.dumps(data, ensure_ascii=False, indent=2))
 
@@ -611,9 +630,9 @@ def interactive_mode(test_user_id=DEFAULT_TEST_USER_ID, full_mode=False, live_mo
             try:
                 if full_mode:
                     # 完整流程模式
-                    simulate_full_flow(user_input, test_user_id, show_json, live_mode)
+                    simulate_full_flow(user_input, test_user_id, show_json, live_mode, debug=args.debug)
                 else:
-                    result = process_multi_expense(user_input)
+                    result = process_multi_expense(user_input, debug=args.debug)
                     print_multi_result(result, show_json)
             except Exception as e:
                 print(f"\n❌ 錯誤: {str(e)}\n")
@@ -628,7 +647,7 @@ def interactive_mode(test_user_id=DEFAULT_TEST_USER_ID, full_mode=False, live_mo
             break
 
 
-def single_test(message, full_mode=False, test_user_id=DEFAULT_TEST_USER_ID, live_mode=False):
+def single_test(message, full_mode=False, test_user_id=DEFAULT_TEST_USER_ID, live_mode=False, debug: bool = False):
     """單次測試模式"""
     if full_mode:
         print(f"\n🧪 測試訊息: {message}")
@@ -636,7 +655,7 @@ def single_test(message, full_mode=False, test_user_id=DEFAULT_TEST_USER_ID, liv
         print(f"🔄 模式: 完整流程 [{mode_str}]")
         print(f"👤 用戶: {test_user_id}\n")
         try:
-            simulate_full_flow(message, test_user_id, show_json=True, live_mode=live_mode)
+            simulate_full_flow(message, test_user_id, show_json=True, live_mode=live_mode, debug=debug)
         except Exception as e:
             print(f"\n❌ 錯誤: {str(e)}\n")
             import traceback
@@ -648,7 +667,7 @@ def single_test(message, full_mode=False, test_user_id=DEFAULT_TEST_USER_ID, liv
     print("")
 
     try:
-        result = process_multi_expense(message)
+        result = process_multi_expense(message, debug=debug)
         print_multi_result(result, show_json=True)
     except Exception as e:
         print(f"\n❌ 錯誤: {str(e)}\n")
@@ -660,6 +679,11 @@ def single_test(message, full_mode=False, test_user_id=DEFAULT_TEST_USER_ID, liv
 if __name__ == "__main__":
     parser = build_arg_parser()
     args = parser.parse_args()
+
+    if args.debug:
+        logging.basicConfig(level=logging.INFO)
+    if args.raw:
+        logging.disable(logging.CRITICAL)
 
     full_mode = args.full
     live_mode = args.live  # Default is DRY-RUN (no webhook sending)
@@ -681,8 +705,8 @@ if __name__ == "__main__":
             if full_mode:
                 print("--raw cannot be used with --full.", file=sys.stderr)
                 raise SystemExit(2)
-            raise SystemExit(single_test_raw(message))
-        single_test(message, full_mode, test_user_id, live_mode)
+            raise SystemExit(single_test_raw(message, debug=args.debug))
+        single_test(message, full_mode, test_user_id, live_mode, debug=args.debug)
     else:
         if args.raw:
             print("--raw requires a message argument.", file=sys.stderr)
