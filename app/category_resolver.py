@@ -61,8 +61,12 @@ def resolve_category_input(value: str, *, original_category: str | None = None) 
     allowed = allowed_categories()
 
     if normalized in allowed:
-        if "/" not in normalized and normalized in _TOP_LEVEL_DEFAULTS:
-            return _TOP_LEVEL_DEFAULTS[normalized]
+        if "/" not in normalized:
+            if normalized in _TOP_LEVEL_DEFAULTS:
+                return _TOP_LEVEL_DEFAULTS[normalized]
+            children = sorted([c for c in allowed if c.startswith(f"{normalized}/")])
+            if children:
+                return children[0]
         return normalized
 
     original_normalized = _normalize_separators(original_category) if original_category else None

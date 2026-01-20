@@ -77,8 +77,10 @@ _EXPLICIT_DATE_PATTERN = re.compile(r"(20\d{2})[/-](\d{1,2})[/-](\d{1,2})")
 def _normalize_message_spacing(message: str) -> str:
     text = message or ""
     text = re.sub(r"\$(\d)", r"\1", text)
+    text = re.sub(r"(\d)(?=(?:line)(?:轉帳)?)", r"\1 ", text, flags=re.IGNORECASE)
     text = re.sub(r"([\u4e00-\u9fff])([0-9A-Za-z])", r"\1 \2", text)
     text = re.sub(r"([0-9A-Za-z])([\u4e00-\u9fff])", r"\1 \2", text)
+    text = re.sub(r"(\d+)\s*(堂|課|次|份|顆|瓶|盒|本|張|包|公斤|kg|g|ml|l|L|個)\b", r"\1\2", text)
     text = re.sub(r"(\d+(?:\.\d+)?)\s*現金", r"\1 元 現金", text)
     return text
 
@@ -704,6 +706,9 @@ def process_multi_expense(user_message: str, *, debug: bool = False) -> MultiExp
 
             if field_name == "付款方式":
                 field_value = normalize_payment_method(str(field_value))
+
+            if field_name == "分類":
+                field_value = resolve_category_autocorrect(str(field_value))
 
             if field_name == "原幣金額":
                 try:
