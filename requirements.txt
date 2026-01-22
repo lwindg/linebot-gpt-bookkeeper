@@ -22,3 +22,6 @@ Pillow>=10.0.0
 # Testing
 pytest>=7.4.0
 pytest-mock>=3.12.0
+
+# YAML Config (v2.0)
+PyYAML>=6.0.0

@@ -2,7 +2,199 @@
 JSON Schema definitions for Structured Output
 
 使用 OpenAI Structured Output 確保 GPT 回應符合指定格式
+
+v2.0 新增：
+- AUTHORITATIVE_ENVELOPE_SCHEMA: Parser 輸出的權威 JSON 格式
+- ENRICHMENT_RESPONSE_SCHEMA: AI Enrichment 回應格式
 """
+
+# =============================================================================
+# Parser-first Architecture Schemas (v2.0)
+# =============================================================================
+
+# Transaction type enum for Parser output
+TRANSACTION_TYPES = [
+    "expense",        # 一般支出
+    "advance_paid",   # 代墊（我先付）
+    "advance_due",    # 需支付（他人先付）
+    "income",         # 收入
+    "transfer",       # 轉帳
+    "card_payment",   # 繳卡費
+    "withdrawal",     # 提款
+]
+
+# Authoritative Envelope Schema - Parser output (T001)
+# Parser 輸出的權威 JSON，AI 不得修改這些欄位
+AUTHORITATIVE_ENVELOPE_SCHEMA = {
+    "name": "authoritative_envelope",
+    "version": "1.0",
+    "description": "Parser 輸出的權威 JSON 格式，AI Enrichment 不得修改這些欄位",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "version": {
+                "type": "string",
+                "description": "Schema version (e.g., '1.0')",
+                "default": "1.0"
+            },
+            "source_text": {
+                "type": "string",
+                "description": "原始使用者輸入文字"
+            },
+            "parse_timestamp": {
+                "type": "string",
+                "description": "解析時間 (ISO 8601 format)"
+            },
+            "transactions": {
+                "type": "array",
+                "description": "解析出的交易列表",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "交易 ID (e.g., 't1', 't2')"
+                        },
+                        "type": {
+                            "type": "string",
+                            "enum": TRANSACTION_TYPES,
+                            "description": "交易類型"
+                        },
+                        "raw_item": {
+                            "type": "string",
+                            "description": "原始品項文字（Parser 保留，AI 不可修改）"
+                        },
+                        "amount": {
+                            "type": "number",
+                            "minimum": 0,
+                            "description": "金額（必須 > 0）"
+                        },
+                        "currency": {
+                            "type": "string",
+                            "enum": ["TWD", "USD", "EUR", "JPY", "GBP", "AUD", "CAD", "CNY"],
+                            "default": "TWD",
+                            "description": "幣別 (ISO 4217)"
+                        },
+                        "payment_method": {
+                            "type": "string",
+                            "description": "付款方式（標準名稱或 'NA'）"
+                        },
+                        "counterparty": {
+                            "type": "string",
+                            "description": "收款/支付對象（代墊相關）",
+                            "default": ""
+                        },
+                        "date": {
+                            "type": ["string", "null"],
+                            "description": "日期 (MM/DD 或語義化日期如 '今天')"
+                        },
+                        "accounts": {
+                            "type": "object",
+                            "description": "帳戶資訊（轉帳/繳卡費用）",
+                            "properties": {
+                                "from": {
+                                    "type": ["string", "null"],
+                                    "description": "轉出帳戶"
+                                },
+                                "to": {
+                                    "type": ["string", "null"],
+                                    "description": "轉入帳戶"
+                                }
+                            },
+                            "default": {"from": None, "to": None}
+                        },
+                        "notes_raw": {
+                            "type": "string",
+                            "description": "原文中的額外描述（商家/地點等）",
+                            "default": ""
+                        }
+                    },
+                    "required": ["id", "type", "raw_item", "amount", "currency", "payment_method"],
+                    "additionalProperties": False
+                }
+            },
+            "constraints": {
+                "type": "object",
+                "description": "AI 約束條件",
+                "properties": {
+                    "classification_must_be_in_list": {
+                        "type": "boolean",
+                        "default": True
+                    },
+                    "do_not_modify_authoritative_fields": {
+                        "type": "boolean",
+                        "default": True
+                    },
+                    "unknown_payment_method_policy": {
+                        "type": "string",
+                        "enum": ["error", "fallback"],
+                        "default": "error"
+                    }
+                }
+            }
+        },
+        "required": ["version", "source_text", "transactions"]
+    }
+}
+
+# AI Enrichment Response Schema (T002)
+# AI 只需回傳這些補充欄位，不可修改 Parser 的權威欄位
+ENRICHMENT_RESPONSE_SCHEMA = {
+    "name": "enrichment_response",
+    "version": "1.0",
+    "description": "AI Enrichment 回應格式，只包含分類/專案/必要性/明細",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "version": {
+                "type": "string",
+                "description": "Schema version",
+                "default": "1.0"
+            },
+            "enrichment": {
+                "type": "array",
+                "description": "每筆交易的補充資訊",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "對應 transactions 的 id"
+                        },
+                        "分類": {
+                            "type": "string",
+                            "description": "分類路徑 (e.g., '家庭/餐飲/午餐')"
+                        },
+                        "專案": {
+                            "type": "string",
+                            "description": "專案名稱 (預設: '日常')",
+                            "default": "日常"
+                        },
+                        "必要性": {
+                            "type": "string",
+                            "enum": ["必要日常支出", "想吃想買但合理", "療癒性支出", "衝動購物（提醒）"],
+                            "description": "必要性等級"
+                        },
+                        "明細說明": {
+                            "type": "string",
+                            "description": "額外說明（商家/地點/用途）",
+                            "default": ""
+                        }
+                    },
+                    "required": ["id", "分類", "專案", "必要性", "明細說明"],
+                    "additionalProperties": False
+                }
+            }
+        },
+        "required": ["version", "enrichment"]
+    }
+}
+
+# =============================================================================
+# Legacy Schemas (v1.x - 保留向後相容)
+# =============================================================================
+
 
 # Multi-item bookkeeping response schema
 # Note: Using strict=False to allow optional fields based on intent type

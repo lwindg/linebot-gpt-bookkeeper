@@ -5,14 +5,21 @@ Category resolving and validation utilities.
 This module enforces "do not create new categories" by resolving user-provided
 category inputs into an existing category path derived from the current
 classification rules.
+
+v2.0: Now loads categories from YAML config file (app/config/classifications.yaml)
 """
 
 from __future__ import annotations
 
+import os
 import re
 from functools import lru_cache
+from pathlib import Path
 from typing import Iterable
 
+import yaml
+
+# Legacy import for fallback (will be removed after migration)
 from app.prompts import CLASSIFICATION_RULES
 
 
@@ -20,7 +27,26 @@ def _normalize_separators(value: str) -> str:
     return value.replace("／", "/").strip()
 
 
+def _load_categories_from_yaml() -> set[str]:
+    """Load categories from YAML config file."""
+    config_path = Path(__file__).parent / "config" / "classifications.yaml"
+    if not config_path.exists():
+        return set()
+    
+    with open(config_path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    
+    categories: set[str] = set()
+    if data and "categories" in data:
+        for top_level, items in data["categories"].items():
+            if isinstance(items, list):
+                for item in items:
+                    categories.add(_normalize_separators(item))
+    return categories
+
+
 def _iter_category_tokens_from_rules(rules_text: str) -> Iterable[str]:
+    """Legacy: Parse categories from prompt text."""
     for token in re.findall(r"`([^`]+)`", rules_text):
         token = token.strip()
         if not token:
@@ -31,8 +57,15 @@ def _iter_category_tokens_from_rules(rules_text: str) -> Iterable[str]:
 
 @lru_cache(maxsize=1)
 def allowed_categories() -> set[str]:
-    categories = {_normalize_separators(token) for token in _iter_category_tokens_from_rules(CLASSIFICATION_RULES)}
+    """Get all allowed categories (from YAML or legacy fallback)."""
+    # Try loading from YAML first
+    categories = _load_categories_from_yaml()
+    
+    # Fallback to legacy if YAML is empty
+    if not categories:
+        categories = {_normalize_separators(token) for token in _iter_category_tokens_from_rules(CLASSIFICATION_RULES)}
 
+    # Expand to include parent paths (e.g., "家庭/餐飲/午餐" -> also "家庭/餐飲", "家庭")
     expanded: set[str] = set()
     for category in categories:
         expanded.add(category)

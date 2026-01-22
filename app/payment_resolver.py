@@ -4,12 +4,50 @@ Payment method normalization utilities.
 
 This module enforces canonical payment method names regardless of model output
 synonyms (e.g. "灰狗卡" -> "FlyGo 信用卡").
+
+v2.0: Now loads payment methods from YAML config file (app/config/payment_methods.yaml)
 """
 
 from __future__ import annotations
 
+from functools import lru_cache
+from pathlib import Path
 
-_PAYMENT_ALIASES: dict[str, str] = {
+import yaml
+
+
+@lru_cache(maxsize=1)
+def _load_payment_aliases_from_yaml() -> dict[str, str]:
+    """Load payment aliases from YAML config file."""
+    config_path = Path(__file__).parent / "config" / "payment_methods.yaml"
+    if not config_path.exists():
+        return _PAYMENT_ALIASES_LEGACY
+    
+    with open(config_path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    
+    if data and "aliases" in data:
+        return {str(k).lower(): str(v) for k, v in data["aliases"].items()}
+    return _PAYMENT_ALIASES_LEGACY
+
+
+@lru_cache(maxsize=1)
+def _load_detection_priority_from_yaml() -> tuple[tuple[str, str], ...]:
+    """Load detection priority from YAML config file."""
+    config_path = Path(__file__).parent / "config" / "payment_methods.yaml"
+    if not config_path.exists():
+        return _DETECT_ALIASES_LEGACY
+    
+    with open(config_path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    
+    if data and "detection_priority" in data:
+        return tuple((item["alias"], item["canonical"]) for item in data["detection_priority"])
+    return _DETECT_ALIASES_LEGACY
+
+
+# Legacy fallback (will be removed after migration verification)
+_PAYMENT_ALIASES_LEGACY: dict[str, str] = {
     "現金": "現金",
     "cash": "現金",
     "line": "Line 轉帳",
@@ -49,16 +87,18 @@ _PAYMENT_ALIASES: dict[str, str] = {
 
 
 def normalize_payment_method(value: str) -> str:
+    """Normalize payment method to canonical name."""
     raw = (value or "").strip()
     if not raw:
         return raw
 
     key = raw.lower().replace("　", " ").strip()
     key = " ".join(key.split())
-    return _PAYMENT_ALIASES.get(key, raw)
+    aliases = _load_payment_aliases_from_yaml()
+    return aliases.get(key, raw)
 
 
-_DETECT_ALIASES: tuple[tuple[str, str], ...] = (
+_DETECT_ALIASES_LEGACY: tuple[tuple[str, str], ...] = (
     # Order matters: longer/more specific first.
     ("灰狗卡", "FlyGo 信用卡"),
     ("灰狗", "FlyGo 信用卡"),
@@ -94,13 +134,16 @@ def detect_payment_method(text: str) -> str | None:
     Best-effort payment method detection from raw user message.
 
     This is intentionally conservative to avoid ambiguous short aliases (e.g. "狗").
+    v2.0: Now loads detection priority from YAML config.
     """
 
     haystack = (text or "").lower()
     if not haystack:
         return None
 
-    for alias, canonical in _DETECT_ALIASES:
+    detection_priority = _load_detection_priority_from_yaml()
+    for alias, canonical in detection_priority:
         if alias.lower() in haystack:
             return canonical
     return None
+
