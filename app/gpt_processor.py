@@ -23,7 +23,7 @@ from app.schemas import MULTI_BOOKKEEPING_SCHEMA
 from app.exchange_rate import ExchangeRateService
 from app.kv_store import KVStore
 from app.category_resolver import resolve_category_autocorrect
-from app.payment_resolver import normalize_payment_method
+from app.payment_resolver import normalize_payment_method, detect_payment_method
 from app.project_resolver import infer_project
 from app.cashflow_rules import (
     infer_transfer_mode,
@@ -489,11 +489,13 @@ def process_multi_expense(user_message: str, *, debug: bool = False) -> MultiExp
             if stripped_message:
                 user_message = stripped_message
             parsed_amount = _extract_first_amount(base_message)
+            payment_override = detect_payment_method(base_message)
             user_message = (
                 f"{user_message}\n"
                 f"（已判定代墊狀態:{advance_override['代墊狀態']}；"
                 f"收款支付對象:{advance_override['收款支付對象']}；"
                 + (f"已解析金額:{parsed_amount}；" if parsed_amount is not None else "")
+                + ("已指定付款方式:NA；" if not payment_override else "")
                 + "付款方式若未提供請填 NA；"
                 "多項目時僅套用最近項目）"
             )
