@@ -106,7 +106,7 @@
 - [ ] T016 [US1] 在 tests/test_gpt_processor.py 新增測試案例：基本代墊（「代妹購買Pizza兌換券979元現金」）
 - [ ] T017 [P] [US1] 在 tests/test_gpt_processor.py 新增測試案例：幫同事墊付（「幫同事墊付計程車費300元現金」）
 - [ ] T018 [P] [US1] 在 tests/test_gpt_processor.py 新增測試案例：代朋友買午餐（「代朋友買了午餐150元刷狗卡」）
-- [ ] T019 [P] [US1] 在 tests/test_gpt_processor.py 新增測試案例：代購咖啡（「代購咖啡50元給三位同事，Line轉帳」）
+- [ ] T019 [P] [US1] 在 tests/test_gpt_processor.py 新增測試案例：代購咖啡（「代購咖啡50元給三位同事，Line Pay」）
 - [ ] T020 [US1] 在 tests/test_webhook_sender.py 驗證代墊項目 webhook payload 包含正確欄位
 
 #### 錯誤處理（US1）
@@ -195,7 +195,7 @@
 
 - [ ] T039 [US3] 在 tests/test_gpt_processor.py 新增測試案例：基本不索取（「幫媽媽買藥500元現金，不用還」）
 - [ ] T040 [P] [US3] 在 tests/test_gpt_processor.py 新增測試案例：不索取停車費（「幫老婆付停車費100元，不索取」）
-- [ ] T041 [P] [US3] 在 tests/test_gpt_processor.py 新增測試案例：送給女兒（「代女兒繳補習費5000元Line轉帳，送給她的」）
+- [ ] T041 [P] [US3] 在 tests/test_gpt_processor.py 新增測試案例：送給女兒（「代女兒繳補習費5000元Line Pay，送給她的」）
 
 #### 端到端測試（US3）
 

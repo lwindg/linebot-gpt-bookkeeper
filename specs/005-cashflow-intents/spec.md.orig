@@ -1,0 +1,62 @@
+# Cashflow Intents MVP（提款／轉帳／收入／繳卡費）
+
+## 目標
+- 新增四種現金流 intent：withdrawal、transfer、income、card_payment。
+- 以規則式前置判斷（Pre-LLM）先分流，再交由 AI 抽取欄位。
+- 未命中規則時，維持既有 multi_bookkeeping 流程。
+
+## 非目標
+- 不做完整會計帳（double-entry）。
+- 不做帳戶對帳或自動核銷。
+- 不含 UI 變更。
+
+## Intent 定義
+- **withdrawal**：提款（ATM、領現）。
+- **transfer**：轉帳（帳戶間/對他人匯款）。
+- **income**：收入（薪資、退款、入帳）。
+- **card_payment**：繳信用卡費。
+
+## 分流規則（Pre-LLM）
+- 使用關鍵字判斷，優先順序：
+  1) card_payment
+  2) transfer
+  3) withdrawal
+  4) income
+- 若同時命中多類，依優先順序決定。
+- 無命中則走既有 multi_bookkeeping。
+
+### 關鍵字（草案）
+- withdrawal：提款、領現、領錢、ATM
+- transfer：轉帳、匯款、轉給、轉入、轉出
+- income：薪水、收入、入帳、退款、退費、收款
+- card_payment：繳卡費、信用卡費、繳信用卡、刷卡費
+
+## 欄位（草案）
+通用：
+- amount（必填）
+- currency（預設 TWD）
+- date（可選）
+- account（可選）
+- memo（可選）
+
+各 intent 欄位：
+- withdrawal：source_account、fee
+- transfer：from_account、to_account、counterparty（可選）
+- income：source（付款方）、category（可選）
+- card_payment：card_name、payment_account
+
+## 輸出格式（草案）
+- 新增 intent enum。
+- 針對各 intent 回傳 typed payload 物件。
+- 除非明確調整，既有 multi_bookkeeping schema 不動。
+
+## 驗收標準（MVP）
+- 含明確關鍵字的訊息能正確分流。
+- AI 至少抽出 amount（必填）與 date（若出現）。
+- 缺少必填欄位時回傳明確 error。
+- 未命中關鍵字維持原本記帳流程。
+
+## 待確認
+- 轉帳要記一筆或兩筆（帳戶間雙記錄）？
+- 繳卡費如何對應既有分類？
+- 收入是否共用既有記帳表結構？

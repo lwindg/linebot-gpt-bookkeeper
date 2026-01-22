@@ -552,7 +552,7 @@ def handle_image_message(event: MessageEvent, messaging_api_blob: MessagingApiBl
                 # 如果付款方式是預設值，顯示警告訊息
                 if result.response_text:
                     reply_text += f"\n\n{result.response_text}"
-                    reply_text += "\n💡 如不正確，請用文字補充記帳\n範例：「剛買的咖啡用Line轉帳，50元」"
+                    reply_text += "\n💡 如不正確，請用文字補充記帳\n範例：「剛買的咖啡用Line Pay，50元」"
 
             elif result.intent == "error":
                 # 處理收據資料時發生錯誤

@@ -23,8 +23,8 @@ class CashflowItem:
 
 
 _ACCOUNT_ALIASES: tuple[tuple[str, str], ...] = (
-    ("合庫", "合庫轉帳"),
-    ("line", "Line 轉帳"),
+    ("合庫", "合庫"),
+    ("line", "Line Pay"),
     ("richart", "台新 Richart"),
     ("台新", "台新 Richart"),
     ("華南紅卡", "華南紅"),

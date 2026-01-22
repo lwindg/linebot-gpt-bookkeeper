@@ -1,7 +1,7 @@
 {"id":"TC-V15-010","group":"多項目","name":"雙項目 - 逗號分隔","message":"早餐80元，午餐150元，現金","expected_desc":"✅ 2個項目，共用付款方式：現金","expected":{"intent":"記帳","bookkeeping":{"payment":"現金","item_count":"2"}}}
 {"id":"TC-V15-011","group":"多項目","name":"雙項目 - 付款方式在前","message":"用狗卡，咖啡50，三明治35","expected_desc":"✅ 2個項目，共用付款方式：台新狗卡","expected":{"intent":"記帳","bookkeeping":{"payment":"台新狗卡","item_count":"2"}}}
 {"id":"TC-V15-012","group":"多項目","name":"三項目 - 早午晚餐","message":"早餐50元，午餐120元，晚餐200元，現金","expected_desc":"✅ 3個項目，共用付款方式：現金","expected":{"intent":"記帳","bookkeeping":{"payment":"現金","item_count":"3"}}}
-{"id":"TC-V15-013","group":"多項目","name":"雙項目 - 分號分隔","message":"咖啡45元；蛋糕120元；Line轉帳","expected_desc":"✅ 2個項目，分號分隔","expected":{"intent":"記帳","bookkeeping":{"payment":"Line 轉帳","item_count":"2"}}}
+{"id":"TC-V15-013","group":"多項目","name":"雙項目 - 分號分隔","message":"咖啡45元；蛋糕120元；Line Pay","expected_desc":"✅ 2個項目，分號分隔","expected":{"intent":"記帳","bookkeeping":{"payment":"Line Pay","item_count":"2"}}}
 {"id":"TC-V15-014","group":"多項目","name":"雙項目 - 頓號分隔","message":"早餐三明治35、飲料30、現金","expected_desc":"✅ 2個項目，頓號分隔","expected":{"intent":"記帳","bookkeeping":{"payment":"現金","item_count":"2"}}}
 {"id":"TC-V15-015","group":"多項目","name":"四項目以上","message":"咖啡50、三明治35、沙拉80、果汁40、現金","expected_desc":"✅ 4個項目，共用付款方式","expected":{"intent":"記帳","bookkeeping":{"payment":"現金","item_count":"4"}}}
 

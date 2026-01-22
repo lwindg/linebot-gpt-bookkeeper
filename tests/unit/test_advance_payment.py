@@ -121,13 +121,13 @@ class TestAdvancePayment:
 
     @patch("app.gpt_processor.OpenAI")
     def test_advance_payment_coffee_line_transfer(self, mock_openai):
-        """TC-V17-004: 代購咖啡給三位同事 Line轉帳"""
+        """TC-V17-004: 代購咖啡給三位同事 Line Pay"""
         set_openai_mock_content(
             mock_openai,
             """
 {
   "intent": "multi_bookkeeping",
-  "payment_method": "Line 轉帳",
+  "payment_method": "Line Pay",
   "items": [
     {
       "品項": "咖啡",
@@ -144,13 +144,13 @@ class TestAdvancePayment:
 """,
         )
 
-        result = process_multi_expense("代購咖啡50元給三位同事，Line轉帳")
+        result = process_multi_expense("代購咖啡50元給三位同事，Line Pay")
 
         assert result.intent == "multi_bookkeeping"
         assert len(result.entries) == 1
         assert result.entries[0].代墊狀態 == "代墊"
         assert result.entries[0].收款支付對象 == "同事"
-        assert result.entries[0].付款方式 == "Line 轉帳"
+        assert result.entries[0].付款方式 == "Line Pay"
 
 
 class TestNeedToPay:

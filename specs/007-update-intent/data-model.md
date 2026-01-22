@@ -24,7 +24,7 @@
 ### CanonicalPaymentMethod
 
 - **Description**: 付款方式標準名稱，由對照表正規化輸出。
-- **Examples**: 現金, 台新狗卡, 富邦 Costco, Line 轉帳
+- **Examples**: 現金, 台新狗卡, 富邦 Costco, Line Pay
 
 ## Relationships
 

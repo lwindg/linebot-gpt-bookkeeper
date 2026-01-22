@@ -257,7 +257,7 @@ def send_update_webhook_batch(user_id: str, transaction_ids: List[str], fields_t
 
     Examples:
         >>> # 批次更新 3 筆記錄
-        >>> send_update_webhook_batch("U1234", ["20251125-143027-01", "20251125-143027-02", "20251125-143027-03"], {"付款方式": "Line 轉帳"})
+        >>> send_update_webhook_batch("U1234", ["20251125-143027-01", "20251125-143027-02", "20251125-143027-03"], {"付款方式": "Line Pay"})
         (3, 0)
     """
     success_count = 0
@@ -304,11 +304,11 @@ def send_update_webhook(user_id: str, transaction_id: str, fields_to_update: dic
 
     Examples:
         >>> # 單筆更新
-        >>> send_update_webhook("U1234567890abcdef", "20251115-143052", {"付款方式": "Line 轉帳"}, 1)
+        >>> send_update_webhook("U1234567890abcdef", "20251115-143052", {"付款方式": "Line Pay"}, 1)
         True
 
         >>> # 多項目批次更新（5 個項目共享同一交易ID）
-        >>> send_update_webhook("U1234567890abcdef", "20251116-143027", {"付款方式": "Line 轉帳"}, 5)
+        >>> send_update_webhook("U1234567890abcdef", "20251116-143027", {"付款方式": "Line Pay"}, 5)
         True
     """
     # Check if webhook URL is configured

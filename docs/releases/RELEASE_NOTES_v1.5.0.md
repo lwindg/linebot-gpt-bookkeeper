@@ -26,7 +26,7 @@ Process multiple expenses in a single message with shared payment method.
 
 **Supported Formats**:
 - Comma separated: `早餐80元，午餐150元，現金`
-- Semicolon separated: `咖啡50元；蛋糕120元；Line轉帳`
+- Semicolon separated: `咖啡50元；蛋糕120元；Line Pay`
 - Mixed format: `用狗卡，咖啡50，三明治35`
 
 **Key Capabilities**:
@@ -99,7 +99,7 @@ Modify the most recent transaction without re-entering all details.
 - 修改、改成
 
 **Supported Modifications**:
-- Payment method: `上一筆改成Line轉帳`
+- Payment method: `上一筆改成Line Pay`
 - Amount: `剛才那筆改成150元`
 - Category: `修改分類為家庭支出`
 - Item name: `上一筆品項改成午餐`
@@ -309,13 +309,13 @@ Bot Response:
 ### Example 4: Update Last Entry
 
 ```
-User: 上一筆改成Line轉帳
+User: 上一筆改成Line Pay
 Bot Response:
 ✅ 已更新上一筆記帳！
 
 📋 午餐
 💰 120 元
-💳 付款方式：Line 轉帳 (已更新)
+💳 付款方式：Line Pay (已更新)
 🔖 交易ID：20251115-120000
 ```
 

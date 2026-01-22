@@ -25,7 +25,7 @@ curl -X POST "https://hook.us2.make.com/9mz4ke8r17a8knwrbyoxr62dg4lz0u2k" \
     "user_id": "U1234567890abcdef",
     "transaction_id": "20251209-999999-test",
     "fields_to_update": {
-      "付款方式": "Line 轉帳"
+      "付款方式": "Line Pay"
     }
   }'
 
@@ -80,7 +80,7 @@ curl -X POST "https://hook.us2.make.com/9mz4ke8r17a8knwrbyoxr62dg4lz0u2k" \
     "user_id": "U1234567890abcdef",
     "transaction_id": "20251209-999999-test",
     "fields_to_update": {
-      "付款方式": "Line 轉帳"
+      "付款方式": "Line Pay"
     },
     "item_count": 2
   }'

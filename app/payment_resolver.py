@@ -50,12 +50,12 @@ def _load_detection_priority_from_yaml() -> tuple[tuple[str, str], ...]:
 _PAYMENT_ALIASES_LEGACY: dict[str, str] = {
     "現金": "現金",
     "cash": "現金",
-    "line": "Line 轉帳",
-    "line轉帳": "Line 轉帳",
-    "line bank": "Line 轉帳",
-    "linebank": "Line 轉帳",
-    "合庫": "合庫轉帳",
-    "合庫轉帳": "合庫轉帳",
+    "line": "Line Pay",
+    "line bank": "Line Pay",
+    "linebank": "Line Pay",
+    "linepay": "Line Pay",
+    "line pay": "Line Pay",
+    "合庫": "合庫",
     "狗卡": "台新狗卡",
     "狗狗卡": "台新狗卡",
     "gogo": "台新狗卡",
@@ -109,11 +109,11 @@ _DETECT_ALIASES_LEGACY: tuple[tuple[str, str], ...] = (
     ("gogo", "台新狗卡"),
     ("richart", "台新 Richart"),
     ("台新 richart", "台新 Richart"),
-    ("line轉帳", "Line 轉帳"),
-    ("line bank", "Line 轉帳"),
-    ("line", "Line 轉帳"),
-    ("合庫轉帳", "合庫轉帳"),
-    ("合庫", "合庫轉帳"),
+    ("line bank", "Line Pay"),
+    ("line pay", "Line Pay"),
+    ("linepay", "Line Pay"),
+    ("line", "Line Pay"),
+    ("合庫", "合庫"),
     ("遠銀大戶", "大戶信用卡"),
     ("大戶", "大戶信用卡"),
     ("聯邦綠卡", "聯邦綠卡"),
@@ -146,4 +146,3 @@ def detect_payment_method(text: str) -> str | None:
         if alias.lower() in haystack:
             return canonical
     return None
-
