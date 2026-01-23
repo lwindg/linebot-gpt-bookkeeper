@@ -87,6 +87,16 @@ def _enriched_tx_to_entry(
     # 判斷代墊狀態
     advance_status = _type_to_advance_status(tx.type, tx.counterparty)
     
+    # 判斷交易類型 (支出/收入/轉帳/提款)
+    if tx.type == TransactionType.INCOME:
+        tx_type = "收入"
+    elif tx.type == TransactionType.WITHDRAWAL:
+        tx_type = "提款"
+    elif tx.type in (TransactionType.TRANSFER, TransactionType.CARD_PAYMENT):
+        tx_type = "轉帳"
+    else:
+        tx_type = "支出"
+    
     return BookkeepingEntry(
         intent="bookkeeping",
         日期=date_str,
@@ -103,6 +113,7 @@ def _enriched_tx_to_entry(
         收款支付對象=tx.counterparty,
         附註="",
         交易ID=transaction_id,
+        交易類型=tx_type,
         response_text=None,
     )
 

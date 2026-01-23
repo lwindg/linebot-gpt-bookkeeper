@@ -61,23 +61,19 @@ class TestEndToEndIntegration:
         assert "午餐" in entry2.品項
         assert entry2.付款方式 == "現金"
 
-    @pytest.mark.xfail(reason="Parser currently treats '轉帳' as raw text, not payment method (Phase 4 fix)")
     def test_e2e_cashflow_transfer(self, mock_parser_context):
-        """Test cashflow intent (transfer) handling."""
-        # Note: Parser treats cashflow as regular expense unless specifically handled
-        # Currently Parser output for "轉帳給房東15000" might be regular expense
-        # This test documents CURRENT behavior of Parser-first
-        
-        result = process_with_parser("轉帳給房東15000元", skip_gpt=True)
+        """Test cashflow intent handling (Withdrawal)."""
+        # "從richart提款5000" -> withdrawal intent, source=Richart
+        result = process_with_parser("從richart提款5000", skip_gpt=True)
         
         assert result.intent == "multi_bookkeeping"
         assert len(result.entries) == 1
         entry = result.entries[0]
         
-        assert entry.原幣金額 == 15000.0
-        assert entry.付款方式 == "轉帳"
-        # "給房東" extracted as item part in current parser logic
-        assert "轉帳給房東" in entry.品項
+        assert entry.原幣金額 == 5000.0
+        assert entry.付款方式 == "台新 Richart"
+        assert entry.交易類型 == "提款"
+        assert "提款" in entry.品項
 
     def test_e2e_error_handling(self, mock_parser_context):
         """Test error handling for invalid input (no amount)."""
