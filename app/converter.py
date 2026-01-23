@@ -143,8 +143,13 @@ def enriched_to_multi_result(
         entry = _enriched_tx_to_entry(tx, shared_date, shared_payment)
         entries.append(entry)
     
+    # Determine result intent based on transactions
+    # Legacy compatibility: specific intent for cashflow items
+    is_cashflow = any(TransactionType.is_cashflow(tx.type) for tx in envelope.transactions)
+    result_intent = "cashflow_intents" if is_cashflow else "multi_bookkeeping"
+    
     return MultiExpenseResult(
-        intent="multi_bookkeeping",
+        intent=result_intent,
         entries=entries,
         fields_to_update=None,
         error_message=None,

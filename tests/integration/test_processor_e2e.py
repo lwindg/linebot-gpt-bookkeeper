@@ -66,7 +66,7 @@ class TestEndToEndIntegration:
         # "從richart提款5000" -> withdrawal intent, source=Richart
         result = process_with_parser("從richart提款5000", skip_gpt=True)
         
-        assert result.intent == "multi_bookkeeping"
+        assert result.intent == "cashflow_intents"
         assert len(result.entries) == 1
         entry = result.entries[0]
         
