@@ -21,6 +21,8 @@ from typing import Tuple
 
 # 1. 不索取
 _NO_CLAIM_KEYWORDS = ("不用還", "不索取", "送給", "請客", "我請")
+# Pattern for "請 + 對象 + 喝/吃/..." (e.g. 請同事喝飲料)
+_NO_CLAIM_PATTERN = re.compile(r"請(?P<who>.+?)(?:喝|吃|午餐|晚餐|早餐)")
 
 # 2. 代墊 (I paid for someone)
 # Pattern: (幫|代) + (Who) + (買|付|墊|代墊|墊付)
@@ -51,6 +53,11 @@ def extract_advance_status(text: str) -> Tuple[str, str]:
         
     # 1. 偵測「不索取」
     if any(k in raw for k in _NO_CLAIM_KEYWORDS):
+        return "不索取", ""
+    
+    # 1b. 偵測「請+對象+喝/吃」pattern (e.g. 請同事喝飲料)
+    no_claim_match = _NO_CLAIM_PATTERN.search(raw)
+    if no_claim_match:
         return "不索取", ""
 
     # 2. 偵測「代墊」（我先付）
