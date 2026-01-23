@@ -6,8 +6,9 @@ Payment Method Extraction (T009)
 依賴 `app.payment_resolver` 的設定。
 """
 
-from typing import Optional
-from app.payment_resolver import detect_payment_method, normalize_payment_method
+import re
+from typing import Optional, Tuple
+from app.payment_resolver import detect_payment_method, normalize_payment_method, get_all_payment_keywords
 
 def extract_payment_method(text: str) -> str:
     """
@@ -26,3 +27,50 @@ def extract_payment_method(text: str) -> str:
         return detected # detect_payment_method 已經回傳 canonical name
         
     return "NA"
+
+
+def clean_item_text(text: str, payment_method: str) -> str:
+    """
+    從品項文字中移除付款方式關鍵字。
+    
+    Args:
+        text: 原始品項文字
+        payment_method: 已偵測到的標準付款方式名稱
+    
+    Returns:
+        cleaned_text: 移除付款關鍵字後的品項文字
+    
+    Examples:
+        >>> clean_item_text("午餐 現金", "現金")
+        '午餐'
+        >>> clean_item_text("早餐 元 Line Pay", "Line Pay")
+        '早餐'
+    """
+    if not text or payment_method == "NA":
+        return text.strip() if text else ""
+    
+    # 取得所有付款方式關鍵字
+    all_keywords = get_all_payment_keywords()
+    
+    # 按長度降序排列（先移除長的，避免部分匹配問題）
+    sorted_keywords = sorted(all_keywords, key=len, reverse=True)
+    
+    cleaned = text
+    for keyword in sorted_keywords:
+        # 使用 word boundary 或空格分隔來避免誤刪（如 "line" 在 "deadline" 中）
+        # 對於中文關鍵字直接替換，對於英文使用 word boundary
+        if re.match(r'^[a-zA-Z\s]+$', keyword):
+            # 英文關鍵字：case-insensitive word boundary
+            pattern = re.compile(r'\b' + re.escape(keyword) + r'\b', re.IGNORECASE)
+        else:
+            # 中文或混合：直接替換
+            pattern = re.compile(re.escape(keyword), re.IGNORECASE)
+        
+        cleaned = pattern.sub('', cleaned)
+    
+    # 清理多餘空格和「元」字
+    cleaned = re.sub(r'\s+', ' ', cleaned)
+    cleaned = re.sub(r'\s*元\s*$', '', cleaned)  # 移除結尾的「元」
+    cleaned = re.sub(r'^\s*元\s*', '', cleaned)  # 移除開頭的「元」
+    
+    return cleaned.strip()

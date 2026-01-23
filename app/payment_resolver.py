@@ -146,3 +146,23 @@ def detect_payment_method(text: str) -> str | None:
         if alias.lower() in haystack:
             return canonical
     return None
+
+
+def get_all_payment_keywords() -> list[str]:
+    """
+    取得所有付款方式關鍵字（用於品項文字清理）。
+    
+    Returns:
+        list[str]: 所有付款方式別名關鍵字
+    """
+    aliases = _load_payment_aliases_from_yaml()
+    detection_priority = _load_detection_priority_from_yaml()
+    
+    # 合併所有關鍵字
+    keywords = set(aliases.keys())
+    keywords.update(alias for alias, _ in detection_priority)
+    
+    # 加入標準名稱
+    keywords.update(aliases.values())
+    
+    return list(keywords)

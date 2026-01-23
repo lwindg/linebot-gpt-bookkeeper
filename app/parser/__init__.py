@@ -92,7 +92,7 @@ def parse(message: str, *, context_date: Optional[datetime] = None) -> Authorita
         ParserError: 解析失敗
     """
     from app.parser.extract_amount import extract_amount_and_currency
-    from app.parser.extract_payment import extract_payment_method
+    from app.parser.extract_payment import extract_payment_method, clean_item_text
     from app.parser.extract_date import extract_date
     from app.parser.extract_advance import extract_advance_status
     from app.parser.extract_cashflow import detect_cashflow_intent
@@ -144,11 +144,15 @@ def parse(message: str, *, context_date: Optional[datetime] = None) -> Authorita
         else:
             tx_type = TransactionType.EXPENSE
         
+        # 清理品項文字（移除付款方式關鍵字）
+        raw_item = remaining or item_text
+        cleaned_item = clean_item_text(raw_item, payment_method)
+        
         # 建立交易
         tx = Transaction(
             id=tx_id,
             type=tx_type,
-            raw_item=remaining or item_text,
+            raw_item=cleaned_item or raw_item,  # Fallback to original if cleanup empties it
             amount=amount,
             currency=currency,
             payment_method=payment_method,
