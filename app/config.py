@@ -26,6 +26,10 @@ REDIS_URL = os.getenv('REDIS_URL', '')
 KV_ENABLED = bool(REDIS_URL)
 LAST_TRANSACTION_TTL = int(os.getenv('LAST_TRANSACTION_TTL', '600'))  # 10 minutes default
 
+# Parser-first mode (Phase 3 feature flag)
+# Set to "true" to use new Parser-first architecture instead of GPT-first
+USE_PARSER_FIRST = os.getenv('USE_PARSER_FIRST', 'false').lower() == 'true'
+
 # Validate required variables
 required_vars = {
     'LINE_CHANNEL_ACCESS_TOKEN': LINE_CHANNEL_ACCESS_TOKEN,

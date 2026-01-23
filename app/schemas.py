@@ -141,17 +141,10 @@ AUTHORITATIVE_ENVELOPE_SCHEMA = {
 # AI 只需回傳這些補充欄位，不可修改 Parser 的權威欄位
 ENRICHMENT_RESPONSE_SCHEMA = {
     "name": "enrichment_response",
-    "version": "1.0",
-    "description": "AI Enrichment 回應格式，只包含分類/專案/必要性/明細",
     "strict": True,
     "schema": {
         "type": "object",
         "properties": {
-            "version": {
-                "type": "string",
-                "description": "Schema version",
-                "default": "1.0"
-            },
             "enrichment": {
                 "type": "array",
                 "description": "每筆交易的補充資訊",
@@ -168,8 +161,7 @@ ENRICHMENT_RESPONSE_SCHEMA = {
                         },
                         "專案": {
                             "type": "string",
-                            "description": "專案名稱 (預設: '日常')",
-                            "default": "日常"
+                            "description": "專案名稱 (預設: '日常')"
                         },
                         "必要性": {
                             "type": "string",
@@ -178,8 +170,7 @@ ENRICHMENT_RESPONSE_SCHEMA = {
                         },
                         "明細說明": {
                             "type": "string",
-                            "description": "額外說明（商家/地點/用途）",
-                            "default": ""
+                            "description": "額外說明（商家/地點/用途）"
                         }
                     },
                     "required": ["id", "分類", "專案", "必要性", "明細說明"],
@@ -187,7 +178,8 @@ ENRICHMENT_RESPONSE_SCHEMA = {
                 }
             }
         },
-        "required": ["version", "enrichment"]
+        "required": ["enrichment"],
+        "additionalProperties": False
     }
 }
 

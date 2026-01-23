@@ -459,6 +459,32 @@ def process_multi_expense(user_message: str, *, debug: bool = False) -> MultiExp
         >>> result.entries[1].付款方式
         '現金'
     """
+    # === Phase 3: Parser-first mode (feature flag) ===
+    from app.config import USE_PARSER_FIRST
+    
+    if USE_PARSER_FIRST:
+        # 檢查是否需要 fallback 到 GPT-first
+        # update_last_entry 和 conversation 意圖仍需 GPT 處理
+        update_hint = _detect_update_intent(user_message)
+        if update_hint:
+            logger.debug("Parser-first: fallback to GPT for update intent")
+        else:
+            # 使用 Parser-first 流程
+            from app.processor import process_with_parser
+            try:
+                result = process_with_parser(user_message)
+                if debug:
+                    logger.info(f"[parser-first] result.intent={result.intent}, entries={len(result.entries)}")
+                # 若 parser-first 成功解析出交易則回傳
+                if result.intent == "multi_bookkeeping" and len(result.entries) > 0:
+                    return result
+                # 否則 fallback 到 GPT-first（可能是對話意圖）
+                logger.debug("Parser-first: no transactions found, fallback to GPT")
+            except Exception as e:
+                # Parser 失敗 → fallback 到 GPT-first（可能是對話訊息）
+                logger.debug(f"Parser-first failed, fallback to GPT: {e}")
+    # === End Phase 3 ===
+
     try:
         user_message = _normalize_message_spacing(user_message)
         base_message = user_message
