@@ -16,7 +16,12 @@ from typing import Tuple
 
 # 編譯正則表達式以提升效能
 _AMOUNT_PATTERN = re.compile(r"(\$|USD|JPY|EUR|CNY|TWD)?\s*(-?\d+(?:\.\d+)?)")
-_DATE_PATTERN = re.compile(r"(20\d{2}/\d{1,2}/\d{1,2}|\d{1,2}/\d{1,2})")
+# 日期格式 Pattern（需排除，避免將日期當作金額）
+# 支援: 2024/1/15, 2024-01-15, 1/15, 01-15
+_DATE_PATTERN = re.compile(
+    r"(20\d{2}[/-]\d{1,2}[/-]\d{1,2}|"  # YYYY/MM/DD or YYYY-MM-DD
+    r"\d{1,2}[/-]\d{1,2})"               # MM/DD or MM-DD
+)
 
 # 貨幣代碼對照表（支援中英文）
 _CURRENCY_MAP = {
@@ -66,12 +71,30 @@ def extract_amount_and_currency(text: str) -> Tuple[float, str, str]:
 
     # 1. 排除日期格式的數字
     matches = list(_AMOUNT_PATTERN.finditer(text))
-    date_spans = [m.span() for m in _DATE_PATTERN.finditer(text)]
-    if date_spans:
-        def _in_date_span(span: tuple[int, int]) -> bool:
-            return any(span[0] >= d[0] and span[1] <= d[1] for d in date_spans)
-
-        matches = [m for m in matches if not _in_date_span(m.span())]
+    date_matches = list(_DATE_PATTERN.finditer(text))
+    
+    if date_matches:
+        # 建立日期範圍集合（擴展邊界以捕獲相鄰數字）
+        date_spans = []
+        for dm in date_matches:
+            # 日期字串中的數字位置
+            start, end = dm.span()
+            date_spans.append((start, end))
+        
+        def _overlaps_date(match_span: tuple[int, int]) -> bool:
+            """檢查是否與日期範圍重疊或完全被包含"""
+            ms, me = match_span
+            for ds, de in date_spans:
+                # 完全包含或重疊
+                if ms >= ds and me <= de:
+                    return True
+                # 部分重疊
+                if (ms < de and me > ds):
+                    return True
+            return False
+        
+        matches = [m for m in matches if not _overlaps_date(m.span())]
+    
     if not matches:
         return 0.0, "TWD", text
 

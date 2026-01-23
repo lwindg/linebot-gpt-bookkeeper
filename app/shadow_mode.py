@@ -166,42 +166,47 @@ def log_comparison(
     comparison: ComparisonResult,
     log_path: Optional[str] = None
 ) -> None:
-    """記錄比對結果到 JSONL 檔案"""
-    from app.config import SHADOW_LOG_PATH
+    """記錄比對結果到 JSONL 檔案（I/O 失敗不中斷主流程）"""
+    try:
+        from app.config import SHADOW_LOG_PATH
+        
+        path = Path(log_path or SHADOW_LOG_PATH)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # 轉換為可序列化格式
+        record = {
+            "user_message": comparison.user_message,
+            "timestamp": comparison.timestamp,
+            "gpt_intent": comparison.gpt_intent,
+            "parser_intent": comparison.parser_intent,
+            "gpt_entry_count": comparison.gpt_entry_count,
+            "parser_entry_count": comparison.parser_entry_count,
+            "is_consistent": comparison.is_consistent,
+            "gpt_error": comparison.gpt_error,
+            "parser_error": comparison.parser_error,
+            "mismatches": [],
+        }
+        
+        # 記錄不一致的欄位
+        for entry_cmp in comparison.entry_comparisons:
+            if not entry_cmp.is_match:
+                for fc in entry_cmp.fields:
+                    if not fc.is_match:
+                        record["mismatches"].append({
+                            "entry_index": entry_cmp.index,
+                            "field": fc.field_name,
+                            "gpt": fc.gpt_value,
+                            "parser": fc.parser_value,
+                        })
+        
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        
+        logger.info(f"Shadow comparison logged: consistent={comparison.is_consistent}")
     
-    path = Path(log_path or SHADOW_LOG_PATH)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    
-    # 轉換為可序列化格式
-    record = {
-        "user_message": comparison.user_message,
-        "timestamp": comparison.timestamp,
-        "gpt_intent": comparison.gpt_intent,
-        "parser_intent": comparison.parser_intent,
-        "gpt_entry_count": comparison.gpt_entry_count,
-        "parser_entry_count": comparison.parser_entry_count,
-        "is_consistent": comparison.is_consistent,
-        "gpt_error": comparison.gpt_error,
-        "parser_error": comparison.parser_error,
-        "mismatches": [],
-    }
-    
-    # 記錄不一致的欄位
-    for entry_cmp in comparison.entry_comparisons:
-        if not entry_cmp.is_match:
-            for fc in entry_cmp.fields:
-                if not fc.is_match:
-                    record["mismatches"].append({
-                        "entry_index": entry_cmp.index,
-                        "field": fc.field_name,
-                        "gpt": fc.gpt_value,
-                        "parser": fc.parser_value,
-                    })
-    
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(json.dumps(record, ensure_ascii=False) + "\n")
-    
-    logger.info(f"Shadow comparison logged: consistent={comparison.is_consistent}")
+    except Exception as e:
+        # I/O 失敗降級為警告，不中斷主流程
+        logger.warning(f"Shadow Mode log failed (non-critical): {e}")
 
 
 def run_shadow_mode(user_message: str) -> MultiExpenseResult:
