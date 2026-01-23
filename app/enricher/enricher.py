@@ -1,0 +1,169 @@
+# -*- coding: utf-8 -*-
+"""
+Core Enricher Logic (T018)
+
+對 Parser 輸出進行 AI Enrichment，補充分類、專案、必要性、明細說明。
+"""
+
+import logging
+from typing import Optional
+
+from app.parser import AuthoritativeEnvelope, Transaction
+from app.category_resolver import allowed_categories
+from .types import EnrichedTransaction, EnrichedEnvelope
+from .gpt_client import call_gpt_enrichment
+
+logger = logging.getLogger(__name__)
+
+
+def _transaction_to_dict(tx: Transaction) -> dict:
+    """將 Transaction dataclass 轉為 dict 供 GPT client 使用"""
+    return {
+        "id": tx.id,
+        "type": tx.type.value,
+        "raw_item": tx.raw_item,
+        "amount": tx.amount,
+        "currency": tx.currency,
+        "payment_method": tx.payment_method,
+        "counterparty": tx.counterparty,
+        "date": tx.date,
+    }
+
+
+def _validate_category(category: str) -> str:
+    """
+    驗證分類是否在允許清單內。
+    
+    若不在清單內，嘗試找最接近的分類，
+    若仍無匹配則回傳 "未分類"。
+    """
+    # 處理空白或只含空白的分類 - 直接回傳未分類
+    if not category or not category.strip():
+        logger.warning("Empty category received, using '未分類'")
+        return "未分類"
+    
+    category = category.strip()
+    categories = allowed_categories()
+    
+    # 完全匹配
+    if category in categories:
+        return category
+    
+    # 嘗試部分匹配（例如 "午餐" → "家庭/餐飲/午餐"）
+    for cat in categories:
+        if category in cat or cat.endswith(category):
+            logger.warning(f"Category '{category}' normalized to '{cat}'")
+            return cat
+    
+    # 無匹配，回傳未分類
+    logger.warning(f"Unknown category '{category}', using '未分類'")
+    return "未分類"
+
+
+def _merge_enrichment(
+    tx: Transaction,
+    enrichment: dict,
+) -> EnrichedTransaction:
+    """
+    合併 Parser 權威欄位與 AI Enrichment 結果。
+    
+    Args:
+        tx: Parser 輸出的 Transaction
+        enrichment: AI 回傳的 enrichment dict（包含 分類, 專案, 必要性, 明細說明）
+    
+    Returns:
+        EnrichedTransaction: 合併後的完整交易
+    """
+    # 驗證分類
+    category = _validate_category(enrichment.get("分類", "未分類"))
+    
+    return EnrichedTransaction(
+        # Parser 權威欄位
+        id=tx.id,
+        type=tx.type,
+        raw_item=tx.raw_item,
+        amount=tx.amount,
+        currency=tx.currency,
+        payment_method=tx.payment_method,
+        counterparty=tx.counterparty,
+        date=tx.date,
+        accounts_from=tx.accounts.get("from") if tx.accounts else None,
+        accounts_to=tx.accounts.get("to") if tx.accounts else None,
+        # AI Enrichment 欄位
+        分類=category,
+        專案=enrichment.get("專案", "日常"),
+        必要性=enrichment.get("必要性", "必要日常支出"),
+        明細說明=enrichment.get("明細說明", ""),
+    )
+
+
+def enrich(
+    envelope: AuthoritativeEnvelope,
+    *,
+    skip_gpt: bool = False,
+    mock_enrichment: Optional[list[dict]] = None,
+) -> EnrichedEnvelope:
+    """
+    對 Parser 輸出進行 AI Enrichment。
+    
+    Args:
+        envelope: Parser 輸出的 AuthoritativeEnvelope
+        skip_gpt: 若為 True，跳過 GPT 呼叫，使用預設值
+        mock_enrichment: 用於測試的 mock enrichment 資料
+    
+    Returns:
+        EnrichedEnvelope: 包含完整 enriched 交易的結果
+    
+    流程：
+    1. 將 transactions 轉換為 GPT prompt 格式
+    2. 呼叫 GPT API（或使用 mock）
+    3. 合併 Parser 權威欄位 + AI Enrichment 結果
+    4. 驗證分類是否在允許清單內
+    5. 回傳 EnrichedEnvelope
+    """
+    transactions = envelope.transactions
+    
+    # 建立 id -> enrichment 的對照表
+    enrichment_map: dict[str, dict] = {}
+    
+    if mock_enrichment is not None:
+        # 使用 mock 資料（測試用）
+        for item in mock_enrichment:
+            enrichment_map[item["id"]] = item
+    elif skip_gpt:
+        # 跳過 GPT，使用預設值
+        for tx in transactions:
+            enrichment_map[tx.id] = {
+                "id": tx.id,
+                "分類": "未分類",
+                "專案": "日常",
+                "必要性": "必要日常支出",
+                "明細說明": "",
+            }
+    else:
+        # 呼叫 GPT API
+        tx_dicts = [_transaction_to_dict(tx) for tx in transactions]
+        gpt_result = call_gpt_enrichment(tx_dicts, envelope.source_text)
+        
+        for item in gpt_result.get("enrichment", []):
+            enrichment_map[item["id"]] = item
+    
+    # 合併結果
+    enriched_transactions = []
+    for tx in transactions:
+        enrichment = enrichment_map.get(tx.id, {
+            "id": tx.id,
+            "分類": "未分類",
+            "專案": "日常",
+            "必要性": "必要日常支出",
+            "明細說明": "",
+        })
+        enriched_tx = _merge_enrichment(tx, enrichment)
+        enriched_transactions.append(enriched_tx)
+    
+    return EnrichedEnvelope(
+        version=envelope.version,
+        source_text=envelope.source_text,
+        parse_timestamp=envelope.parse_timestamp,
+        transactions=enriched_transactions,
+    )
