@@ -424,6 +424,22 @@ def process_message(user_message: str) -> BookkeepingEntry:
         raise ValueError(f"Unknown intent from process_multi_expense: {result.intent}")
 
 
+def process_multi_expense_gpt_only(user_message: str, *, debug: bool = False) -> MultiExpenseResult:
+    """
+    強制使用 GPT-first 路徑處理訊息（忽略 USE_PARSER_FIRST flag）。
+    
+    用於 Shadow Mode 驗證，確保可以取得舊路徑結果進行比對。
+    
+    Args:
+        user_message: 使用者訊息文字
+        debug: 是否輸出除錯資訊
+    
+    Returns:
+        MultiExpenseResult: GPT-first 處理結果
+    """
+    return _process_multi_expense_impl(user_message, debug=debug)
+
+
 def process_multi_expense(user_message: str, *, debug: bool = False) -> MultiExpenseResult:
     """
     處理單一訊息的多項目支出（v1.5.0 新功能）
@@ -476,7 +492,7 @@ def process_multi_expense(user_message: str, *, debug: bool = False) -> MultiExp
                 if debug:
                     logger.info(f"[parser-first] result.intent={result.intent}, entries={len(result.entries)}")
                 # 若 parser-first 成功解析出交易則回傳
-                if result.intent == "multi_bookkeeping" and len(result.entries) > 0:
+                if result.intent in ("multi_bookkeeping", "cashflow_intents") and len(result.entries) > 0:
                     return result
                 # 否則 fallback 到 GPT-first（可能是對話意圖）
                 logger.debug("Parser-first: no transactions found, fallback to GPT")
@@ -484,6 +500,12 @@ def process_multi_expense(user_message: str, *, debug: bool = False) -> MultiExp
                 # Parser 失敗 → fallback 到 GPT-first（可能是對話訊息）
                 logger.debug(f"Parser-first failed, fallback to GPT: {e}")
     # === End Phase 3 ===
+    
+    return _process_multi_expense_impl(user_message, debug=debug)
+
+
+def _process_multi_expense_impl(user_message: str, *, debug: bool = False) -> MultiExpenseResult:
+    """GPT-first 實作（內部使用）"""
 
     try:
         user_message = _normalize_message_spacing(user_message)

@@ -30,6 +30,11 @@ LAST_TRANSACTION_TTL = int(os.getenv('LAST_TRANSACTION_TTL', '600'))  # 10 minut
 # Set to "true" to use new Parser-first architecture instead of GPT-first
 USE_PARSER_FIRST = os.getenv('USE_PARSER_FIRST', 'false').lower() == 'true'
 
+# Shadow Mode (Phase 4 verification)
+# When enabled, runs both GPT-first and Parser-first paths and logs comparison
+SHADOW_MODE_ENABLED = os.getenv('SHADOW_MODE_ENABLED', 'false').lower() == 'true'
+SHADOW_LOG_PATH = os.getenv('SHADOW_LOG_PATH', 'logs/shadow_mode.jsonl')
+
 # Validate required variables
 required_vars = {
     'LINE_CHANNEL_ACCESS_TOKEN': LINE_CHANNEL_ACCESS_TOKEN,
