@@ -5,6 +5,7 @@ Date Extraction (T010)
 負責從文字中解析日期。
 支援格式：
 - 明確日期：MM/DD (e.g., 01/23, 1/5)
+- 完整日期：YYYY-MM-DD, YYYY/MM/DD (e.g., 2025-11-10)
 - 語義日期：今天、昨天、前天
 """
 
@@ -12,9 +13,11 @@ import re
 from datetime import datetime, timedelta
 from typing import Optional
 
-# Regex pattern for MM/DD format
-# 支援 1/5, 01/23, 12/31, 11/1 等格式
-_DATE_PATTERN = re.compile(r"(\d{1,2})[/-](\d{1,2})")
+# Regex patterns for date formats
+# 1. YYYY-MM-DD or YYYY/MM/DD (完整日期格式)
+_FULL_DATE_PATTERN = re.compile(r"(20\d{2})[/-](\d{1,2})[/-](\d{1,2})")
+# 2. MM/DD or MM-DD (簡短日期格式)
+_SHORT_DATE_PATTERN = re.compile(r"(\d{1,2})[/-](\d{1,2})")
 
 def extract_date(text: str, context_date: datetime) -> Optional[str]:
     """
@@ -37,10 +40,15 @@ def extract_date(text: str, context_date: datetime) -> Optional[str]:
     if semantic_date:
         return semantic_date
 
-    # 2. 檢查明確日期格式 (MM/DD)
-    explicit_date = _extract_explicit_date(text)
-    if explicit_date:
-        return explicit_date
+    # 2. 優先檢查完整日期格式 (YYYY-MM-DD)
+    full_date = _extract_full_date(text)
+    if full_date:
+        return full_date
+
+    # 3. 檢查簡短日期格式 (MM/DD)
+    short_date = _extract_short_date(text)
+    if short_date:
+        return short_date
         
     return None
 
@@ -65,9 +73,26 @@ def _extract_semantic_date(text: str, context_date: datetime) -> Optional[str]:
     return None
 
 
-def _extract_explicit_date(text: str) -> Optional[str]:
-    """解析 MM/DD 格式日期"""
-    match = _DATE_PATTERN.search(text)
+def _extract_full_date(text: str) -> Optional[str]:
+    """解析 YYYY-MM-DD 或 YYYY/MM/DD 格式日期"""
+    match = _FULL_DATE_PATTERN.search(text)
+    if not match:
+        return None
+        
+    # year = int(match.group(1))  # 目前不使用年份，輸出仍為 MM/DD
+    month = int(match.group(2))
+    day = int(match.group(3))
+    
+    # 驗證日期合法性
+    if 1 <= month <= 12 and 1 <= day <= 31:
+        return f"{month:02d}/{day:02d}"
+        
+    return None
+
+
+def _extract_short_date(text: str) -> Optional[str]:
+    """解析 MM/DD 或 MM-DD 格式日期"""
+    match = _SHORT_DATE_PATTERN.search(text)
     if not match:
         return None
         
@@ -79,3 +104,4 @@ def _extract_explicit_date(text: str) -> Optional[str]:
         return f"{month:02d}/{day:02d}"
         
     return None
+
