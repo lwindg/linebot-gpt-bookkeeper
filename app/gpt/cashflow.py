@@ -9,7 +9,7 @@ from app.cashflow_rules import (
     infer_transfer_mode,
     normalize_cashflow_payment_method,
 )
-from app.gpt_types import BookkeepingEntry, MultiExpenseResult
+from app.gpt.types import BookkeepingEntry, MultiExpenseResult
 from app.pipeline.normalize import build_batch_id, assign_transaction_ids
 from app.project_resolver import infer_project
 
