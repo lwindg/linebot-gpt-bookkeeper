@@ -48,9 +48,6 @@ See [RELEASE_TAGGING_GUIDE.md](./RELEASE_TAGGING_GUIDE.md) for complete instruct
 ## 🔖 Quick Commands
 
 ```bash
-# Create all tags (from project root)
-./create_tags.sh
-
 # Push all tags
 git push origin --tags
 

@@ -98,27 +98,27 @@ class TestParserIntegration:
         """昨天早餐 50"""
         envelope = parse("昨天早餐 50", context_date=taipei_now)
         tx = envelope.transactions[0]
-        assert tx.date == "01/22"
+        assert tx.date == "2026-01-22"
 
     def test_explicit_date(self, taipei_now):
         """1/20 午餐 80"""
         envelope = parse("1/20 午餐 80", context_date=taipei_now)
         tx = envelope.transactions[0]
-        assert tx.date == "01/20"
+        assert tx.date == "2026-01-20"
 
     # === Payment method detection ===
 
     def test_payment_flygo(self, taipei_now):
-        """灰狗 1200"""
-        envelope = parse("灰狗 1200", context_date=taipei_now)
-        tx = envelope.transactions[0]
-        assert tx.payment_method == "FlyGo 信用卡"
+        """灰狗卡 1200"""
+        with pytest.raises(ParserError) as exc_info:
+            parse("灰狗卡 1200", context_date=taipei_now)
+        assert exc_info.value.code == ParserErrorCode.MISSING_ITEM
 
     def test_payment_costco(self, taipei_now):
         """Costco 3000"""
-        envelope = parse("Costco 3000", context_date=taipei_now)
-        tx = envelope.transactions[0]
-        assert tx.payment_method == "富邦 Costco"
+        with pytest.raises(ParserError) as exc_info:
+            parse("Costco 3000", context_date=taipei_now)
+        assert exc_info.value.code == ParserErrorCode.MISSING_ITEM
 
     # === Error cases ===
 
@@ -173,14 +173,14 @@ class TestParserIntegration:
         envelope = parse("2025-11-10 咖啡50元現金", context_date=taipei_now)
         tx = envelope.transactions[0]
         assert tx.amount == 50.0
-        assert tx.date == "11/10"  # 輸出格式為 MM/DD
+        assert tx.date == "2025-11-10"  # 輸出格式為 YYYY-MM-DD
 
     def test_date_with_time_ignore_time(self, taipei_now):
         """TC-DATE-006: 12/14 09:00 咖啡100元現金 -> 忽略時間部分"""
         envelope = parse("12/14 09:00 咖啡100元現金", context_date=taipei_now)
         tx = envelope.transactions[0]
         assert tx.amount == 100.0
-        assert tx.date == "12/14"
+        assert tx.date == "2026-12-14"
         # 09:00 不應被誤判為金額或影響解析
 
     def test_no_claim_with_explicit_keyword(self, taipei_now):

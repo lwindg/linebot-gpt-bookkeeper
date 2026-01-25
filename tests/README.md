@@ -94,15 +94,6 @@ python test_local.py --raw '11/12 午餐120元現金'
 - `transaction_id` is not compared (non-deterministic)
 - `date` supports `{YEAR}` placeholder (expanded at runtime)
 
-#### Legacy shims (optional)
-
-```bash
-# Backward-compatible wrappers around `run_tests.sh`
-./run_v15_tests.sh
-./run_v1_tests.sh
-./run_v17_tests.sh
-```
-
 **詳細使用說明**：參見 `docs/AUTO_TEST_GUIDE.md`
 
 ---
@@ -266,12 +257,12 @@ cat .env | grep OPENAI_API_KEY
 ### 問題 3：測試腳本無法執行
 
 ```bash
-Permission denied: ./run_v1_tests.sh
+Permission denied: ./run_tests.sh
 ```
 
 **解決方式**：添加可執行權限
 ```bash
-chmod +x run_tests.sh run_v1_tests.sh run_v15_tests.sh run_v17_tests.sh
+chmod +x run_tests.sh
 ```
 
 ---

@@ -155,7 +155,7 @@ Migrated to OpenAI's Structured Output feature to:
    - Updated display format to show currency details
    - Improved multi-item currency display
 
-5. **run_v1_tests.sh, run_v15_tests.sh, run_v17_tests.sh**
+5. **run_tests.sh --suite expense, run_tests.sh --suite multi_expense, run_tests.sh --suite advance_payment**
    - Updated amount extraction to handle both TWD and foreign currency formats
    - Support for "💰 金額: 80.0 TWD" and "💰 原幣金額: 4.99 USD"
    - Added recipient display and validation (v17 only)
@@ -407,7 +407,7 @@ These features are planned for future releases (v1.9+).
 ### Test Infrastructure Improvements
 
 3. **fix(tests): update amount extraction for TWD and foreign currency formats** (588e2ce)
-   - Updated `run_v1_tests.sh`, `run_v15_tests.sh`, `run_v17_tests.sh`
+   - Updated `run_tests.sh --suite expense`, `run_tests.sh --suite multi_expense`, `run_tests.sh --suite advance_payment`
    - Handle both "💰 金額: 80.0 TWD" and "💰 原幣金額: 4.99 USD"
    - Auto-comparison now works with new display format
 

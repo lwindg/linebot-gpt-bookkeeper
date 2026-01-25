@@ -145,8 +145,8 @@ v1.2.0 實現了**多項目支出處理功能**（原 v1.5.0 Phase 1），支援
 ### 整合測試腳本
 
 新增檔案：
-- `run_v1_tests.sh` - v1 單項目測試（40+ 測試案例）
-- `run_v15_tests.sh` - v1.5.0 多項目測試（50+ 測試案例）
+- `run_tests.sh --suite expense` - v1 單項目測試（40+ 測試案例）
+- `run_tests.sh --suite multi_expense` - v1.5.0 多項目測試（50+ 測試案例）
 
 **功能**：
 - ✅ 自動驗證模式（`--auto` 參數）
@@ -170,8 +170,8 @@ tests/
 └── test_webhook_batch.py          # Webhook 批次測試
 
 scripts/
-├── run_v1_tests.sh                # v1 測試腳本
-├── run_v15_tests.sh               # v1.5.0 測試腳本
+├── run_tests.sh --suite expense                # v1 測試腳本
+├── run_tests.sh --suite multi_expense               # v1.5.0 測試腳本
 └── AUTO_TEST_GUIDE.md             # 測試指南
 ```
 
@@ -253,8 +253,8 @@ tests/
 
 | 測試腳本 | 測試案例數 | 狀態 |
 |---------|----------|------|
-| run_v1_tests.sh | 42 | ✅ 通過 |
-| run_v15_tests.sh | 50+ | ✅ 通過 |
+| run_tests.sh --suite expense | 42 | ✅ 通過 |
+| run_tests.sh --suite multi_expense | 50+ | ✅ 通過 |
 
 ---
 
@@ -274,10 +274,10 @@ v1.2.0 **完全向後相容** v1.0：
 
 ```bash
 # 1. 單項目測試（v1 相容性）
-./run_v1_tests.sh --auto
+./run_tests.sh --suite expense --auto
 
 # 2. 多項目測試（新功能）
-./run_v15_tests.sh --auto
+./run_tests.sh --suite multi_expense --auto
 
 # 3. 手動測試
 python test_local.py '早餐80元，午餐150元，現金'

@@ -10,26 +10,26 @@
 
 ```bash
 # 人工判斷模式（預設，逐個檢視結果）
-./run_v1_tests.sh
+./run_tests.sh --suite expense
 
 # 自動判斷模式（快速驗證所有測試）
-./run_v1_tests.sh --auto
+./run_tests.sh --suite expense --auto
 
 # 顯示說明
-./run_v1_tests.sh --help
+./run_tests.sh --suite expense --help
 ```
 
 ### Multi-Expense Suite
 
 ```bash
 # 人工判斷模式（預設，逐個檢視結果）
-./run_v15_tests.sh
+./run_tests.sh --suite multi_expense
 
 # 自動判斷模式（快速驗證所有測試）
-./run_v15_tests.sh --auto
+./run_tests.sh --suite multi_expense --auto
 
 # 顯示說明
-./run_v15_tests.sh --help
+./run_tests.sh --suite multi_expense --help
 ```
 
 ---
@@ -167,7 +167,7 @@
 **建議**：使用人工判斷模式
 
 ```bash
-./run_v1_tests.sh
+./run_tests.sh --suite expense
 ```
 
 逐個檢視每個測試的詳細輸出，確保理解測試意圖。
@@ -177,8 +177,8 @@
 **建議**：使用自動判斷模式
 
 ```bash
-./run_v1_tests.sh --auto
-./run_v15_tests.sh --auto
+./run_tests.sh --suite expense --auto
+./run_tests.sh --suite multi_expense --auto
 ```
 
 當你修改 prompt 或程式碼後，快速驗證是否破壞現有功能。
@@ -189,7 +189,7 @@
 
 1. 記錄初始通過率
 2. 調整 `app/prompts.py` 中的 prompt
-3. 執行 `./run_v1_tests.sh --auto`
+3. 執行 `./run_tests.sh --suite expense --auto`
 4. 比較通過率變化
 5. 重複步驟 2-4 直到達到目標
 
@@ -199,10 +199,10 @@
 
 ```yaml
 - name: Run v1 tests
-  run: ./run_v1_tests.sh --auto
+  run: ./run_tests.sh --suite expense --auto
 
 - name: Run v1.5 tests
-  run: ./run_v15_tests.sh --auto
+  run: ./run_tests.sh --suite multi_expense --auto
 ```
 
 如果通過率 < 100%，標記為失敗。
@@ -221,12 +221,10 @@
 
 ### Q3: 如何新增自訂測試案例？
 
-**A**: 編輯 `run_v1_tests.sh` 或 `run_v15_tests.sh`，添加 `run_test` 呼叫：
+**A**: 編輯 `tests/functional/suites/*.jsonl`，新增或調整測試案例：
 
 ```bash
-run_test "分類" "描述" \
-    "測試訊息" \
-    "預期意圖" "預期品項" "預期金額" "預期付款" "預期分類"
+{"id":"...","group":"...","name":"...","message":"...","expected":{...}}
 ```
 
 ### Q4: 自動模式能跳過失敗的測試嗎？
@@ -260,13 +258,13 @@ run_test "分類" "描述" \
 1. **更新測試案例**
    - 編輯 `tests/test_cases_v1.md` 或 `tests/test_cases_v1.5.md`
 
-2. **更新測試腳本**
-   - 修改 `run_v1_tests.sh` 或 `run_v15_tests.sh` 中的預期結果
+2. **更新測試案例**
+   - 修改 `tests/functional/suites/*.jsonl` 中的預期結果
 
 3. **執行驗證**
    ```bash
-   ./run_v1_tests.sh --auto
-   ./run_v15_tests.sh --auto
+   ./run_tests.sh --suite expense --auto
+   ./run_tests.sh --suite multi_expense --auto
    ```
 
 4. **記錄結果**

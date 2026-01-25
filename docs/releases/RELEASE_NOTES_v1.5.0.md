@@ -231,8 +231,8 @@ class MultiExpenseResult:
 ### Integration Tests
 
 **Test Scripts**:
-- `run_v1_tests.sh`: 30 test cases for v1 compatibility
-- `run_v15_tests.sh`: 26 test cases for v1.5.0 features
+- `run_tests.sh --suite expense`: 30 test cases for v1 compatibility
+- `run_tests.sh --suite multi_expense`: 26 test cases for v1.5.0 features
 - `test_local.py`: Interactive testing tool with v1/v1.5 mode switching
 
 **Test Results**:
@@ -442,7 +442,7 @@ MAKE_WEBHOOK_URL=https://hook.us1.make.com/...
 - `tests/test_cases_v1.5.md`: 50+ test cases
 - `tests/README.md`: Testing guide
 - `specs/001-linebot-gpt-bookkeeper/plan-v1.5.0.md`: Technical planning
-- `run_v15_tests.sh`: Automated test script
+- `run_tests.sh --suite multi_expense`: Automated test script
 
 ### Updated Documentation
 

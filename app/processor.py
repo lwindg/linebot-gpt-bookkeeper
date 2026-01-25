@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from app.parser import parse, ParserError
 from app.enricher import enrich
 from app.converter import enriched_to_multi_result
-from app.gpt_processor import MultiExpenseResult, BookkeepingEntry
+from app.gpt_types import MultiExpenseResult, BookkeepingEntry
 from app.payment_resolver import detect_payment_method
 
 logger = logging.getLogger(__name__)
@@ -77,4 +77,3 @@ def process_with_parser(
             error_message=f"處理失敗：{str(e)}",
             error_reason="unexpected_error",
         )
-

@@ -21,7 +21,6 @@
 ./run_tests.sh --suite advance_payment --list
 ```
 
-> Legacy shim: `./run_v17_tests.sh` is kept for backward compatibility, but `./run_tests.sh` is the source of truth.
 
 ### 2. 互動式測試工具
 

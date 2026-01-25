@@ -11,7 +11,8 @@ from linebot.models import MessageEvent, TextSendMessage
 from linebot import LineBotApi
 from linebot.v3.messaging import MessagingApiBlob
 
-from app.gpt_processor import process_multi_expense, process_receipt_data, MultiExpenseResult, BookkeepingEntry
+from app.gpt_processor import process_multi_expense, process_receipt_data
+from app.gpt_types import MultiExpenseResult, BookkeepingEntry
 from app.webhook_sender import send_multiple_webhooks, send_update_webhook_batch
 from app.image_handler import download_image, process_receipt_image, ImageDownloadError, ImageTooLargeError, VisionAPIError
 from app.kv_store import KVStore, delete_last_transaction

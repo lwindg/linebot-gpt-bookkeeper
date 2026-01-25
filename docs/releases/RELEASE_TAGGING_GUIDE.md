@@ -127,7 +127,7 @@ https://github.com/YOUR_USERNAME/linebot-gpt-bookkeeper/releases/new
 **Title**: `v1.5.0: Multi-Item Expense & Receipt Recognition`
 **Description**: 複製 `RELEASE_NOTES_v1.5.0.md` 的內容
 **Attachments**:
-- `run_v15_tests.sh`
+- `run_tests.sh`（`--suite multi_expense`）
 - `tests/test_cases_v1.5.md`
 
 #### v1.7.0
@@ -137,7 +137,7 @@ https://github.com/YOUR_USERNAME/linebot-gpt-bookkeeper/releases/new
 **Description**: 複製 `RELEASE_NOTES_v1.7.0.md` 的內容
 **Pre-release**: ✅ (勾選，因為尚未合併到主分支)
 **Attachments**:
-- `run_v17_tests.sh`
+- `run_tests.sh`（`--suite advance_payment`、`--suite date`）
 - `tests/TEST_GUIDE_V17.md`
 
 ---
@@ -187,9 +187,9 @@ git push origin main
   - [ ] `RELEASE_NOTES_v1.7.0.md`
 
 - [ ] 測試腳本都存在且可執行
-  - [ ] `run_v1_tests.sh`
-  - [ ] `run_v15_tests.sh`
-  - [ ] `run_v17_tests.sh`
+  - [ ] `run_tests.sh --suite expense`
+  - [ ] `run_tests.sh --suite multi_expense`
+  - [ ] `run_tests.sh --suite advance_payment`
 
 - [ ] Commit 都已推送到遠端
   - [ ] `35b19ff` (v1.2.0)
@@ -213,84 +213,7 @@ git push origin main
 
 ## 🚀 一鍵執行腳本
 
-創建 `create_tags.sh` 腳本：
-
-```bash
-#!/bin/bash
-
-echo "========================================="
-echo "Creating Git Tags for All Releases"
-echo "========================================="
-echo ""
-
-# v1.2.0
-echo "Creating tag v1.2.0..."
-git tag -a v1.2.0 35b19ff -m "Release v1.2.0: Vision API Foundation
-
-Major Features:
-- GPT-4 Vision API integration for receipt recognition
-- Image download and processing
-- Receipt information extraction
-
-Release Date: 2025-11-15"
-
-# v1.3.0
-echo "Creating tag v1.3.0..."
-git tag -a v1.3.0 8bccc22 -m "Release v1.3.0: Enhanced Classification & Error Handling
-
-Major Features:
-- Image compression to reduce Vision API token usage
-- Enhanced classification rules
-- Improved error handling
-
-Release Date: 2025-11-15"
-
-# v1.5.0
-echo "Creating tag v1.5.0..."
-git tag -a v1.5.0 f6ee7ce -m "Release v1.5.0: Multi-Item Expense & Receipt Recognition
-
-Major Features:
-- Multi-item expense processing from single message
-- Complete receipt image recognition
-- Update last entry functionality with Vercel KV
-- Unified prompt architecture
-
-Release Date: 2025-11-15"
-
-# v1.7.0
-echo "Creating tag v1.7.0..."
-git tag -a v1.7.0 90c227b -m "Release v1.7.0: Advance Payment & Need-to-Pay Tracking
-
-Major Features:
-- Advance payment tracking (money lent to others)
-- Need-to-pay tracking (money owed to others)
-- Non-collectible advance (gifts/family support)
-- Date extraction restoration
-- Compound item name preservation
-- Comprehensive test suite (21 test cases)
-
-Release Date: 2025-11-19
-Status: Ready for Testing"
-
-echo ""
-echo "========================================="
-echo "All tags created successfully!"
-echo "========================================="
-echo ""
-echo "Local tags:"
-git tag -l
-echo ""
-echo "To push tags to remote, run:"
-echo "  git push origin --tags"
-```
-
-使用方式：
-```bash
-chmod +x create_tags.sh
-./create_tags.sh
-```
-
----
+已移除 `create_tags.sh`。請改用本指南的手動步驟建立 tag。
 
 **文件更新日期**: 2025-11-19
 **當前分支**: 002-advance-payment

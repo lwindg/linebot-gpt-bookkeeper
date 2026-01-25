@@ -47,7 +47,7 @@ import json
 import argparse
 import re
 from unittest.mock import patch
-from app.gpt_processor import MultiExpenseResult, BookkeepingEntry
+from app.gpt_types import MultiExpenseResult, BookkeepingEntry
 from app.pipeline.router import process_message
 from app.kv_store import get_last_transaction, KVStore
 from app.config import KV_ENABLED

@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 from zoneinfo import ZoneInfo
 
-from app.gpt_processor import MultiExpenseResult, BookkeepingEntry
+from app.gpt_types import MultiExpenseResult, BookkeepingEntry
 
 logger = logging.getLogger(__name__)
 

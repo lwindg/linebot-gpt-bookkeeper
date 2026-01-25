@@ -11,7 +11,7 @@ from typing import Optional
 
 from app.parser import TransactionType
 from app.enricher import EnrichedEnvelope, EnrichedTransaction
-from app.gpt_processor import BookkeepingEntry, MultiExpenseResult
+from app.gpt_types import BookkeepingEntry, MultiExpenseResult
 from app.pipeline.normalize import build_batch_id, assign_transaction_ids
 
 
