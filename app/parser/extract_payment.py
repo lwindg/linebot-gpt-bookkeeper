@@ -8,7 +8,11 @@ Payment Method Extraction (T009)
 
 import re
 from typing import Optional, Tuple
-from app.payment_resolver import detect_payment_method, normalize_payment_method, get_all_payment_keywords
+from app.payment_resolver import (
+    detect_payment_method,
+    normalize_payment_method,
+    get_keywords_for_payment_method,
+)
 
 def extract_payment_method(text: str) -> str:
     """
@@ -49,11 +53,9 @@ def clean_item_text(text: str, payment_method: str) -> str:
     if not text or payment_method == "NA":
         return text.strip() if text else ""
     
-    # 取得所有付款方式關鍵字
-    all_keywords = get_all_payment_keywords()
-    
-    # 按長度降序排列（先移除長的，避免部分匹配問題）
-    sorted_keywords = sorted(all_keywords, key=len, reverse=True)
+    # 僅移除與偵測到的付款方式相關的關鍵字
+    scoped_keywords = get_keywords_for_payment_method(payment_method)
+    sorted_keywords = sorted(scoped_keywords, key=len, reverse=True)
     
     cleaned = text
     for keyword in sorted_keywords:

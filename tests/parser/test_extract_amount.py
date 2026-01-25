@@ -102,6 +102,11 @@ class TestExtractAmountAndCurrency:
         amount, currency, remaining = extract_amount_and_currency("買了 2 個便當 200")
         assert amount == 200.0
 
+    def test_date_at_end_not_amount(self):
+        """午餐 100 1/5 -> 應取 100，不誤判 5"""
+        amount, currency, remaining = extract_amount_and_currency("午餐 100 1/5")
+        assert amount == 100.0
+
     def test_thousand_separator(self):
         """Costco 3,000 -> 3000 (在 split_items 會先處理)"""
         # 注意：extract_amount 本身不處理千分位，由 split_items 預處理

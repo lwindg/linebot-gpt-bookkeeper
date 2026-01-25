@@ -166,3 +166,32 @@ def get_all_payment_keywords() -> list[str]:
     keywords.update(aliases.values())
     
     return list(keywords)
+
+
+def get_keywords_for_payment_method(payment_method: str) -> list[str]:
+    """
+    取得與特定標準付款方式對應的關鍵字（別名 + 標準名稱）。
+
+    Args:
+        payment_method: 標準付款方式名稱（canonical）
+
+    Returns:
+        list[str]: 與該付款方式相關的關鍵字
+    """
+    if not payment_method:
+        return []
+
+    aliases = _load_payment_aliases_from_yaml()
+    detection_priority = _load_detection_priority_from_yaml()
+    canonical = payment_method.strip()
+
+    keywords = set()
+    for alias, mapped in aliases.items():
+        if mapped == canonical:
+            keywords.add(alias)
+    for alias, mapped in detection_priority:
+        if mapped == canonical:
+            keywords.add(alias)
+    keywords.add(canonical)
+
+    return list(keywords)
