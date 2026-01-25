@@ -46,6 +46,7 @@ coverage.xml
 *.cover
 *.log
 test_*.json
+logs/
 
 # IDEs
 .vscode/

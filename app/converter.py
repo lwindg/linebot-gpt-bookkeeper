@@ -11,7 +11,7 @@ from typing import Optional
 
 from app.parser import TransactionType
 from app.enricher import EnrichedEnvelope, EnrichedTransaction
-from app.gpt_processor import BookkeepingEntry, MultiExpenseResult
+from app.gpt_processor import BookkeepingEntry, MultiExpenseResult, generate_transaction_id
 
 
 def _type_to_advance_status(tx_type: TransactionType, counterparty: str) -> str:
@@ -26,49 +26,23 @@ def _type_to_advance_status(tx_type: TransactionType, counterparty: str) -> str:
     return "無"
 
 
-def _generate_transaction_id(date_str: Optional[str]) -> str:
+def _generate_transaction_id(
+    date_str: Optional[str],
+    *,
+    item: Optional[str] = None,
+    use_current_time: bool = False,
+) -> str:
     """
     生成交易 ID：YYYYMMDD-HHMMSS
 
-    如果有日期則使用該日期，否則使用當前時間。
-    支援格式：MM/DD, YYYY/MM/DD, YYYY-MM-DD
+    與 GPT 路徑共用時間推測邏輯（早餐/午餐/晚餐等）。
     """
-    taipei_tz = ZoneInfo("Asia/Taipei")
-    now = datetime.now(taipei_tz)
-
-    if date_str:
-        try:
-            # 嘗試解析不同格式
-            date_str = date_str.strip()
-            
-            # YYYY-MM-DD 或 YYYY/MM/DD 格式
-            if len(date_str) >= 8 and (
-                "-" in date_str[:5] or "/" in date_str[:5]
-            ):
-                # 統一分隔符
-                normalized = date_str.replace("-", "/")
-                parts = normalized.split("/")
-                if len(parts) == 3:
-                    year, month, day = int(parts[0]), int(parts[1]), int(parts[2])
-                    date_obj = datetime(year, month, day, tzinfo=taipei_tz)
-                else:
-                    date_obj = now
-            # MM/DD 格式
-            elif "/" in date_str:
-                parts = date_str.split("/")
-                if len(parts) == 2:
-                    month, day = int(parts[0]), int(parts[1])
-                    date_obj = datetime(now.year, month, day, tzinfo=taipei_tz)
-                else:
-                    date_obj = now
-            else:
-                date_obj = now
-        except (ValueError, IndexError):
-            date_obj = now
-    else:
-        date_obj = now
-
-    return date_obj.strftime("%Y%m%d") + "-" + now.strftime("%H%M%S")
+    return generate_transaction_id(
+        date_str,
+        None,
+        item,
+        use_current_time=use_current_time,
+    )
 
 
 def _enriched_tx_to_entry(
@@ -79,10 +53,18 @@ def _enriched_tx_to_entry(
     """將 EnrichedTransaction 轉換為 BookkeepingEntry"""
     
     # 決定日期
+    has_explicit_date = bool(tx.date or shared_date)
     date_str = tx.date or shared_date
+    if not date_str:
+        taipei_tz = ZoneInfo("Asia/Taipei")
+        date_str = datetime.now(taipei_tz).strftime("%Y-%m-%d")
 
     # 生成交易 ID
-    transaction_id = _generate_transaction_id(date_str)
+    transaction_id = _generate_transaction_id(
+        date_str,
+        item=tx.raw_item,
+        use_current_time=not has_explicit_date,
+    )
 
     # 判斷代墊狀態
     advance_status = _type_to_advance_status(tx.type, tx.counterparty)

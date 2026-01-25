@@ -50,14 +50,26 @@ def clean_item_text(text: str, payment_method: str) -> str:
         >>> clean_item_text("早餐 元 Line Pay", "Line Pay")
         '早餐'
     """
-    if not text or payment_method == "NA":
-        return text.strip() if text else ""
+    if not text:
+        return ""
+    
+    cleaned = text
+    # 先移除日期（避免品項包含日期片段）
+    cleaned = re.sub(r'\b20\d{2}[/-]\d{1,2}[/-]\d{1,2}\b', ' ', cleaned)
+    cleaned = re.sub(r'\b\d{1,2}[/-]\d{1,2}\b', ' ', cleaned)
+    # 再處理通用的「元」與空白（即使沒有付款方式也要清理）
+    cleaned = re.sub(r'\s+', ' ', cleaned)
+    cleaned = re.sub(r'\s*元\s*$', '', cleaned)  # 移除結尾的「元」
+    cleaned = re.sub(r'^\s*元\s*', '', cleaned)  # 移除開頭的「元」
+    
+    if payment_method == "NA":
+        return cleaned.strip()
     
     # 僅移除與偵測到的付款方式相關的關鍵字
     scoped_keywords = get_keywords_for_payment_method(payment_method)
     sorted_keywords = sorted(scoped_keywords, key=len, reverse=True)
     
-    cleaned = text
+    # 付款方式關鍵字清理
     for keyword in sorted_keywords:
         # 使用 word boundary 或空格分隔來避免誤刪（如 "line" 在 "deadline" 中）
         # 對於中文關鍵字直接替換，對於英文使用 word boundary

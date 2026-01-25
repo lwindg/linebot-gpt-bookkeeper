@@ -18,6 +18,7 @@ LIST_MODE=false
 DEBUG_MODE=false
 ALL_MODE=false
 SMOKE_MODE=false
+PARSER_MODE=false
 
 TOTAL_TESTS=0
 PASSED_TESTS=0
@@ -29,8 +30,8 @@ usage() {
 Unified test runner (functional suites)
 
 Usage:
-  ./run_tests.sh --suite <expense|multi_expense|advance_payment|date|cashflow|update> [--auto|--manual] [--only <pattern>] [--smoke] [--list]
-  ./run_tests.sh --all [--auto|--manual] [--only <pattern>] [--smoke] [--list]
+  ./run_tests.sh --suite <expense|multi_expense|advance_payment|date|cashflow|update> [--auto|--manual] [--only <pattern>] [--smoke] [--list] [--parser]
+  ./run_tests.sh --all [--auto|--manual] [--only <pattern>] [--smoke] [--list] [--parser]
 
 Options:
   --suite <name>    Suite name: expense, multi_expense, advance_payment, date, cashflow, update
@@ -41,6 +42,7 @@ Options:
   --smoke           Run a small smoke subset per suite (can be combined with --suite/--all)
   --list            List matched tests and exit (no OpenAI calls)
   --debug           Print debug info on failures
+  --parser          Use parser-first pipeline (test_local.py --parser)
   --help, -h        Show this help
 
 Notes:
@@ -100,6 +102,10 @@ parse_args() {
         ;;
       --debug)
         DEBUG_MODE=true
+        shift
+        ;;
+      --parser)
+        PARSER_MODE=true
         shift
         ;;
       --help|-h)
@@ -227,8 +233,10 @@ validate_suite_jsonl() {
         if ! echo "$line" | jq -e '
           (.expected.bookkeeping | type == "object")
           and ((.expected.bookkeeping.item? // "" ) | type == "string")
+          and ((.expected.bookkeeping.item_contains? // "" ) | type == "string")
           and ((.expected.bookkeeping.amount? // "" ) | type == "string")
           and ((.expected.bookkeeping.payment? // "" ) | type == "string")
+          and ((.expected.bookkeeping.payment_contains? // "" ) | type == "string")
           and ((.expected.bookkeeping.category? // "" ) | type == "string")
           and ((.expected.bookkeeping.project? // "" ) | type == "string")
           and ((.expected.bookkeeping.item_count? // "" ) | type == "string")
@@ -571,9 +579,9 @@ run_case_manual() {
 
 run_case_auto() {
   local group="$1" name="$2" message="$3"
-  local expected_intent="$4" expected_item="$5" expected_amount="$6" expected_payment="$7"
-  local expected_category="$8" expected_project="$9" expected_item_count="${10}" expected_advance_status="${11}" expected_recipient="${12}"
-  local expected_error_contains="${13}" expected_date="${14}" expected_update_field="${15}" expected_update_value="${16}"
+  local expected_intent="$4" expected_item="$5" expected_item_contains="$6" expected_amount="$7" expected_payment="$8" expected_payment_contains="$9"
+  local expected_category="${10}" expected_project="${11}" expected_item_count="${12}" expected_advance_status="${13}" expected_recipient="${14}"
+  local expected_error_contains="${15}" expected_date="${16}" expected_update_field="${17}" expected_update_value="${18}"
 
   echo ""
   echo -e "${BLUE}======================================================================${NC}"
@@ -583,7 +591,11 @@ run_case_auto() {
 
   local output
   # Prefer raw JSON output to avoid parsing human-readable text.
-  output="$(python test_local.py --raw "$message" 2> >(cat >&2))"
+  if [[ "$PARSER_MODE" == true ]]; then
+    output="$(python test_local.py --raw --parser "$message" 2> >(cat >&2))"
+  else
+    output="$(python test_local.py --raw "$message" 2> >(cat >&2))"
+  fi
 
   local actual_intent
   actual_intent="$(extract_intent_text "$output")"
@@ -630,17 +642,31 @@ run_case_auto() {
       fi
     fi
   else
-    if ! compare_exact "${item:-}" "$expected_item"; then
-      test_passed=false
-      failures+=("item: expected[$expected_item] actual[${item:-}]")
+    if [[ -n "$expected_item_contains" ]]; then
+      if ! compare_contains "${item:-}" "$expected_item_contains"; then
+        test_passed=false
+        failures+=("item: expected[contains $expected_item_contains] actual[${item:-}]")
+      fi
+    else
+      if ! compare_exact "${item:-}" "$expected_item"; then
+        test_passed=false
+        failures+=("item: expected[$expected_item] actual[${item:-}]")
+      fi
     fi
     if ! compare_amount "${amount:-}" "$expected_amount"; then
       test_passed=false
       failures+=("amount: expected[$expected_amount] actual[${amount:-}]")
     fi
-    if ! compare_exact "${payment:-}" "$expected_payment"; then
-      test_passed=false
-      failures+=("payment: expected[$expected_payment] actual[${payment:-}]")
+    if [[ -n "$expected_payment_contains" ]]; then
+      if ! compare_contains "${payment:-}" "$expected_payment_contains"; then
+        test_passed=false
+        failures+=("payment: expected[contains $expected_payment_contains] actual[${payment:-}]")
+      fi
+    else
+      if ! compare_exact "${payment:-}" "$expected_payment"; then
+        test_passed=false
+        failures+=("payment: expected[$expected_payment] actual[${payment:-}]")
+      fi
     fi
     if ! compare_category "${category:-}" "$expected_category"; then
       test_passed=false
@@ -737,6 +763,9 @@ main() {
     else
       echo "Mode: manual"
     fi
+    if [[ "$PARSER_MODE" == true ]]; then
+      echo "Parser: enabled"
+    fi
     if [[ -n "$SMOKE_ONLY_PATTERN" ]]; then
       echo "Smoke: $SMOKE_ONLY_PATTERN"
     fi
@@ -791,8 +820,10 @@ main() {
 
       expected_intent="$(jq -r '.expected.intent // empty' <<<"$line")"
       expected_item="$(jq -r '.expected.bookkeeping.item // empty' <<<"$line")"
+      expected_item_contains="$(jq -r '.expected.bookkeeping.item_contains // empty' <<<"$line")"
       expected_amount="$(jq -r '.expected.bookkeeping.amount // empty' <<<"$line")"
       expected_payment="$(jq -r '.expected.bookkeeping.payment // empty' <<<"$line")"
+      expected_payment_contains="$(jq -r '.expected.bookkeeping.payment_contains // empty' <<<"$line")"
       expected_category="$(jq -r '.expected.bookkeeping.category // empty' <<<"$line")"
       expected_project="$(jq -r '.expected.bookkeeping.project // empty' <<<"$line")"
       expected_item_count="$(jq -r '.expected.bookkeeping.item_count // empty' <<<"$line")"
@@ -809,7 +840,7 @@ main() {
       fi
 
       run_case "$tc_group" "$tc_id: $tc_name" "$tc_message" "$expected_desc" \
-        "$expected_intent" "$expected_item" "$expected_amount" "$expected_payment" \
+        "$expected_intent" "$expected_item" "$expected_item_contains" "$expected_amount" "$expected_payment" "$expected_payment_contains" \
         "$expected_category" "$expected_project" "$expected_item_count" "$expected_advance_status" "$expected_recipient" \
         "$expected_error_contains" "$expected_date" "$expected_update_field" "$expected_update_value"
     done <"$suite_file"
