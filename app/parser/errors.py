@@ -19,6 +19,7 @@ class ParserErrorCode(Enum):
     INVALID_PAYMENT_METHOD = "invalid_payment"  # 付款方式無法識別
     AMBIGUOUS_ADVANCE = "ambiguous_advance"     # 代墊狀態不明確
     MIXED_INTENT = "mixed_intent"               # 混合現金流與一般支出
+    MIXED_PAYMENT_METHOD = "mixed_payment"      # 多項目付款方式不一致
     EMPTY_MESSAGE = "empty_message"             # 空訊息
     PARSE_FAILED = "parse_failed"               # 解析失敗（通用）
 
@@ -31,6 +32,7 @@ ERROR_MESSAGES = {
     ParserErrorCode.INVALID_PAYMENT_METHOD: "無法識別付款方式「{value}」，請使用：現金、Line Pay、狗卡、灰狗、合庫 等",
     ParserErrorCode.AMBIGUOUS_ADVANCE: "代墊狀態不明確，請說明是「代墊」還是「需支付」",
     ParserErrorCode.MIXED_INTENT: "請分開輸入：現金流（轉帳/繳卡費/提款）和一般支出不能混在同一句",
+    ParserErrorCode.MIXED_PAYMENT_METHOD: "偵測到不同付款方式，請分開記帳或使用共用付款方式",
     ParserErrorCode.EMPTY_MESSAGE: "請輸入記帳內容",
     ParserErrorCode.PARSE_FAILED: "無法解析訊息，請確認格式是否正確",
 }
