@@ -27,15 +27,20 @@ def _normalize_separators(value: str) -> str:
     return value.replace("／", "/").strip()
 
 
-def _load_categories_from_yaml() -> set[str]:
-    """Load categories from YAML config file."""
+@lru_cache(maxsize=1)
+def _load_config_from_yaml() -> dict:
+    """Load full config from YAML file."""
     config_path = Path(__file__).parent / "config" / "classifications.yaml"
     if not config_path.exists():
-        return set()
+        return {}
     
     with open(config_path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-    
+        return yaml.safe_load(f) or {}
+
+
+def _load_categories_from_yaml() -> set[str]:
+    """Load categories from YAML config file."""
+    data = _load_config_from_yaml()
     categories: set[str] = set()
     if data and "categories" in data:
         for top_level, items in data["categories"].items():
@@ -43,6 +48,58 @@ def _load_categories_from_yaml() -> set[str]:
                 for item in items:
                     categories.add(_normalize_separators(item))
     return categories
+
+
+@lru_cache(maxsize=1)
+def get_classification_rules_description() -> str:
+    """
+    Get formatted classification rules description for AI prompt.
+    Reads from 'rules' section in YAML.
+    """
+    data = _load_config_from_yaml()
+    if not data or "rules" not in data:
+        return ""
+
+    descriptions: list[str] = []
+    rules = data.get("rules") or {}
+    
+    # 1. 餐飲三層規則
+    if "meal_three_layer" in rules:
+        r = rules.get("meal_three_layer") or {}
+        title = r.get("description")
+        if title:
+            descriptions.append(f"### {title}")
+        forbid = r.get("禁止")
+        if forbid:
+            descriptions.append(f"**禁止事項**: {forbid}")
+        patterns = r.get("patterns") or []
+        if patterns:
+            descriptions.append("規則：")
+            for p in patterns:
+                pattern = p.get("pattern")
+                category = p.get("category")
+                if pattern and category:
+                    descriptions.append(f"- 遇到「{pattern}」時，必須分類為 `{category}`")
+        descriptions.append("")
+
+    # 2. 飲品與點心規則
+    if "beverages_snacks" in rules:
+        items = rules.get("beverages_snacks") or []
+        if items:
+            descriptions.append("### 飲品與點心規則")
+            for r in items:
+                pattern = r.get("pattern")
+                category = r.get("category")
+                if not pattern or not category:
+                    continue
+                desc = f"- 遇到「{pattern}」時，分類為 `{category}`"
+                exception = r.get("exception")
+                if exception:
+                    desc += f" (例外：{exception})"
+                descriptions.append(desc)
+            descriptions.append("")
+        
+    return "\n".join(descriptions)
 
 
 def _iter_category_tokens_from_rules(rules_text: str) -> Iterable[str]:

@@ -26,6 +26,12 @@ from app.gpt_processor import process_multi_expense_gpt_only, MultiExpenseResult
 from app.processor import process_with_parser
 
 
+# 只比對的欄位
+FOCUS_FIELDS = {"分類", "專案"}
+
+# 顯示但不比對的欄位
+DISPLAY_ONLY_FIELDS = {"品項"}
+
 # 測試案例（按優先序排列）
 TEST_CASES = [
     # === 單項目支出 ===
@@ -56,6 +62,7 @@ def run_verification(skip_gpt: bool = False):
     print("=" * 60)
     print("Shadow Mode Verification")
     print(f"Parser-first skip_gpt: {skip_gpt}")
+    print(f"Compare fields: {', '.join(sorted(FOCUS_FIELDS))} (items are listed only)")
     print("=" * 60)
     print()
     
@@ -88,6 +95,11 @@ def run_verification(skip_gpt: bool = False):
         
         # Compare
         comparison = compare_results(gpt_result, parser_result, message)
+        # 在此腳本中只關注分類與專案（品項只列出不比對）
+        for entry_cmp in comparison.entry_comparisons:
+            entry_cmp.fields = [
+                f for f in entry_cmp.fields if f.field_name in FOCUS_FIELDS
+            ]
         log_comparison(comparison)
         
         results["total"] += 1
@@ -105,6 +117,13 @@ def run_verification(skip_gpt: bool = False):
                 print(f"      Count: GPT={comparison.gpt_entry_count} vs Parser={comparison.parser_entry_count}")
             
             for entry_cmp in comparison.entry_comparisons:
+                # 列出品項（僅顯示，不比對）
+                try:
+                    gpt_item = gpt_result.entries[entry_cmp.index].品項
+                    parser_item = parser_result.entries[entry_cmp.index].品項
+                    print(f"      [品項] GPT={gpt_item} vs Parser={parser_item}")
+                except Exception:
+                    pass
                 for fc in entry_cmp.fields:
                     if not fc.is_match:
                         print(f"      [{entry_cmp.index}] {fc.field_name}: GPT={fc.gpt_value} vs Parser={fc.parser_value}")

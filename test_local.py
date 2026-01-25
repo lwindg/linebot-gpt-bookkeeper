@@ -139,12 +139,20 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--raw", action="store_true", help="Print JSON only for single-run mode (no extra text).")
     parser.add_argument("--user", default=DEFAULT_TEST_USER_ID, help="Test user id used for KV/full flow.")
     parser.add_argument("--debug", action="store_true", help="Enable debug logs for prompt routing and GPT output.")
+    parser.add_argument("--parser", action="store_true", help="Use parser-first pipeline (process_with_parser).")
     parser.add_argument("--kv", action="store_true", help="Show last transaction stored in KV and exit.")
     parser.add_argument("--clear", action="store_true", help="Clear KV record for the user and exit.")
     return parser
 
 
-def simulate_full_flow(message: str, user_id: str = DEFAULT_TEST_USER_ID, show_json: bool = True, live_mode: bool = False, debug: bool = False):
+def simulate_full_flow(
+    message: str,
+    user_id: str = DEFAULT_TEST_USER_ID,
+    show_json: bool = True,
+    live_mode: bool = False,
+    debug: bool = False,
+    use_parser: bool = False,
+):
     """
     模擬完整的 LINE handler 流程
 
@@ -167,7 +175,12 @@ def simulate_full_flow(message: str, user_id: str = DEFAULT_TEST_USER_ID, show_j
 
     # Step 1: GPT 解析
     print("\n📝 Step 1: GPT 解析...")
-    result = process_multi_expense(message, debug=debug)
+    if use_parser:
+        from app.processor import process_with_parser
+
+        result = process_with_parser(message)
+    else:
+        result = process_multi_expense(message, debug=debug)
     print(f"   意圖: {result.intent}")
 
     # Step 2: 根據意圖執行對應操作
@@ -630,9 +643,21 @@ def interactive_mode(test_user_id=DEFAULT_TEST_USER_ID, full_mode=False, live_mo
             try:
                 if full_mode:
                     # 完整流程模式
-                    simulate_full_flow(user_input, test_user_id, show_json, live_mode, debug=args.debug)
+                    simulate_full_flow(
+                        user_input,
+                        test_user_id,
+                        show_json,
+                        live_mode,
+                        debug=args.debug,
+                        use_parser=args.parser,
+                    )
                 else:
-                    result = process_multi_expense(user_input, debug=args.debug)
+                    if args.parser:
+                        from app.processor import process_with_parser
+
+                        result = process_with_parser(user_input)
+                    else:
+                        result = process_multi_expense(user_input, debug=args.debug)
                     print_multi_result(result, show_json)
             except Exception as e:
                 print(f"\n❌ 錯誤: {str(e)}\n")
@@ -647,7 +672,14 @@ def interactive_mode(test_user_id=DEFAULT_TEST_USER_ID, full_mode=False, live_mo
             break
 
 
-def single_test(message, full_mode=False, test_user_id=DEFAULT_TEST_USER_ID, live_mode=False, debug: bool = False):
+def single_test(
+    message,
+    full_mode=False,
+    test_user_id=DEFAULT_TEST_USER_ID,
+    live_mode=False,
+    debug: bool = False,
+    use_parser: bool = False,
+):
     """單次測試模式"""
     if full_mode:
         print(f"\n🧪 測試訊息: {message}")
@@ -655,7 +687,14 @@ def single_test(message, full_mode=False, test_user_id=DEFAULT_TEST_USER_ID, liv
         print(f"🔄 模式: 完整流程 [{mode_str}]")
         print(f"👤 用戶: {test_user_id}\n")
         try:
-            simulate_full_flow(message, test_user_id, show_json=True, live_mode=live_mode, debug=debug)
+            simulate_full_flow(
+                message,
+                test_user_id,
+                show_json=True,
+                live_mode=live_mode,
+                debug=debug,
+                use_parser=use_parser,
+            )
         except Exception as e:
             print(f"\n❌ 錯誤: {str(e)}\n")
             import traceback
@@ -667,7 +706,12 @@ def single_test(message, full_mode=False, test_user_id=DEFAULT_TEST_USER_ID, liv
     print("")
 
     try:
-        result = process_multi_expense(message, debug=debug)
+        if use_parser:
+            from app.processor import process_with_parser
+
+            result = process_with_parser(message)
+        else:
+            result = process_multi_expense(message, debug=debug)
         print_multi_result(result, show_json=True)
     except Exception as e:
         print(f"\n❌ 錯誤: {str(e)}\n")
@@ -706,7 +750,7 @@ if __name__ == "__main__":
                 print("--raw cannot be used with --full.", file=sys.stderr)
                 raise SystemExit(2)
             raise SystemExit(single_test_raw(message, debug=args.debug))
-        single_test(message, full_mode, test_user_id, live_mode, debug=args.debug)
+        single_test(message, full_mode, test_user_id, live_mode, debug=args.debug, use_parser=args.parser)
     else:
         if args.raw:
             print("--raw requires a message argument.", file=sys.stderr)

@@ -8,7 +8,7 @@ Core Enricher Logic (T018)
 import logging
 from typing import Optional
 
-from app.parser import AuthoritativeEnvelope, Transaction
+from app.parser import AuthoritativeEnvelope, Transaction, TransactionType
 from app.category_resolver import allowed_categories
 from .types import EnrichedTransaction, EnrichedEnvelope
 from .gpt_client import call_gpt_enrichment
@@ -60,6 +60,19 @@ def _validate_category(category: str) -> str:
     return "未分類"
 
 
+def _cashflow_category(tx_type: TransactionType) -> str:
+    """Return fixed category for cashflow types."""
+    if tx_type == TransactionType.WITHDRAWAL:
+        return "提款"
+    if tx_type == TransactionType.TRANSFER:
+        return "轉帳"
+    if tx_type == TransactionType.CARD_PAYMENT:
+        return "繳卡費"
+    if tx_type == TransactionType.INCOME:
+        return "收入"
+    return "未分類"
+
+
 def _merge_enrichment(
     tx: Transaction,
     enrichment: dict,
@@ -74,8 +87,12 @@ def _merge_enrichment(
     Returns:
         EnrichedTransaction: 合併後的完整交易
     """
-    # 驗證分類
-    category = _validate_category(enrichment.get("分類", "未分類"))
+    # 現金流分類固定，不交給 GPT
+    if TransactionType.is_cashflow(tx.type):
+        category = _cashflow_category(tx.type)
+    else:
+        # 驗證分類
+        category = _validate_category(enrichment.get("分類", "未分類"))
     
     return EnrichedTransaction(
         # Parser 權威欄位
@@ -141,12 +158,24 @@ def enrich(
                 "明細說明": "",
             }
     else:
-        # 呼叫 GPT API
-        tx_dicts = [_transaction_to_dict(tx) for tx in transactions]
-        gpt_result = call_gpt_enrichment(tx_dicts, envelope.source_text)
-        
-        for item in gpt_result.get("enrichment", []):
-            enrichment_map[item["id"]] = item
+        # 現金流不交給 GPT 分類；只針對非現金流交易呼叫 GPT
+        non_cashflow = [tx for tx in transactions if not TransactionType.is_cashflow(tx.type)]
+        cashflow = [tx for tx in transactions if TransactionType.is_cashflow(tx.type)]
+
+        if non_cashflow:
+            tx_dicts = [_transaction_to_dict(tx) for tx in non_cashflow]
+            gpt_result = call_gpt_enrichment(tx_dicts, envelope.source_text)
+            for item in gpt_result.get("enrichment", []):
+                enrichment_map[item["id"]] = item
+
+        for tx in cashflow:
+            enrichment_map[tx.id] = {
+                "id": tx.id,
+                "分類": _cashflow_category(tx.type),
+                "專案": "日常",
+                "必要性": "必要日常支出",
+                "明細說明": "",
+            }
     
     # 合併結果
     enriched_transactions = []

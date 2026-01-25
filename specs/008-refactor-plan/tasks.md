@@ -121,7 +121,7 @@
 
 - [x] T029 新增 Parser 單元測試 `tests/parser/`
   - `test_extract_amount.py`、`test_extract_advance.py`、`test_split_items.py`
-- [ ] T030 新增 Enrichment contract 測試 `tests/enrichment/`
+- [x] T030 新增 Enrichment contract 測試 `tests/enricher/`
   - 固定權威 JSON → 驗證 AI 只回 enrichment
 - [ ] T031 更新既有 functional suites
   - `tests/test_local.py` 支援新路徑
@@ -147,4 +147,3 @@ T024-T028 (Phase 5: 路由切換)
      ↓
 T029-T032 (Phase 6: 測試)
 ```
-

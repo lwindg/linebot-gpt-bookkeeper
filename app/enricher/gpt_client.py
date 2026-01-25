@@ -14,7 +14,7 @@ from openai import OpenAI
 
 from app.schemas import ENRICHMENT_RESPONSE_SCHEMA
 from app.prompts import CLASSIFICATION_RULES, CURRENCY_DETECTION
-from app.category_resolver import allowed_categories
+from app.category_resolver import allowed_categories, get_classification_rules_description
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +50,9 @@ def _build_enrichment_prompt(transactions: list[dict], source_text: str) -> str:
             tx_desc += f", counterparty={tx['counterparty']}"
         tx_descriptions.append(tx_desc)
     
+    # 取得分類規則描述
+    rules_desc = get_classification_rules_description()
+    
     prompt = f"""你是一個記帳助手。請根據以下交易資訊，補充分類、專案、必要性和明細說明。
 
 ## 原始訊息
@@ -59,10 +62,17 @@ def _build_enrichment_prompt(transactions: list[dict], source_text: str) -> str:
 {chr(10).join(tx_descriptions)}
 
 ## 你需要為每筆交易補充的欄位
-1. **分類**：從允許的分類清單中選擇最適合的
+1. **分類**：從允許的分類清單中選擇最適合的，禁止自建分類；若無完全符合，請選擇最相似的清單項目，並嚴格遵守下方分類規則。
 2. **專案**：預設為「日常」，特殊情況可推導（如健康類別 → 健康檢查）
 3. **必要性**：從以下選項選擇 - 必要日常支出 / 想吃想買但合理 / 療癒性支出 / 衝動購物（提醒）
 4. **明細說明**：額外的商家、地點或用途說明
+"""
+    if rules_desc:
+        prompt += f"""
+## 分類規則（必須嚴格遵守）
+{rules_desc}
+"""
+    prompt += f"""
 
 ## 允許的分類清單
 {category_list}
