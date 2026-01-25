@@ -47,7 +47,8 @@ import json
 import argparse
 import re
 from unittest.mock import patch
-from app.gpt_processor import process_multi_expense, MultiExpenseResult, BookkeepingEntry, _detect_update_intent
+from app.gpt_processor import MultiExpenseResult, BookkeepingEntry
+from app.pipeline.router import process_message
 from app.kv_store import get_last_transaction, KVStore
 from app.config import KV_ENABLED
 from app.webhook_sender import send_multiple_webhooks, build_create_payload, build_update_payload
@@ -125,12 +126,8 @@ def single_test_raw(message: str, *, debug: bool = False, use_parser: bool = Fal
     This is designed for automated test runners (e.g., run_tests.sh).
     """
     try:
-        if use_parser and not _detect_update_intent(message):
-            from app.processor import process_with_parser
-
-            result = process_with_parser(message)
-        else:
-            result = process_multi_expense(message, debug=debug)
+        mode = "parser" if use_parser else "auto"
+        result = process_message(message, mode=mode, debug=debug)
         data = result_to_raw_json(result)
         print(json.dumps(data, ensure_ascii=False))
         return 0
@@ -187,12 +184,8 @@ def simulate_full_flow(
 
     # Step 1: GPT 解析
     print("\n📝 Step 1: GPT 解析...")
-    if use_parser and not _detect_update_intent(message):
-        from app.processor import process_with_parser
-
-        result = process_with_parser(message)
-    else:
-        result = process_multi_expense(message, debug=debug)
+    mode = "parser" if use_parser else "auto"
+    result = process_message(message, mode=mode, debug=debug)
     print(f"   意圖: {result.intent}")
 
     # Step 2: 根據意圖執行對應操作
@@ -664,12 +657,8 @@ def interactive_mode(test_user_id=DEFAULT_TEST_USER_ID, full_mode=False, live_mo
                         use_parser=args.parser,
                     )
                 else:
-                    if args.parser and not _detect_update_intent(user_input):
-                        from app.processor import process_with_parser
-
-                        result = process_with_parser(user_input)
-                    else:
-                        result = process_multi_expense(user_input, debug=args.debug)
+                    mode = "parser" if args.parser else "auto"
+                    result = process_message(user_input, mode=mode, debug=args.debug)
                     print_multi_result(result, show_json)
             except Exception as e:
                 print(f"\n❌ 錯誤: {str(e)}\n")
@@ -718,12 +707,8 @@ def single_test(
     print("")
 
     try:
-        if use_parser and not _detect_update_intent(message):
-            from app.processor import process_with_parser
-
-            result = process_with_parser(message)
-        else:
-            result = process_multi_expense(message, debug=debug)
+        mode = "parser" if use_parser else "auto"
+        result = process_message(message, mode=mode, debug=debug)
         print_multi_result(result, show_json=True)
     except Exception as e:
         print(f"\n❌ 錯誤: {str(e)}\n")

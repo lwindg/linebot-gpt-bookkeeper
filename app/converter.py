@@ -11,7 +11,8 @@ from typing import Optional
 
 from app.parser import TransactionType
 from app.enricher import EnrichedEnvelope, EnrichedTransaction
-from app.gpt_processor import BookkeepingEntry, MultiExpenseResult, generate_transaction_id
+from app.gpt_processor import BookkeepingEntry, MultiExpenseResult
+from app.pipeline.normalize import build_batch_id, assign_transaction_ids
 
 
 def _type_to_advance_status(tx_type: TransactionType, counterparty: str) -> str:
@@ -24,25 +25,6 @@ def _type_to_advance_status(tx_type: TransactionType, counterparty: str) -> str:
         # 有對象但不是代墊類型 -> 可能是不索取
         return "不索取"
     return "無"
-
-
-def _generate_transaction_id(
-    date_str: Optional[str],
-    *,
-    item: Optional[str] = None,
-    use_current_time: bool = False,
-) -> str:
-    """
-    生成交易 ID：YYYYMMDD-HHMMSS
-
-    與 GPT 路徑共用時間推測邏輯（早餐/午餐/晚餐等）。
-    """
-    return generate_transaction_id(
-        date_str,
-        None,
-        item,
-        use_current_time=use_current_time,
-    )
 
 
 def _enriched_tx_to_entry(
@@ -61,7 +43,7 @@ def _enriched_tx_to_entry(
         date_str = datetime.now(taipei_tz).strftime("%Y-%m-%d")
 
     # 生成交易 ID（若已提供批次ID，優先使用）
-    transaction_id = batch_id or _generate_transaction_id(
+    transaction_id = batch_id or build_batch_id(
         date_str,
         item=tx.raw_item,
         use_current_time=not has_explicit_date,
@@ -125,7 +107,7 @@ def enriched_to_multi_result(
         shared_date = envelope.transactions[0].date
     first_item = envelope.transactions[0].raw_item if envelope.transactions else None
     use_current_time = not bool(shared_date)
-    batch_id = _generate_transaction_id(
+    batch_id = build_batch_id(
         shared_date or datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d"),
         item=first_item,
         use_current_time=use_current_time,
@@ -211,9 +193,7 @@ def enriched_to_multi_result(
             entries.append(incoming_entry)
 
     # 統一設定交易ID（多筆加序號）
-    if len(entries) > 1:
-        for idx, entry in enumerate(entries, start=1):
-            entry.交易ID = f"{batch_id}-{idx:02d}"
+    assign_transaction_ids(entries, batch_id)
 
     # Determine result intent based on transactions
     # Legacy compatibility: specific intent for cashflow items

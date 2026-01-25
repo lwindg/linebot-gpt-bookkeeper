@@ -20,6 +20,8 @@ from openai import OpenAI
 from app.config import OPENAI_API_KEY, GPT_MODEL
 from app.prompts import CASHFLOW_INTENTS_PROMPT, MULTI_EXPENSE_PROMPT, UPDATE_INTENT_PROMPT
 from app.schemas import MULTI_BOOKKEEPING_SCHEMA
+from app.pipeline.normalize import build_batch_id, assign_transaction_ids
+from app.pipeline.transaction_id import generate_transaction_id as _generate_transaction_id
 from app.exchange_rate import ExchangeRateService
 from app.kv_store import KVStore
 from app.category_resolver import resolve_category_autocorrect
@@ -330,74 +332,14 @@ def parse_semantic_date(date_str: str, taipei_tz: ZoneInfo) -> str:
     return now.strftime("%Y-%m-%d")
 
 
-def generate_transaction_id(date_str: str, time_str: Optional[str] = None, item: Optional[str] = None, use_current_time: bool = False) -> str:
-    """
-    生成交易ID：YYYYMMDD-HHMMSS（使用台北時間）
-
-    時間戳記生成規則：
-    1. 如果提供明確時間 → 使用該時間
-    2. 如果用戶未提供日期（預設今天）且無明確時間 → 使用當前時間
-    3. 如果提供過去日期且無明確時間，根據品項推測：
-       - 品項含「早餐」→ 08:00:00
-       - 品項含「午餐」→ 12:00:00
-       - 品項含「晚餐」→ 18:00:00
-       - 其他情況 → 23:59:00
-
-    Args:
-        date_str: 日期字串（YYYY-MM-DD 格式）
-        time_str: 時間字串（HH:MM 或 HH:MM:SS 格式，可選）
-        item: 品項名稱（用於推測合理時間，可選）
-        use_current_time: 是否使用當前時間（當用戶未提供日期時為 True）
-
-    Returns:
-        str: 交易ID（格式：YYYYMMDD-HHMMSS）
-
-    Examples:
-        >>> generate_transaction_id("2025-11-13", None, "點心", use_current_time=True)
-        '20251113-143027'  # 使用當前時間
-        >>> generate_transaction_id("2025-11-12", "14:30", None)
-        '20251112-143000'
-        >>> generate_transaction_id("2025-11-12", None, "午餐")
-        '20251112-120000'
-        >>> generate_transaction_id("2025-11-12", None, "線上英文課")
-        '20251112-235900'
-    """
-    taipei_tz = ZoneInfo('Asia/Taipei')
-
-    # 解析日期
-    date_parts = date_str.split('-')
-    year, month, day = int(date_parts[0]), int(date_parts[1]), int(date_parts[2])
-
-    # 決定時間
-    if time_str:
-        # 情況1：有明確時間
-        time_parts = time_str.split(':')
-        if len(time_parts) == 2:
-            hour, minute, second = int(time_parts[0]), int(time_parts[1]), 0
-        else:  # len == 3
-            hour, minute, second = int(time_parts[0]), int(time_parts[1]), int(time_parts[2])
-    elif use_current_time:
-        # 情況2：用戶未提供日期（預設今天）且無明確時間，使用當前時間
-        now = datetime.now(taipei_tz)
-        hour, minute, second = now.hour, now.minute, now.second
-    elif item:
-        # 情況3-5：提供過去日期且無明確時間，根據品項推測時間
-        if '早餐' in item:
-            hour, minute, second = 8, 0, 0
-        elif '午餐' in item:
-            hour, minute, second = 12, 0, 0
-        elif '晚餐' in item:
-            hour, minute, second = 18, 0, 0
-        else:
-            # 其他品項，使用 23:59:00
-            hour, minute, second = 23, 59, 0
-    else:
-        # 無時間、無品項：使用 23:59:00
-        hour, minute, second = 23, 59, 0
-
-    # 組合日期時間並格式化
-    dt = datetime(year, month, day, hour, minute, second, tzinfo=taipei_tz)
-    return dt.strftime("%Y%m%d-%H%M%S")
+def generate_transaction_id(
+    date_str: str,
+    time_str: Optional[str] = None,
+    item: Optional[str] = None,
+    use_current_time: bool = False,
+) -> str:
+    """Backward-compatible proxy to shared transaction id generator."""
+    return _generate_transaction_id(date_str, time_str, item, use_current_time)
 
 
 def process_message(user_message: str) -> BookkeepingEntry:
@@ -641,9 +583,8 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False) -> Mu
             # 生成批次ID（作為基礎時間戳）
             first_item = items[0].get("品項") if items else None
             use_current_time = not date_str  # 若未提供日期，使用當前時間
-            batch_id = generate_transaction_id(
+            batch_id = build_batch_id(
                 shared_date,
-                None,  # 暫不支援時間提取
                 first_item,
                 use_current_time
             )
@@ -685,13 +626,8 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False) -> Mu
                             error_message=f"無法取得 {原幣別} 匯率，請稍後再試或改用新台幣記帳"
                         )
 
-                # 生成獨立的交易ID（批次ID + 序號）
-                if len(items) > 1:
-                    # 多項目：批次ID-序號（例如：20251125-143027-01）
-                    transaction_id = f"{batch_id}-{idx:02d}"
-                else:
-                    # 單項目：直接使用批次ID
-                    transaction_id = batch_id
+                # 先填批次ID，最後統一補序號
+                transaction_id = batch_id
 
                 # 補充預設值和共用欄位
                 分類 = resolve_category_autocorrect(item_data.get("分類", ""))
@@ -723,6 +659,8 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False) -> Mu
                 )
 
                 entries.append(entry)
+
+            assign_transaction_ids(entries, batch_id)
 
             result = MultiExpenseResult(
                 intent="multi_bookkeeping",
@@ -903,7 +841,7 @@ def _process_cashflow_items(cashflow_items: list[dict], user_message: str) -> Mu
             except Exception as e:
                 logger.warning(f"Cashflow date parse failed: {date_str}, error: {e}")
 
-        batch_id = generate_transaction_id(shared_date, None, item_name, use_current_time=not date_str)
+        batch_id = build_batch_id(shared_date, item=item_name, use_current_time=not date_str)
 
         def build_entry(tx_type: str, payment_method_value: str, transaction_id: str) -> BookkeepingEntry:
             return BookkeepingEntry(
@@ -948,9 +886,12 @@ def _process_cashflow_items(cashflow_items: list[dict], user_message: str) -> Mu
             )
 
         total_entries = len(entry_specs)
+        item_entries: list[BookkeepingEntry] = []
         for idx, (tx_type, payment_method_value) in enumerate(entry_specs, start=1):
-            transaction_id = batch_id if total_entries == 1 else f"{batch_id}-{idx:02d}"
-            entries.append(build_entry(tx_type, payment_method_value, transaction_id))
+            transaction_id = batch_id
+            item_entries.append(build_entry(tx_type, payment_method_value, transaction_id))
+        assign_transaction_ids(item_entries, batch_id)
+        entries.extend(item_entries)
 
     return MultiExpenseResult(
         intent="cashflow_intents",
