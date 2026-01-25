@@ -111,14 +111,19 @@ def result_to_raw_json(result) -> dict:
     return {"intent": intent, "intent_display": intent}
 
 
-def single_test_raw(message: str, *, debug: bool = False) -> int:
+def single_test_raw(message: str, *, debug: bool = False, use_parser: bool = False) -> int:
     """
     Raw single-test mode: print JSON only (no extra text).
 
     This is designed for automated test runners (e.g., run_tests.sh).
     """
     try:
-        result = process_multi_expense(message, debug=debug)
+        if use_parser:
+            from app.processor import process_with_parser
+
+            result = process_with_parser(message)
+        else:
+            result = process_multi_expense(message, debug=debug)
         data = result_to_raw_json(result)
         print(json.dumps(data, ensure_ascii=False))
         return 0
@@ -749,7 +754,7 @@ if __name__ == "__main__":
             if full_mode:
                 print("--raw cannot be used with --full.", file=sys.stderr)
                 raise SystemExit(2)
-            raise SystemExit(single_test_raw(message, debug=args.debug))
+            raise SystemExit(single_test_raw(message, debug=args.debug, use_parser=args.parser))
         single_test(message, full_mode, test_user_id, live_mode, debug=args.debug, use_parser=args.parser)
     else:
         if args.raw:

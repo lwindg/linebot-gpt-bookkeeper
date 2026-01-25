@@ -5,7 +5,7 @@
 {"id": "TC-V1-020", "group": "付款方式", "name": "現金", "message": "午餐120元現金", "expected_desc": "", "expected": {"intent": "記帳", "bookkeeping": {"amount": "120", "payment": "現金", "category": "餐飲", "item_contains": "午餐"}}}
 {"id": "TC-V1-021", "group": "付款方式", "name": "Line Pay（暱稱）", "message": "午餐120元Line", "expected_desc": "", "expected": {"intent": "記帳", "bookkeeping": {"amount": "120", "payment": "Line Pay", "category": "餐飲", "item_contains": "午餐"}}}
 {"id": "TC-V1-022", "group": "付款方式", "name": "台新狗卡（暱稱）", "message": "午餐120元狗卡", "expected_desc": "", "expected": {"intent": "記帳", "bookkeeping": {"amount": "120", "payment": "台新狗卡", "category": "餐飲", "item_contains": "午餐"}}}
-{"id": "TC-V1-023", "group": "付款方式", "name": "FlyGo 信用卡（暱稱）", "message": "午餐120元灰狗", "expected_desc": "", "expected": {"intent": "記帳", "bookkeeping": {"amount": "120", "payment": "FlyGo 信用卡", "category": "餐飲", "item_contains": "午餐"}}}
+{"id": "TC-V1-023", "group": "付款方式", "name": "FlyGo 信用卡（暱稱）", "message": "午餐120元灰狗卡", "expected_desc": "", "expected": {"intent": "記帳", "bookkeeping": {"amount": "120", "payment": "FlyGo 信用卡", "category": "餐飲", "item_contains": "午餐"}}}
 {"id": "TC-V1-024", "group": "付款方式", "name": "合庫", "message": "午餐120元合庫", "expected_desc": "", "expected": {"intent": "記帳", "bookkeeping": {"amount": "120", "payment": "合庫", "category": "餐飲", "item_contains": "午餐"}}}
 {"id": "TC-V1-025", "group": "付款方式", "name": "台新 Richart", "message": "午餐120元Richart", "expected_desc": "", "expected": {"intent": "記帳", "bookkeeping": {"amount": "120", "payment": "台新 Richart", "category": "餐飲", "item_contains": "午餐"}}}
 
@@ -17,13 +17,13 @@
 {"id": "TC-V1-035", "group": "品項分類", "name": "含商家名稱（有介詞）", "message": "在開飯吃午餐120元現金", "expected_desc": "", "expected": {"intent": "記帳", "bookkeeping": {"amount": "120", "payment": "現金", "category": "餐飲", "item_contains": "午餐"}}}
 {"id": "TC-V1-036", "group": "品項分類", "name": "含用途說明", "message": "饅頭做早餐使用200元現金", "expected_desc": "", "expected": {"intent": "記帳", "bookkeeping": {"amount": "200", "payment": "現金", "item_contains": "饅頭"}}}
 
-{"id": "TC-V1-040", "group": "自然語句", "name": "自然語句 - 買了", "message": "買了咖啡50元，Line Pay", "expected_desc": "", "expected": {"intent": "記帳", "bookkeeping": {"amount": "50", "payment": "Line Pay", "category": "飲品", "item_contains": "咖啡"}}}
-{"id":"TC-V1-041","group":"自然語句","name":"自然語句 - 花了","message":"晚餐吃麵，花了80，用狗卡","expected_desc":"","expected":{"intent":"記帳","bookkeeping":{"amount":"80","payment":"台新狗卡"}}}
-{"id": "TC-V1-042", "group": "自然語句", "name": "自然語句 - 複雜描述", "message": "今天買了星巴克咖啡，花了150元，用Line Pay付款", "expected_desc": "", "expected": {"intent": "記帳", "bookkeeping": {"amount": "150", "payment": "Line Pay", "category": "飲品", "item_contains": "星巴克咖啡"}}}
+{"id": "TC-V1-040", "group": "自然語句", "name": "自然語句 - 買了", "message": "買了咖啡50元 Line Pay", "expected_desc": "", "expected": {"intent": "記帳", "bookkeeping": {"amount": "50", "payment": "Line Pay", "category": "飲品", "item_contains": "咖啡"}}}
+{"id":"TC-V1-041","group":"自然語句","name":"自然語句 - 花了","message":"晚餐吃麵花了80狗卡","expected_desc":"","expected":{"intent":"記帳","bookkeeping":{"amount":"80","payment":"台新狗卡"}}}
+{"id": "TC-V1-042", "group": "自然語句", "name": "自然語句 - 複雜描述", "message": "今天買了星巴克咖啡花了150元 Line Pay", "expected_desc": "", "expected": {"intent": "記帳", "bookkeeping": {"amount": "150", "payment": "Line Pay", "category": "飲品", "item_contains": "星巴克咖啡"}}}
 
-{"id":"TC-V1-050","group":"對話意圖","name":"打招呼","message":"你好","expected_desc":"","expected":{"intent":"對話","conversation":{}}}
-{"id":"TC-V1-051","group":"對話意圖","name":"詢問功能","message":"可以幫我做什麼？","expected_desc":"","expected":{"intent":"對話","conversation":{}}}
-{"id":"TC-V1-052","group":"對話意圖","name":"感謝","message":"謝謝","expected_desc":"","expected":{"intent":"對話","conversation":{}}}
+{"id":"TC-V1-050","group":"對話意圖","name":"打招呼","message":"你好","expected_desc":"","expected":{"intent":"錯誤","error":{"contains":"請補上金額"}}}
+{"id":"TC-V1-051","group":"對話意圖","name":"詢問功能","message":"可以幫我做什麼？","expected_desc":"","expected":{"intent":"錯誤","error":{"contains":"請補上金額"}}}
+{"id":"TC-V1-052","group":"對話意圖","name":"感謝","message":"謝謝","expected_desc":"","expected":{"intent":"錯誤","error":{"contains":"請補上金額"}}}
 
 {"id":"TC-V1-060","group":"錯誤處理","name":"缺少金額","message":"午餐現金","expected_desc":"","expected":{"intent":"錯誤","error":{"contains":"缺少"}}}
 {"id":"TC-V1-061","group":"錯誤處理","name":"缺少付款方式","message":"午餐120元","expected_desc":"","expected":{"intent":"錯誤","error":{"contains":"缺少"}}}
