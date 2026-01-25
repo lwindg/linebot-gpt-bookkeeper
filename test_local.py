@@ -45,8 +45,9 @@ import sys
 import logging
 import json
 import argparse
+import re
 from unittest.mock import patch
-from app.gpt_processor import process_multi_expense, MultiExpenseResult, BookkeepingEntry
+from app.gpt_processor import process_multi_expense, MultiExpenseResult, BookkeepingEntry, _detect_update_intent
 from app.kv_store import get_last_transaction, KVStore
 from app.config import KV_ENABLED
 from app.webhook_sender import send_multiple_webhooks, build_create_payload, build_update_payload
@@ -57,7 +58,10 @@ DEFAULT_TEST_USER_ID = "test_local_user"
 
 
 def entry_to_dict(entry: BookkeepingEntry) -> dict:
-    return {
+    batch_id = None
+    if entry.交易ID and re.search(r"-\d{2}$", entry.交易ID):
+        batch_id = entry.交易ID.rsplit("-", 1)[0]
+    data = {
         "日期": entry.日期,
         "品項": entry.品項,
         "原幣別": entry.原幣別,
@@ -74,6 +78,9 @@ def entry_to_dict(entry: BookkeepingEntry) -> dict:
         "收款支付對象": entry.收款支付對象,
         "附註": entry.附註,
     }
+    if batch_id:
+        data["批次ID"] = batch_id
+    return data
 
 
 def normalize_error_message(result: MultiExpenseResult) -> str:
@@ -118,7 +125,7 @@ def single_test_raw(message: str, *, debug: bool = False, use_parser: bool = Fal
     This is designed for automated test runners (e.g., run_tests.sh).
     """
     try:
-        if use_parser:
+        if use_parser and not _detect_update_intent(message):
             from app.processor import process_with_parser
 
             result = process_with_parser(message)
@@ -180,7 +187,7 @@ def simulate_full_flow(
 
     # Step 1: GPT 解析
     print("\n📝 Step 1: GPT 解析...")
-    if use_parser:
+    if use_parser and not _detect_update_intent(message):
         from app.processor import process_with_parser
 
         result = process_with_parser(message)
@@ -657,7 +664,7 @@ def interactive_mode(test_user_id=DEFAULT_TEST_USER_ID, full_mode=False, live_mo
                         use_parser=args.parser,
                     )
                 else:
-                    if args.parser:
+                    if args.parser and not _detect_update_intent(user_input):
                         from app.processor import process_with_parser
 
                         result = process_with_parser(user_input)
@@ -711,7 +718,7 @@ def single_test(
     print("")
 
     try:
-        if use_parser:
+        if use_parser and not _detect_update_intent(message):
             from app.processor import process_with_parser
 
             result = process_with_parser(message)

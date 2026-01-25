@@ -60,6 +60,13 @@ _UPDATE_FIELD_KEYWORDS = (
     "必要性",
 )
 
+_UPDATE_FIELD_PATTERN = re.compile(
+    r"(?:修改|更改|改|更新)\s*(?P<field>品項|分類|專案|原幣金額|金額|付款方式|明細說明|明細|必要性)\s*(?:為|成)?\s*(?P<value>.+)$"
+)
+_UPDATE_FIELD_REVERSED_PATTERN = re.compile(
+    r"(?P<field>品項|分類|專案|原幣金額|金額|付款方式|明細說明|明細|必要性)\s*(?:修改|更改|改|更新)\s*(?:為|成)?\s*(?P<value>.+)$"
+)
+
 _ADVANCE_OVERRIDE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(?P<who>[\u4e00-\u9fff]{1,6})先墊"), "需支付"),
     (re.compile(r"(?P<who>[\u4e00-\u9fff]{1,6})幫我買"), "需支付"),
@@ -144,6 +151,22 @@ def _extract_explicit_date(message: str) -> Optional[str]:
         return None
     year, month, day = (int(match.group(1)), int(match.group(2)), int(match.group(3)))
     return f"{year:04d}-{month:02d}-{day:02d}"
+
+
+def _extract_update_fields_simple(message: str) -> Optional[dict]:
+    """Try to extract update fields without GPT for simple patterns."""
+    text = (message or "").strip()
+    if not text:
+        return None
+    for pattern in (_UPDATE_FIELD_PATTERN, _UPDATE_FIELD_REVERSED_PATTERN):
+        match = pattern.search(text)
+        if not match:
+            continue
+        field = match.group("field").strip()
+        value = match.group("value").strip()
+        if value:
+            return {field: value}
+    return None
 
 
 def _normalize_cashflow_category(intent_type: str, raw_category: str) -> str:
@@ -564,13 +587,18 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False) -> Mu
             )
             return completion.choices[0].message.content
 
-        # 取得回應並解析 JSON
-        response_text = _run_completion(user_message)
-        if debug:
-            logger.info(f"[debug] gpt_raw_response={response_text}")
-        logger.info(f"GPT multi-expense response: {response_text}")
-
-        data = json.loads(response_text)
+        # 取得回應並解析 JSON（update intent 先嘗試本地抽取）
+        data = None
+        if update_hint:
+            local_fields = _extract_update_fields_simple(base_message)
+            if local_fields:
+                data = {"intent": "update_last_entry", "fields_to_update": local_fields}
+        if data is None:
+            response_text = _run_completion(user_message)
+            if debug:
+                logger.info(f"[debug] gpt_raw_response={response_text}")
+            logger.info(f"GPT multi-expense response: {response_text}")
+            data = json.loads(response_text)
         intent = data.get("intent")
 
         if intent == "multi_bookkeeping":

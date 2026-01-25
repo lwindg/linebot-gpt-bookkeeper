@@ -27,12 +27,12 @@ _NO_CLAIM_PATTERN = re.compile(r"請(?P<who>.+?)(?:喝|吃|午餐|晚餐|早餐)
 # 2. 代墊 (I paid for someone)
 # Pattern: (幫|代) + (Who) + (買|付|墊|代墊|墊付)
 # Exclusion: need to ensure it's not "別人幫買" (which is 需支付)
-_ADVANCE_PAID_PATTERN = re.compile(r"(?:幫|代)(?P<who>.+?)(?:買|付|墊|代墊|墊付)")
+_ADVANCE_PAID_PATTERN = re.compile(r"(?:幫|代)(?P<who>.+?)(?:購買|買|付|墊|代墊|墊付)")
 
 # 3. 需支付 (Someone paid for me)
 # Pattern: (Who) + (代訂|代付|幫買|先墊)
 # Exclusion: pattern MUST NOT start with "幫" (handled by above)
-_ADVANCE_DUE_PATTERN = re.compile(r"(?P<who>.+?)(?:代訂|代付|幫買|先墊)")
+_ADVANCE_DUE_PATTERN = re.compile(r"(?P<who>.+?)(?:代訂|代付|幫買|先墊|幫購買)")
 
 
 def extract_advance_status(text: str) -> Tuple[str, str]:
@@ -87,4 +87,3 @@ def extract_advance_status(text: str) -> Tuple[str, str]:
              return "需支付", who
 
     return "無", ""
-

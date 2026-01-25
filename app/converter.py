@@ -49,6 +49,7 @@ def _enriched_tx_to_entry(
     tx: EnrichedTransaction,
     shared_date: Optional[str] = None,
     shared_payment: Optional[str] = None,
+    batch_id: Optional[str] = None,
 ) -> BookkeepingEntry:
     """將 EnrichedTransaction 轉換為 BookkeepingEntry"""
     
@@ -59,8 +60,8 @@ def _enriched_tx_to_entry(
         taipei_tz = ZoneInfo("Asia/Taipei")
         date_str = datetime.now(taipei_tz).strftime("%Y-%m-%d")
 
-    # 生成交易 ID
-    transaction_id = _generate_transaction_id(
+    # 生成交易 ID（若已提供批次ID，優先使用）
+    transaction_id = batch_id or _generate_transaction_id(
         date_str,
         item=tx.raw_item,
         use_current_time=not has_explicit_date,
@@ -122,9 +123,16 @@ def enriched_to_multi_result(
     shared_date = None
     if envelope.transactions:
         shared_date = envelope.transactions[0].date
+    first_item = envelope.transactions[0].raw_item if envelope.transactions else None
+    use_current_time = not bool(shared_date)
+    batch_id = _generate_transaction_id(
+        shared_date or datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d"),
+        item=first_item,
+        use_current_time=use_current_time,
+    )
 
     for tx in envelope.transactions:
-        entry = _enriched_tx_to_entry(tx, shared_date, shared_payment)
+        entry = _enriched_tx_to_entry(tx, shared_date, shared_payment, batch_id)
         entries.append(entry)
         
         # 特殊處理：提款 (WITHDRAWAL) 產生雙分錄
@@ -146,7 +154,7 @@ def enriched_to_multi_result(
                 代墊狀態=entry.代墊狀態,
                 收款支付對象=entry.收款支付對象,
                 附註=entry.附註,
-                交易ID=entry.交易ID + "-2", # 避免 ID 重複
+                交易ID=batch_id, # 先使用批次ID，稍後統一加序號
                 交易類型="收入",
                 response_text=None,
             )
@@ -171,7 +179,7 @@ def enriched_to_multi_result(
                     代墊狀態=entry.代墊狀態,
                     收款支付對象=entry.收款支付對象,
                     附註=entry.附註,
-                    交易ID=entry.交易ID + "-2",
+                    交易ID=batch_id,
                     交易類型="收入",
                     response_text=None,
                 )
@@ -196,11 +204,16 @@ def enriched_to_multi_result(
                 代墊狀態=entry.代墊狀態,
                 收款支付對象=entry.收款支付對象,
                 附註=entry.附註,
-                交易ID=entry.交易ID + "-2",
+                交易ID=batch_id,
                 交易類型="收入",
                 response_text=None,
             )
             entries.append(incoming_entry)
+
+    # 統一設定交易ID（多筆加序號）
+    if len(entries) > 1:
+        for idx, entry in enumerate(entries, start=1):
+            entry.交易ID = f"{batch_id}-{idx:02d}"
 
     # Determine result intent based on transactions
     # Legacy compatibility: specific intent for cashflow items
