@@ -29,13 +29,13 @@ def _type_to_advance_status(tx_type: TransactionType, counterparty: str) -> str:
 def _generate_transaction_id(date_str: Optional[str]) -> str:
     """
     生成交易 ID：YYYYMMDD-HHMMSS
-    
+
     如果有日期則使用該日期，否則使用當前時間。
     支援格式：MM/DD, YYYY/MM/DD, YYYY-MM-DD
     """
     taipei_tz = ZoneInfo("Asia/Taipei")
     now = datetime.now(taipei_tz)
-    
+
     if date_str:
         try:
             # 嘗試解析不同格式
@@ -67,7 +67,7 @@ def _generate_transaction_id(date_str: Optional[str]) -> str:
             date_obj = now
     else:
         date_obj = now
-    
+
     return date_obj.strftime("%Y%m%d") + "-" + now.strftime("%H%M%S")
 
 
@@ -80,13 +80,13 @@ def _enriched_tx_to_entry(
     
     # 決定日期
     date_str = tx.date or shared_date
-    
+
     # 生成交易 ID
     transaction_id = _generate_transaction_id(date_str)
-    
+
     # 判斷代墊狀態
     advance_status = _type_to_advance_status(tx.type, tx.counterparty)
-    
+
     # 判斷交易類型 (支出/收入/轉帳/提款)
     if tx.type == TransactionType.INCOME:
         tx_type = "收入"
@@ -96,7 +96,7 @@ def _enriched_tx_to_entry(
         tx_type = "轉帳"
     else:
         tx_type = "支出"
-    
+
     return BookkeepingEntry(
         intent="bookkeeping",
         日期=date_str,
@@ -124,30 +124,55 @@ def enriched_to_multi_result(
 ) -> MultiExpenseResult:
     """
     將 EnrichedEnvelope 轉換為 MultiExpenseResult。
-    
+
     Args:
         envelope: Enricher 輸出的 EnrichedEnvelope
         shared_payment: 共用付款方式（若有）
-    
+
     Returns:
         MultiExpenseResult: 與舊版 gpt_processor 相容的格式
     """
     entries = []
-    
+
     # 取得第一筆的日期作為共用日期（如有）
     shared_date = None
     if envelope.transactions:
         shared_date = envelope.transactions[0].date
-    
+
     for tx in envelope.transactions:
         entry = _enriched_tx_to_entry(tx, shared_date, shared_payment)
         entries.append(entry)
-    
+        
+        # 特殊處理：提款 (WITHDRAWAL) 產生雙分錄
+        # 邏輯：Entry 1 (提款/來源帳戶) + Entry 2 (收入/現金)
+        if tx.type == TransactionType.WITHDRAWAL:
+            # 複製第一筆，修改為現金收入
+            cash_entry = BookkeepingEntry(
+                intent="bookkeeping",
+                日期=entry.日期,
+                時間=entry.時間,
+                品項=entry.品項,
+                原幣別=entry.原幣別,
+                原幣金額=entry.原幣金額,
+                明細說明=entry.明細說明,
+                付款方式="現金",  # 固定為現金
+                分類=entry.分類,
+                專案=entry.專案,
+                必要性=entry.必要性,
+                代墊狀態=entry.代墊狀態,
+                收款支付對象=entry.收款支付對象,
+                附註=entry.附註,
+                交易ID=entry.交易ID + "-2", # 避免 ID 重複
+                交易類型="收入",
+                response_text=None,
+            )
+            entries.append(cash_entry)
+
     # Determine result intent based on transactions
     # Legacy compatibility: specific intent for cashflow items
     is_cashflow = any(TransactionType.is_cashflow(tx.type) for tx in envelope.transactions)
     result_intent = "cashflow_intents" if is_cashflow else "multi_bookkeeping"
-    
+
     return MultiExpenseResult(
         intent=result_intent,
         entries=entries,
