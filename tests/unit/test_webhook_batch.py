@@ -12,7 +12,7 @@ v1.5.0 Webhook 批次發送單元測試
 
 import pytest
 from unittest.mock import patch
-from app.webhook_sender import send_multiple_webhooks
+from app.services.webhook_sender import send_multiple_webhooks
 from app.gpt_processor import BookkeepingEntry
 
 
@@ -62,7 +62,7 @@ def sample_entries():
 class TestSendMultipleWebhooks:
     """測試 send_multiple_webhooks() 函式"""
 
-    @patch('app.webhook_sender.send_to_webhook')
+    @patch('app.services.webhook_sender.send_to_webhook')
     def test_all_success(self, mock_send, sample_entries):
         """測試所有項目都成功發送"""
         # Mock 所有發送都成功
@@ -82,7 +82,7 @@ class TestSendMultipleWebhooks:
         assert calls[0][0][0].品項 == "早餐"
         assert calls[1][0][0].品項 == "午餐"
 
-    @patch('app.webhook_sender.send_to_webhook')
+    @patch('app.services.webhook_sender.send_to_webhook')
     def test_partial_failure(self, mock_send, sample_entries):
         """測試部分項目發送失敗"""
         # Mock 第一個成功，第二個失敗
@@ -97,7 +97,7 @@ class TestSendMultipleWebhooks:
         # 驗證呼叫次數
         assert mock_send.call_count == 2
 
-    @patch('app.webhook_sender.send_to_webhook')
+    @patch('app.services.webhook_sender.send_to_webhook')
     def test_all_failure(self, mock_send, sample_entries):
         """測試所有項目都發送失敗"""
         # Mock 所有發送都失敗
@@ -112,7 +112,7 @@ class TestSendMultipleWebhooks:
         # 驗證呼叫次數
         assert mock_send.call_count == 2
 
-    @patch('app.webhook_sender.send_to_webhook')
+    @patch('app.services.webhook_sender.send_to_webhook')
     def test_empty_list(self, mock_send):
         """測試空列表"""
         success_count, failure_count = send_multiple_webhooks([])
@@ -124,7 +124,7 @@ class TestSendMultipleWebhooks:
         # 驗證沒有呼叫
         assert mock_send.call_count == 0
 
-    @patch('app.webhook_sender.send_to_webhook')
+    @patch('app.services.webhook_sender.send_to_webhook')
     def test_single_item(self, mock_send):
         """測試單個項目"""
         entry = BookkeepingEntry(
@@ -155,7 +155,7 @@ class TestSendMultipleWebhooks:
         assert failure_count == 0
         assert mock_send.call_count == 1
 
-    @patch('app.webhook_sender.send_to_webhook')
+    @patch('app.services.webhook_sender.send_to_webhook')
     def test_four_items(self, mock_send):
         """測試四個項目"""
         entries = []
@@ -189,7 +189,7 @@ class TestSendMultipleWebhooks:
         assert failure_count == 0
         assert mock_send.call_count == 4
 
-    @patch('app.webhook_sender.send_to_webhook')
+    @patch('app.services.webhook_sender.send_to_webhook')
     def test_mixed_results(self, mock_send):
         """測試混合成功/失敗結果（3個項目：成功、失敗、成功）"""
         entries = []
@@ -228,7 +228,7 @@ class TestSendMultipleWebhooks:
 class TestWebhookBatchIntegration:
     """測試 Webhook 批次發送整合場景"""
 
-    @patch('app.webhook_sender.send_to_webhook')
+    @patch('app.services.webhook_sender.send_to_webhook')
     def test_shared_transaction_id(self, mock_send, sample_entries):
         """驗證批次發送的項目共用交易ID"""
         mock_send.return_value = True
@@ -244,7 +244,7 @@ class TestWebhookBatchIntegration:
         assert entry1.交易ID == entry2.交易ID
         assert entry1.交易ID == "20251115-120000"
 
-    @patch('app.webhook_sender.send_to_webhook')
+    @patch('app.services.webhook_sender.send_to_webhook')
     def test_shared_payment_method(self, mock_send, sample_entries):
         """驗證批次發送的項目共用付款方式"""
         mock_send.return_value = True
@@ -260,7 +260,7 @@ class TestWebhookBatchIntegration:
         assert entry1.付款方式 == entry2.付款方式
         assert entry1.付款方式 == "現金"
 
-    @patch('app.webhook_sender.send_to_webhook')
+    @patch('app.services.webhook_sender.send_to_webhook')
     def test_note_markers(self, mock_send, sample_entries):
         """驗證批次發送的項目附註標記"""
         mock_send.return_value = True
@@ -276,7 +276,7 @@ class TestWebhookBatchIntegration:
         assert "多項目支出 1/2" in entry1.附註
         assert "多項目支出 2/2" in entry2.附註
 
-    @patch('app.webhook_sender.send_to_webhook')
+    @patch('app.services.webhook_sender.send_to_webhook')
     def test_sequential_sending(self, mock_send, sample_entries):
         """驗證項目是按順序發送的"""
         mock_send.return_value = True
@@ -288,8 +288,8 @@ class TestWebhookBatchIntegration:
         assert calls[0][0][0].品項 == "早餐"
         assert calls[1][0][0].品項 == "午餐"
 
-    @patch('app.webhook_sender.send_to_webhook')
-    @patch('app.webhook_sender.logger')
+    @patch('app.services.webhook_sender.send_to_webhook')
+    @patch('app.services.webhook_sender.logger')
     def test_logging_on_failure(self, mock_logger, mock_send):
         """測試失敗時的日誌記錄"""
         entry = BookkeepingEntry(
@@ -324,7 +324,7 @@ class TestWebhookBatchIntegration:
 class TestWebhookErrorHandling:
     """測試 Webhook 錯誤處理"""
 
-    @patch('app.webhook_sender.send_to_webhook')
+    @patch('app.services.webhook_sender.send_to_webhook')
     def test_exception_handling(self, mock_send):
         """測試異常處理"""
         entry = BookkeepingEntry(

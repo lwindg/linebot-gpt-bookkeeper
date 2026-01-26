@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from app.payment_resolver import normalize_payment_method
+from app.shared.payment_resolver import normalize_payment_method
 
 
 @dataclass

@@ -93,7 +93,7 @@ python test_local_vision.py /path/to/receipt.png
 python
 
 # 執行測試程式碼
-from app.image_handler import process_receipt_image, ReceiptItem
+from app.services.image_handler import process_receipt_image, ReceiptItem
 from app.gpt_processor import process_receipt_data
 from openai import OpenAI
 from app.config import OPENAI_API_KEY

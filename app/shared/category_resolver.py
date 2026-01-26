@@ -20,7 +20,7 @@ from typing import Iterable
 import yaml
 
 # Legacy import for fallback (will be removed after migration)
-from app.prompts import CLASSIFICATION_RULES
+from app.gpt.prompts import CLASSIFICATION_RULES
 
 
 def _normalize_separators(value: str) -> str:
@@ -30,7 +30,7 @@ def _normalize_separators(value: str) -> str:
 @lru_cache(maxsize=1)
 def _load_config_from_yaml() -> dict:
     """Load full config from YAML file."""
-    config_path = Path(__file__).parent / "config" / "classifications.yaml"
+    config_path = Path(__file__).resolve().parents[1] / "config" / "classifications.yaml"
     if not config_path.exists():
         return {}
     

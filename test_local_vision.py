@@ -21,11 +21,11 @@ from pathlib import Path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from app.image_handler import process_receipt_image, ReceiptItem, compress_image
+from app.services.image_handler import process_receipt_image, ReceiptItem, compress_image
 from app.gpt_processor import process_receipt_data, process_multi_expense
 from openai import OpenAI
 from app.config import OPENAI_API_KEY
-from app.kv_store import save_last_transaction, KV_ENABLED
+from app.services.kv_store import save_last_transaction, KV_ENABLED
 from app.line_handler import handle_update_last_entry
 
 
@@ -147,8 +147,8 @@ def main():
 
     try:
         # 為了診斷，我們需要看到原始的 Vision API 回應
-        from app.image_handler import encode_image_base64, ReceiptItem
-        from app.prompts import RECEIPT_VISION_PROMPT
+        from app.services.image_handler import encode_image_base64, ReceiptItem
+        from app.gpt.prompts import RECEIPT_VISION_PROMPT
         from app.config import GPT_VISION_MODEL
 
         # 準備圖片（compress_image 已在頂部 import）

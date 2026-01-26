@@ -177,7 +177,7 @@ MULTI_BOOKKEEPING_SCHEMA = {
 
 ```python
 # app/line_handler.py
-from app.kv_store import KVStore, get_last_transaction
+from app.services.kv_store import KVStore, get_last_transaction
 from app.config import LAST_TRANSACTION_TTL
 
 def handle_update_last_entry(user_id: str, fields_to_update: dict) -> str:
@@ -288,7 +288,7 @@ uv run python test_local.py
 
 ```python
 import pytest
-from app.kv_store import KVStore
+from app.services.kv_store import KVStore
 from app.line_handler import handle_update_last_entry
 
 class TestEditLastTransaction:

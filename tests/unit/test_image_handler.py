@@ -12,7 +12,7 @@ import pytest
 from unittest.mock import MagicMock
 
 from tests.test_utils import make_openai_client_with_content, make_openai_client_with_json
-from app.image_handler import (
+from app.services.image_handler import (
     download_image,
     encode_image_base64,
     process_receipt_image,

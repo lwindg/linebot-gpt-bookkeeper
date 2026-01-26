@@ -19,7 +19,7 @@ from openai import OpenAI
 from linebot.v3.messaging import MessagingApiBlob
 
 from app.config import OPENAI_API_KEY, GPT_VISION_MODEL
-from app.prompts import RECEIPT_VISION_PROMPT
+from app.gpt.prompts import RECEIPT_VISION_PROMPT
 
 logger = logging.getLogger(__name__)
 

@@ -1,18 +1,6 @@
-# Architecture Overview
+# app/ Directory Layout
 
-本文件說明本專案的解析流程與資料流分工。
-
-## 核心流程
-
-```
-User message
-   │
-   ├─ Parser-first
-   │   └─ app/parser → app/enricher → app/converter
-   │
-   └─ GPT-first
-       └─ app/gpt → app/gpt_processor
-```
+本文件說明 app/ 目錄內的模組分工與職責。
 
 ## 模組分工
 

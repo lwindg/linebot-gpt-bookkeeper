@@ -6,7 +6,7 @@ Tests for multi-currency bookkeeping feature (v003-multi-currency)
 """
 
 from unittest.mock import Mock, patch
-from app.exchange_rate import ExchangeRateService
+from app.services.exchange_rate import ExchangeRateService
 
 
 class TestCurrencyNormalization:
@@ -85,7 +85,7 @@ class TestCurrencyNormalization:
 class TestFinMindAPI:
     """Test FinMind API integration (T021)"""
 
-    @patch('app.exchange_rate.requests.get')
+    @patch('app.services.exchange_rate.requests.get')
     def test_get_rate_from_finmind_success(self, mock_get):
         """Test successful FinMind API query"""
         # Mock successful API response
@@ -105,7 +105,7 @@ class TestFinMindAPI:
         assert rate == 31.55  # Latest rate
         mock_get.assert_called_once()
 
-    @patch('app.exchange_rate.requests.get')
+    @patch('app.services.exchange_rate.requests.get')
     def test_get_rate_from_finmind_rate_limit(self, mock_get):
         """Test FinMind API rate limit (429) handling"""
         # Mock rate limit response
@@ -118,7 +118,7 @@ class TestFinMindAPI:
 
         assert rate is None
 
-    @patch('app.exchange_rate.requests.get')
+    @patch('app.services.exchange_rate.requests.get')
     def test_get_rate_from_finmind_timeout(self, mock_get):
         """Test FinMind API timeout handling"""
         # Mock timeout
@@ -130,7 +130,7 @@ class TestFinMindAPI:
 
         assert rate is None
 
-    @patch('app.exchange_rate.requests.get')
+    @patch('app.services.exchange_rate.requests.get')
     def test_get_rate_from_finmind_no_data(self, mock_get):
         """Test FinMind API with empty data"""
         # Mock empty data response

@@ -12,7 +12,7 @@ import time
 from typing import List, Tuple, Optional
 from app.config import WEBHOOK_URL, WEBHOOK_TIMEOUT
 from app.gpt.types import BookkeepingEntry
-from app.kv_store import save_last_transaction
+from app.services.kv_store import save_last_transaction
 
 logger = logging.getLogger(__name__)
 

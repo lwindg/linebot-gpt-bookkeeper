@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 from openai import OpenAI
 
 from app.config import OPENAI_API_KEY, GPT_MODEL
-from app.prompts import CASHFLOW_INTENTS_PROMPT, MULTI_EXPENSE_PROMPT, UPDATE_INTENT_PROMPT
+from app.gpt.prompts import CASHFLOW_INTENTS_PROMPT, MULTI_EXPENSE_PROMPT, UPDATE_INTENT_PROMPT
 from app.schemas import MULTI_BOOKKEEPING_SCHEMA
 from app.pipeline.normalize import build_batch_id, assign_transaction_ids
 from app.pipeline.transaction_id import generate_transaction_id as _generate_transaction_id
@@ -31,11 +31,11 @@ from app.gpt.cashflow import (
 )
 from app.gpt.receipt import process_receipt_data
 from app.gpt.update import detect_update_intent, extract_update_fields_simple
-from app.exchange_rate import ExchangeRateService
-from app.kv_store import KVStore
-from app.category_resolver import resolve_category_autocorrect
-from app.payment_resolver import normalize_payment_method, detect_payment_method
-from app.project_resolver import infer_project
+from app.services.exchange_rate import ExchangeRateService
+from app.services.kv_store import KVStore
+from app.shared.category_resolver import resolve_category_autocorrect
+from app.shared.payment_resolver import normalize_payment_method, detect_payment_method
+from app.shared.project_resolver import infer_project
 
 logger = logging.getLogger(__name__)
 
@@ -238,15 +238,19 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False) -> Mu
         user_message = _normalize_message_spacing(user_message)
         base_message = user_message
 
+        update_hint = detect_update_intent(base_message)
+        cashflow_hint = detect_cashflow_intent(base_message) if not update_hint else None
+        if cashflow_hint:
+            fallback_items = fallback_cashflow_items_from_message(base_message, cashflow_hint)
+            if fallback_items:
+                return process_cashflow_items(fallback_items, base_message)
+
         # 初始化 OpenAI client
         client = OpenAI(api_key=OPENAI_API_KEY)
 
         # 初始化 ExchangeRateService (v003-multi-currency)
         kv_store = KVStore()
         exchange_rate_service = ExchangeRateService(kv_store)
-
-        update_hint = detect_update_intent(base_message)
-        cashflow_hint = detect_cashflow_intent(base_message) if not update_hint else None
         advance_override = _detect_advance_override(base_message)
         if update_hint:
             system_prompt = UPDATE_INTENT_PROMPT
@@ -347,8 +351,8 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False) -> Mu
             use_current_time = not date_str  # 若未提供日期，使用當前時間
             batch_id = build_batch_id(
                 shared_date,
-                first_item,
-                use_current_time
+                item=first_item,
+                use_current_time=use_current_time,
             )
 
             # 處理每個項目
@@ -423,6 +427,10 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False) -> Mu
                 entries.append(entry)
 
             assign_transaction_ids(entries, batch_id)
+            if len(entries) > 1:
+                total = len(entries)
+                for idx, entry in enumerate(entries, start=1):
+                    entry.附註 = f"多項目支出 {idx}/{total} 批次ID:{batch_id}"
 
             result = MultiExpenseResult(
                 intent="multi_bookkeeping",

@@ -13,8 +13,8 @@ from typing import Any
 from openai import OpenAI
 
 from app.schemas import ENRICHMENT_RESPONSE_SCHEMA
-from app.prompts import CLASSIFICATION_RULES, CURRENCY_DETECTION
-from app.category_resolver import allowed_categories, get_classification_rules_description
+from app.gpt.prompts import CLASSIFICATION_RULES, CURRENCY_DETECTION
+from app.shared.category_resolver import allowed_categories, get_classification_rules_description
 
 logger = logging.getLogger(__name__)
 

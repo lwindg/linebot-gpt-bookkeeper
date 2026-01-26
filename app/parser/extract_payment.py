@@ -3,12 +3,12 @@
 Payment Method Extraction (T009)
 
 負責從文字中優先抽取付款方式。
-依賴 `app.payment_resolver` 的設定。
+依賴 `app.shared.payment_resolver` 的設定。
 """
 
 import re
 from typing import Optional, Tuple
-from app.payment_resolver import (
+from app.shared.payment_resolver import (
     detect_payment_method,
     normalize_payment_method,
     get_keywords_for_payment_method,

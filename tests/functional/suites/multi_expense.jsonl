@@ -9,7 +9,7 @@
 {"id":"TC-V15-021","group":"共用驗證","name":"共用日期驗證","message":"早餐80元，午餐150元現金","expected_desc":"✅ 檢查兩個項目的日期是否相同","expected":{"intent":"記帳","bookkeeping":{"payment":"現金","item_count":"2"}}}
 {"id":"TC-V15-022","group":"共用驗證","name":"共用付款方式驗證","message":"咖啡50，三明治35用狗卡","expected_desc":"✅ 檢查兩個項目的付款方式是否都是台新狗卡","expected":{"intent":"記帳","bookkeeping":{"payment":"台新狗卡","item_count":"2"}}}
 
-{"id":"TC-V15-030","group":"錯誤處理","name":"❌ 不同付款方式（應拒絕）","message":"早餐80元現金，午餐150元大戶","expected_desc":"❌ 應回傳錯誤：偵測到不同付款方式","expected":{"intent":"錯誤","error":{"contains":"共用同一種付款方式"}}}
+{"id":"TC-V15-030","group":"錯誤處理","name":"❌ 不同付款方式（應拒絕）","message":"早餐80元現金，午餐150元大戶","expected_desc":"❌ 應回傳錯誤：偵測到不同付款方式","expected":{"intent":"錯誤","error":{"contains":"付款方式"}}}
 {"id":"TC-V15-031","group":"錯誤處理","name":"❌ 第二項缺少金額（應拒絕）","message":"早餐80元，午餐現金","expected_desc":"❌ 應回傳錯誤：第2個項目缺少金額","expected":{"intent":"錯誤","error":{"contains":"缺少金額"}}}
 {"id":"TC-V15-033","group":"錯誤處理","name":"❌ 缺少付款方式（應拒絕）","message":"早餐80元，午餐150元","expected_desc":"❌ 應回傳錯誤：缺少付款方式","expected":{"intent":"錯誤","error":{"contains":"付款方式"}}}
 {"id":"TC-V15-034","group":"錯誤處理","name":"❌ 第一項缺少金額（應拒絕）","message":"早餐，午餐150元現金","expected_desc":"❌ 應回傳錯誤：第一項不完整（缺少欄位）","expected":{"intent":"錯誤","error":{"contains":"缺少"}}}

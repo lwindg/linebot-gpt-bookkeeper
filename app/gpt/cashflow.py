@@ -11,7 +11,7 @@ from app.cashflow_rules import (
 )
 from app.gpt.types import BookkeepingEntry, MultiExpenseResult
 from app.pipeline.normalize import build_batch_id, assign_transaction_ids
-from app.project_resolver import infer_project
+from app.shared.project_resolver import infer_project
 
 logger = logging.getLogger(__name__)
 

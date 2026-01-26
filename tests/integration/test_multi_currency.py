@@ -8,15 +8,15 @@ Tests the complete flow: message parsing -> exchange rate query -> webhook send
 from unittest.mock import Mock, patch
 
 from app.gpt_processor import process_multi_expense
-from app.webhook_sender import send_to_webhook, send_multiple_webhooks
+from app.services.webhook_sender import send_to_webhook, send_multiple_webhooks
 from tests.test_utils import set_openai_mock_content
 
 
 class TestSingleForeignCurrencyE2E:
     """Test single foreign currency expense end-to-end (T027)"""
 
-    @patch('app.webhook_sender.requests.post')
-    @patch('app.exchange_rate.requests.get')
+    @patch('app.services.webhook_sender.requests.post')
+    @patch('app.services.exchange_rate.requests.get')
     @patch('app.gpt_processor.OpenAI')
     def test_single_usd_expense_complete_flow(self, mock_openai, mock_exchange_get, mock_webhook_post):
         """Test: User sends 'WSJ 4.99美元 大戶' -> Full processing -> Webhook sent"""
@@ -80,7 +80,7 @@ class TestSingleForeignCurrencyE2E:
         assert payload['匯率'] == 31.50
         assert payload['付款方式'] == "大戶信用卡"
 
-    @patch('app.webhook_sender.requests.post')
+    @patch('app.services.webhook_sender.requests.post')
     @patch('app.gpt_processor.ExchangeRateService')
     @patch('app.gpt_processor.OpenAI')
     def test_eur_expense_with_fallback_to_csv(self, mock_openai, mock_exchange_service, mock_webhook_post):
@@ -120,7 +120,7 @@ class TestSingleForeignCurrencyE2E:
         assert entry.原幣別 == "EUR"
         assert entry.匯率 == 33.20
 
-    @patch('app.webhook_sender.requests.post')
+    @patch('app.services.webhook_sender.requests.post')
     @patch('app.gpt_processor.ExchangeRateService')
     @patch('app.gpt_processor.OpenAI')
     def test_backup_rate_when_all_apis_fail(self, mock_openai, mock_exchange_service, mock_webhook_post):
@@ -161,7 +161,7 @@ class TestSingleForeignCurrencyE2E:
         assert entry.原幣別 == "USD"
         assert entry.匯率 == 31.50  # Backup rate for USD
 
-    @patch('app.webhook_sender.requests.post')
+    @patch('app.services.webhook_sender.requests.post')
     @patch('app.gpt_processor.OpenAI')
     def test_twd_expense_no_exchange_rate_query(self, mock_openai, mock_webhook_post):
         """Test: TWD expense doesn't query exchange rate"""
@@ -204,8 +204,8 @@ class TestSingleForeignCurrencyE2E:
 class TestMultiItemMixedCurrency:
     """Test multiple items with mixed currencies"""
 
-    @patch('app.webhook_sender.requests.post')
-    @patch('app.exchange_rate.requests.get')
+    @patch('app.services.webhook_sender.requests.post')
+    @patch('app.services.exchange_rate.requests.get')
     @patch('app.gpt_processor.OpenAI')
     def test_mixed_twd_and_foreign_currency(self, mock_openai, mock_exchange_get, mock_webhook_post):
         """Test: Multiple items with TWD and foreign currency"""

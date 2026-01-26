@@ -19,7 +19,7 @@ import yaml
 @lru_cache(maxsize=1)
 def _load_payment_aliases_from_yaml() -> dict[str, str]:
     """Load payment aliases from YAML config file."""
-    config_path = Path(__file__).parent / "config" / "payment_methods.yaml"
+    config_path = Path(__file__).resolve().parents[1] / "config" / "payment_methods.yaml"
     if not config_path.exists():
         return _PAYMENT_ALIASES_LEGACY
     
@@ -34,7 +34,7 @@ def _load_payment_aliases_from_yaml() -> dict[str, str]:
 @lru_cache(maxsize=1)
 def _load_detection_priority_from_yaml() -> tuple[tuple[str, str], ...]:
     """Load detection priority from YAML config file."""
-    config_path = Path(__file__).parent / "config" / "payment_methods.yaml"
+    config_path = Path(__file__).resolve().parents[1] / "config" / "payment_methods.yaml"
     if not config_path.exists():
         return _DETECT_ALIASES_LEGACY
     

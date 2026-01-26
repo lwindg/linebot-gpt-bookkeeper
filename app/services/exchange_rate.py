@@ -15,7 +15,7 @@ import io
 from typing import Optional, Dict
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from app.kv_store import KVStore
+from app.services.kv_store import KVStore
 
 logger = logging.getLogger(__name__)
 

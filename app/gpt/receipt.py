@@ -13,9 +13,9 @@ from openai import OpenAI
 from app.config import OPENAI_API_KEY, GPT_MODEL
 from app.gpt.types import BookkeepingEntry, MultiExpenseResult
 from app.pipeline.transaction_id import generate_transaction_id
-from app.category_resolver import resolve_category_autocorrect
-from app.project_resolver import infer_project
-from app.payment_resolver import normalize_payment_method
+from app.shared.category_resolver import resolve_category_autocorrect
+from app.shared.project_resolver import infer_project
+from app.shared.payment_resolver import normalize_payment_method
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +179,7 @@ def _infer_category(品項: str) -> str:
     """
     使用 GPT 進行智能分類推斷
     """
-    from app.prompts import CLASSIFICATION_RULES
+    from app.gpt.prompts import CLASSIFICATION_RULES
 
     try:
         client = OpenAI(api_key=OPENAI_API_KEY)

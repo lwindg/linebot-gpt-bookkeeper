@@ -49,9 +49,9 @@ import re
 from unittest.mock import patch
 from app.gpt.types import MultiExpenseResult, BookkeepingEntry
 from app.pipeline.router import process_message
-from app.kv_store import get_last_transaction, KVStore
+from app.services.kv_store import get_last_transaction, KVStore
 from app.config import KV_ENABLED
-from app.webhook_sender import send_multiple_webhooks, build_create_payload, build_update_payload
+from app.services.webhook_sender import send_multiple_webhooks, build_create_payload, build_update_payload
 from app.line_handler import handle_update_last_entry, format_multi_confirmation_message
 
 # Default test user ID for local testing
@@ -212,7 +212,7 @@ def simulate_full_flow(
             print(f"\n⏭️  DRY-RUN: 跳過 webhook 發送（使用 --live 實際發送）")
             # 模擬儲存到 KV（與 send_multiple_webhooks 相同的邏輯）
             if result.entries:
-                from app.kv_store import save_last_transaction
+                from app.services.kv_store import save_last_transaction
                 entries = result.entries
                 item_count = len(entries)
                 transaction_ids = [entry.交易ID for entry in entries]

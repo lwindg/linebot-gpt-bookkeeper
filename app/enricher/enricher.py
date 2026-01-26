@@ -9,7 +9,7 @@ import logging
 from typing import Optional
 
 from app.parser import AuthoritativeEnvelope, Transaction, TransactionType
-from app.category_resolver import allowed_categories
+from app.shared.category_resolver import allowed_categories
 from .types import EnrichedTransaction, EnrichedEnvelope
 from .gpt_client import call_gpt_enrichment
 

@@ -145,7 +145,7 @@ import requests
 import logging
 from typing import Optional
 from datetime import datetime
-from app.kv_store import KVStore
+from app.services.kv_store import KVStore
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +200,7 @@ class ExchangeRateService:
 
 ```python
 # app/gpt_processor.py
-from app.exchange_rate import ExchangeRateService
+from app.services.exchange_rate import ExchangeRateService
 
 @dataclass
 class BookkeepingEntry:

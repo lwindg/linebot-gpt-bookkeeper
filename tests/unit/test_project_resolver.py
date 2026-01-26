@@ -1,4 +1,4 @@
-from app.project_resolver import infer_project
+from app.shared.project_resolver import infer_project
 
 
 def test_infer_project_default_daily() -> None:

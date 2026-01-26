@@ -13,7 +13,7 @@ from app.parser import parse, ParserError
 from app.enricher import enrich
 from app.converter import enriched_to_multi_result
 from app.gpt.types import MultiExpenseResult, BookkeepingEntry
-from app.payment_resolver import detect_payment_method
+from app.shared.payment_resolver import detect_payment_method
 
 logger = logging.getLogger(__name__)
 
