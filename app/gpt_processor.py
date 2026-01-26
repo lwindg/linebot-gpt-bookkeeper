@@ -30,7 +30,11 @@ from app.gpt.cashflow import (
     process_cashflow_items,
 )
 from app.gpt.receipt import process_receipt_data
-from app.gpt.update import detect_update_intent, extract_update_fields_simple
+from app.gpt.update import (
+    detect_update_intent,
+    extract_update_fields_simple,
+    _UPDATE_FIELD_KEYWORDS,
+)
 from app.services.exchange_rate import ExchangeRateService
 from app.services.kv_store import KVStore
 from app.shared.category_resolver import resolve_category_autocorrect
@@ -452,6 +456,11 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False) -> Mu
         elif intent == "update_last_entry":
             # 修改上一筆記帳：提取要更新的欄位
             fields_to_update = data.get("fields_to_update", {})
+            if sum(1 for field in _UPDATE_FIELD_KEYWORDS if field in base_message) > 1:
+                return MultiExpenseResult(
+                    intent="error",
+                    error_message="一次只允許更新一個欄位，請分開修改。"
+                )
 
             if not isinstance(fields_to_update, dict) or not fields_to_update:
                 return MultiExpenseResult(

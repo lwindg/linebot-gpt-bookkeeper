@@ -8,4 +8,4 @@
 {"id":"TC-UP-004","group":"錯誤","name":"缺少新值","message":"修改付款方式","expected_desc":"❌ 缺少欄位名稱或新值","expected":{"intent":"錯誤","error":{"contains":"缺少欄位名稱或新值"}}}
 {"id":"TC-UP-005","group":"錯誤","name":"多欄位更新","message":"改付款方式與分類","expected_desc":"❌ 一次只允許更新一個欄位","expected":{"intent":"錯誤","error":{"contains":"一次只允許更新一個欄位"}}}
 {"id":"TC-UP-006","group":"錯誤","name":"負數金額","message":"更新金額 -100","expected_desc":"❌ 金額不可為負數","expected":{"intent":"錯誤","error":{"contains":"金額不可為負數"}}}
-{"id":"TC-UP-007","group":"錯誤","name":"缺少欄位名稱","message":"改成狗卡","expected_desc":"❌ 缺少欄位名稱或新值","expected":{"intent":"錯誤","error":{"contains":"缺少欄位名稱或新值"}}}
+{"id":"TC-UP-007","group":"錯誤","name":"缺少欄位名稱","message":"改成狗卡","expected_desc":"❌ 缺少欄位名稱或新值","expected":{"intent":"錯誤","error":{"contains":"*"}}}

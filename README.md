@@ -11,34 +11,14 @@
 - ☁️ **Serverless 架構**：部署在 Vercel，無需維護伺服器
 - 🧪 **本地測試工具**：無需 LINE webhook 即可快速測試 GPT 解析功能
 
-## 📦 版本資訊
+## ✅ 現況功能
 
-**當前版本**：v1.0.0 MVP
-
-### v1.0.0 MVP 特色
-
-- ✅ 處理**資訊完整**的單筆台幣記帳
-- ✅ 簡單的一般對話回應
-- ✅ 無狀態 Serverless 架構
-- ✅ 智慧日期解析（語義化日期 + 數字格式）
-- ✅ 自動推斷分類、必要性、專案等欄位
-- ✅ 完整的 14 欄位 JSON 輸出
-
-### v1.0.0 MVP 限制
-
-- ❌ 僅支援台幣（TWD）
-- ❌ 單次訊息僅處理單筆支出
-- ❌ 不支援圖片/收據識別
-- ❌ 不儲存對話歷史（無多輪對話）
-- ❌ 不支援外幣和匯率查詢
-- ❌ 無持久化重試機制
-
-### 未來版本規劃
-
-- **v1.5.0**：單一訊息多筆支出、圖片/收據識別（GPT Vision）
-- **v2.0.0**：對話脈絡管理、多輪對話、外幣支援、即時資訊查詢
-
-詳細版本規劃請參考 [specs/001-linebot-gpt-bookkeeper/spec.md](specs/001-linebot-gpt-bookkeeper/spec.md)
+- 支援單筆/多筆記帳（單句多項目）
+- 支援現金流（提款、轉帳、繳卡費、收入）
+- 支援語義日期與數字日期格式
+- 支援外幣與匯率換算
+- Parser-first + GPT enrichment（可切換）
+- 本地測試工具與自動化測試
 
 ## 🏗️ 技術架構
 
@@ -50,7 +30,7 @@ LINE Platform → Vercel Serverless Function → GPT-4o-mini → Webhook (記帳
 
 ### 技術棧
 
-- **Backend**: Python 3.9+
+- **Backend**: Python 3.11+
 - **Framework**: Flask (Serverless)
 - **LINE SDK**: line-bot-sdk 3.8.0
 - **OpenAI SDK**: openai >= 1.12.0
@@ -61,7 +41,7 @@ LINE Platform → Vercel Serverless Function → GPT-4o-mini → Webhook (記帳
 
 ### 環境需求
 
-- Python 3.9 或以上
+- Python 3.11 或以上
 - LINE Developer Account（[申請連結](https://developers.line.biz/)）
 - OpenAI API Key（[取得連結](https://platform.openai.com/api-keys)）
 - Make.com 帳號或其他 Webhook 接收端（選用）
@@ -75,10 +55,10 @@ git clone https://github.com/lwindg/linebot-gpt-bookkeeper.git
 cd linebot-gpt-bookkeeper
 ```
 
-2. **安裝相依套件**
+2. **安裝相依套件（uv）**
 
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 3. **設定環境變數**
@@ -200,11 +180,16 @@ linebot-gpt-bookkeeper/
 ├── api/
 │   └── webhook.py          # Vercel Serverless 入口點
 ├── app/
+│   ├── gpt/                # GPT 解析與提示
+│   ├── line/               # LINE 回覆格式與更新流程
+│   ├── parser/             # Parser-first 解析
+│   ├── services/           # 外部 I/O 與服務
+│   ├── shared/             # 共用解析與 resolver
+│   ├── pipeline/           # 共用流程與 normalization
+│   ├── enricher/           # GPT enrichment
 │   ├── config.py           # 環境變數載入
-│   ├── gpt_processor.py    # GPT 處理邏輯、日期解析
-│   ├── line_handler.py     # LINE 訊息處理
-│   ├── prompts.py          # GPT System Prompt
-│   └── webhook_sender.py   # Webhook 發送邏輯
+│   ├── gpt_processor.py    # GPT 路徑入口
+│   └── line_handler.py     # LINE 訊息處理入口
 ├── specs/                  # Spec Kit 規格文件
 │   └── 001-linebot-gpt-bookkeeper/
 │       ├── spec.md         # 功能規格
@@ -229,22 +214,22 @@ linebot-gpt-bookkeeper/
 
 ```bash
 # 建立功能規格
-/speckit.specify
+/prompts:specify-specify
 
 # 執行實作規劃
-/speckit.plan
+/prompts:specify-plan
 
 # 釐清規格不明確之處
-/speckit.clarify
+/prompts:specify-clarify
 
 # 生成可執行任務清單
-/speckit.tasks
+/prompts:specify-tasks
 
 # 執行實作計畫
-/speckit.implement
+/prompts:specify-implement
 
 # 分析一致性和品質
-/speckit.analyze
+/prompts:specify-analyze
 ```
 
 ### Git 工作流程
@@ -304,5 +289,4 @@ MIT License
 ---
 
 **專案維護者**：lwindg
-**最後更新**：2025-11-14
-**版本**：v1.0.0
+**最後更新**：2026-01-26

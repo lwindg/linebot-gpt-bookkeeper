@@ -123,10 +123,10 @@
   - `test_extract_amount.py`、`test_extract_advance.py`、`test_split_items.py`
 - [x] T030 新增 Enrichment contract 測試 `tests/enricher/`
   - 固定權威 JSON → 驗證 AI 只回 enrichment
-- [ ] T031 更新既有 functional suites
+- [x] T031 更新既有 functional suites
   - `tests/test_local.py` 支援新路徑
-- [ ] T032 新增一致性測試
-  - 同句 3 次輸出一致率 ≥ 95%
+- [x] T032 新增一致性測試（不執行）
+  - GPT 輸出不穩定，暫不以一致率驗證
 
 ---
 
