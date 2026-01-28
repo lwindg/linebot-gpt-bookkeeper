@@ -30,11 +30,11 @@ usage() {
 Unified test runner (functional suites)
 
 Usage:
-  ./run_tests.sh --suite <expense|multi_expense|advance_payment|date|cashflow|update> [--auto|--manual] [--only <pattern>] [--smoke] [--list] [--parser]
+  ./run_tests.sh --suite <expense|multi_expense|advance_payment|date|cashflow|update|image_receipt> [--auto|--manual] [--only <pattern>] [--smoke] [--list] [--parser]
   ./run_tests.sh --all [--auto|--manual] [--only <pattern>] [--smoke] [--list] [--parser]
 
 Options:
-  --suite <name>    Suite name: expense, multi_expense, advance_payment, date, cashflow, update
+  --suite <name>    Suite name: expense, multi_expense, advance_payment, date, cashflow, update, image_receipt
   --all             Run all suites (expense, multi_expense, advance_payment, date, cashflow, update_intent)
   --auto            Auto-compare expected vs actual (default: manual)
   --manual          Manual mode (default)
@@ -160,6 +160,7 @@ suite_path() {
     date) echo "tests/functional/suites/date.jsonl" ;;
     cashflow) echo "tests/functional/suites/cashflow_intents.jsonl" ;;
     update) echo "tests/functional/suites/update_intent.jsonl" ;;
+    image_receipt) echo "tests/functional/suites/image_receipt.jsonl" ;;
     *)
       echo "Error: unknown suite: $SUITE" >&2
       exit 2
@@ -175,12 +176,14 @@ smoke_pattern_for_suite() {
     advance_payment) echo 'TC-V17-001|TC-V17-005|TC-V17-010' ;;
     cashflow) echo 'TC-CF-001|TC-CF-003' ;;
     update) echo 'TC-UP-001|TC-UP-004' ;;
+    image_receipt) echo 'TC-IMG-001|TC-IMG-003' ;;
     *) echo "" ;;
   esac
 }
 
 validate_suite_jsonl() {
   local suite_file="$1"
+  local suite_name="${2:-}"
 
   local line_num=0
   local line
@@ -313,6 +316,20 @@ validate_suite_jsonl() {
         exit 2
         ;;
     esac
+
+    if [[ "$suite_name" == "image_receipt" ]]; then
+      if ! echo "$line" | jq -e '(.fixture | type == "string" and length > 0)' >/dev/null 2>&1; then
+        echo "Error: fixture is required for image_receipt at $suite_file:$line_num" >&2
+        echo "Line: $line" >&2
+        exit 2
+      fi
+      local fixture_path
+      fixture_path="$(jq -r '.fixture' <<<"$line")"
+      if [[ ! -f "$fixture_path" ]]; then
+        echo "Error: fixture file not found: $fixture_path (at $suite_file:$line_num)" >&2
+        exit 2
+      fi
+    fi
   done <"$suite_file"
 
   local dup_ids
@@ -574,7 +591,7 @@ run_case_manual() {
   echo ""
   python test_local.py "$message"
   echo ""
-  read -r -p "Press Enter to continue..."
+  read -r -p "Press Enter to continue..." </dev/tty
 }
 
 run_case_auto() {
@@ -712,6 +729,162 @@ run_case_auto() {
   fi
 }
 
+run_case_manual_image() {
+  local group="$1" name="$2" message="$3" fixture="$4" expected_desc="$5"
+  echo ""
+  echo "======================================================================"
+  echo "[$group] $name"
+  echo "======================================================================"
+  if [[ -n "$expected_desc" ]]; then
+    echo "Expected: $expected_desc"
+  fi
+  echo "Message: $message"
+  echo "Fixture: $fixture"
+  echo ""
+  python test_local_vision.py --fixture "$fixture" --skip-gpt
+  echo ""
+  read -r -p "Press Enter to continue..." </dev/tty
+}
+
+run_case_auto_image() {
+  local group="$1" name="$2" message="$3" fixture="$4"
+  local expected_intent="$5" expected_item="$6" expected_item_contains="$7" expected_amount="$8" expected_payment="$9" expected_payment_contains="${10}"
+  local expected_category="${11}" expected_project="${12}" expected_item_count="${13}" expected_advance_status="${14}" expected_recipient="${15}"
+  local expected_error_contains="${16}" expected_date="${17}" expected_update_field="${18}" expected_update_value="${19}"
+
+  echo ""
+  echo -e "${BLUE}======================================================================${NC}"
+  echo "[$group] $name"
+  echo -e "${BLUE}======================================================================${NC}"
+  echo "Message: $message"
+  echo "Fixture: $fixture"
+
+  local output
+  output="$(python test_local_vision.py --fixture "$fixture" --raw --skip-gpt 2> >(cat >&2))"
+
+  local actual_intent
+  actual_intent="$(extract_intent_text "$output")"
+
+  local item amount payment category advance_status recipient error_message item_count date
+  local update_field update_value
+  local project
+  local extracted
+  if ! extracted="$(extract_fields "$output")"; then
+    echo -e "${RED}❌ FAIL${NC}"
+    echo -e "${YELLOW}Differences:${NC}"
+    echo "  - error: failed to extract JSON fields from test_local_vision.py output"
+    [[ "$DEBUG_MODE" == true ]] && debug_dump_output_and_json "$output"
+    ((FAILED_TESTS+=1))
+    return
+  fi
+  IFS=$'\037' read -r item amount payment category project advance_status recipient error_message item_count date update_field update_value \
+    <<<"$extracted"
+
+  local test_passed=true
+  local failures=()
+
+  if ! compare_exact "$actual_intent" "$expected_intent"; then
+    test_passed=false
+    failures+=("intent: expected[$expected_intent] actual[$actual_intent]")
+  fi
+  if [[ "$expected_intent" == "修改上一筆" ]]; then
+    if ! compare_exact "${update_field:-}" "$expected_update_field"; then
+      test_passed=false
+      failures+=("update_field: expected[$expected_update_field] actual[${update_field:-}]")
+    fi
+    if [[ "$expected_update_field" == "原幣金額" ]]; then
+      if ! compare_amount "${update_value:-}" "$expected_update_value"; then
+        test_passed=false
+        failures+=("update_value: expected[$expected_update_value] actual[${update_value:-}]")
+      fi
+    else
+      if ! compare_exact "${update_value:-}" "$expected_update_value"; then
+        test_passed=false
+        failures+=("update_value: expected[$expected_update_value] actual[${update_value:-}]")
+      fi
+    fi
+  else
+    if [[ -n "$expected_item_contains" ]]; then
+      if ! compare_contains "${item:-}" "$expected_item_contains"; then
+        test_passed=false
+        failures+=("item: expected[contains $expected_item_contains] actual[${item:-}]")
+      fi
+    else
+      if ! compare_exact "${item:-}" "$expected_item"; then
+        test_passed=false
+        failures+=("item: expected[$expected_item] actual[${item:-}]")
+      fi
+    fi
+    if ! compare_amount "${amount:-}" "$expected_amount"; then
+      test_passed=false
+      failures+=("amount: expected[$expected_amount] actual[${amount:-}]")
+    fi
+    if [[ -n "$expected_payment_contains" ]]; then
+      if ! compare_contains "${payment:-}" "$expected_payment_contains"; then
+        test_passed=false
+        failures+=("payment: expected[contains $expected_payment_contains] actual[${payment:-}]")
+      fi
+    else
+      if ! compare_exact "${payment:-}" "$expected_payment"; then
+        test_passed=false
+        failures+=("payment: expected[$expected_payment] actual[${payment:-}]")
+      fi
+    fi
+    if ! compare_category "${category:-}" "$expected_category"; then
+      test_passed=false
+      failures+=("category: expected[contains $expected_category] actual[${category:-}]")
+    fi
+    if ! compare_exact "${project:-}" "$expected_project"; then
+      test_passed=false
+      failures+=("project: expected[$expected_project] actual[${project:-}]")
+    fi
+    if ! compare_exact "${item_count:-}" "$expected_item_count"; then
+      test_passed=false
+      failures+=("item_count: expected[$expected_item_count] actual[${item_count:-}]")
+    fi
+    if ! compare_exact "${advance_status:-}" "$expected_advance_status"; then
+      test_passed=false
+      failures+=("advance_status: expected[$expected_advance_status] actual[${advance_status:-}]")
+    fi
+    if ! compare_exact "${recipient:-}" "$expected_recipient"; then
+      test_passed=false
+      failures+=("recipient: expected[$expected_recipient] actual[${recipient:-}]")
+    fi
+    if ! compare_contains "${error_message:-}" "$expected_error_contains"; then
+      test_passed=false
+      failures+=("error_message: expected[contains $expected_error_contains] actual[${error_message:-}]")
+    fi
+    if ! compare_date "${date:-}" "$expected_date"; then
+      test_passed=false
+      failures+=("date: expected[$(normalize_expected_date "$expected_date")] actual[${date:-}]")
+    fi
+  fi
+
+  if [[ "$test_passed" == true ]]; then
+    echo -e "${GREEN}✅ PASS${NC}"
+    ((PASSED_TESTS+=1))
+  else
+    echo -e "${RED}❌ FAIL${NC}"
+    echo -e "${YELLOW}Differences:${NC}"
+    for f in "${failures[@]}"; do
+      echo "  - $f"
+    done
+    [[ "$DEBUG_MODE" == true ]] && debug_dump_output_and_json "$output"
+    ((FAILED_TESTS+=1))
+  fi
+}
+
+run_case_image() {
+  local group="$1" name="$2" message="$3" fixture="$4" expected_desc="$5"
+  shift 5
+  ((TOTAL_TESTS+=1))
+  if [[ "$AUTO_MODE" == true ]]; then
+    run_case_auto_image "$group" "$name" "$message" "$fixture" "$@"
+  else
+    run_case_manual_image "$group" "$name" "$message" "$fixture" "$expected_desc"
+  fi
+}
+
 run_case() {
   local group="$1" name="$2" message="$3" expected_desc="$4"
   shift 4
@@ -729,7 +902,7 @@ main() {
 
   local suites=()
   if [[ "$ALL_MODE" == true ]]; then
-    suites=(expense multi_expense advance_payment date cashflow update)
+    suites=(expense multi_expense advance_payment date cashflow update image_receipt)
   else
     suites=("$SUITE")
   fi
@@ -752,7 +925,7 @@ main() {
       echo "Error: suite file not found: $suite_file" >&2
       exit 2
     fi
-    validate_suite_jsonl "$suite_file"
+    validate_suite_jsonl "$suite_file" "$SUITE"
 
     echo "======================================================================"
     echo "🧪 Test Suite: $SUITE"
@@ -798,7 +971,7 @@ main() {
 
     if [[ "$AUTO_MODE" == false ]]; then
       echo ""
-      read -r -p "Press Enter to start..."
+      read -r -p "Press Enter to start..." </dev/tty
     fi
 
     local line
@@ -806,7 +979,7 @@ main() {
       [[ -z "$line" ]] && continue
       [[ "$line" =~ ^# ]] && continue
 
-      local tc_id tc_group tc_name tc_message expected_desc
+      local tc_id tc_group tc_name tc_message expected_desc tc_fixture
       local expected_intent expected_item expected_amount expected_payment expected_category
       local expected_project
       local expected_item_count expected_advance_status expected_recipient expected_error_contains expected_date
@@ -817,6 +990,7 @@ main() {
       tc_name="$(jq -r '.name // empty' <<<"$line")"
       tc_message="$(jq -r '.message // empty' <<<"$line")"
       expected_desc="$(jq -r '.expected_desc // empty' <<<"$line")"
+      tc_fixture="$(jq -r '.fixture // empty' <<<"$line")"
 
       expected_intent="$(jq -r '.expected.intent // empty' <<<"$line")"
       expected_item="$(jq -r '.expected.bookkeeping.item // empty' <<<"$line")"
@@ -839,10 +1013,17 @@ main() {
         continue
       fi
 
-      run_case "$tc_group" "$tc_id: $tc_name" "$tc_message" "$expected_desc" \
-        "$expected_intent" "$expected_item" "$expected_item_contains" "$expected_amount" "$expected_payment" "$expected_payment_contains" \
-        "$expected_category" "$expected_project" "$expected_item_count" "$expected_advance_status" "$expected_recipient" \
-        "$expected_error_contains" "$expected_date" "$expected_update_field" "$expected_update_value"
+      if [[ "$SUITE" == "image_receipt" ]]; then
+        run_case_image "$tc_group" "$tc_id: $tc_name" "$tc_message" "$tc_fixture" "$expected_desc" \
+          "$expected_intent" "$expected_item" "$expected_item_contains" "$expected_amount" "$expected_payment" "$expected_payment_contains" \
+          "$expected_category" "$expected_project" "$expected_item_count" "$expected_advance_status" "$expected_recipient" \
+          "$expected_error_contains" "$expected_date" "$expected_update_field" "$expected_update_value"
+      else
+        run_case "$tc_group" "$tc_id: $tc_name" "$tc_message" "$expected_desc" \
+          "$expected_intent" "$expected_item" "$expected_item_contains" "$expected_amount" "$expected_payment" "$expected_payment_contains" \
+          "$expected_category" "$expected_project" "$expected_item_count" "$expected_advance_status" "$expected_recipient" \
+          "$expected_error_contains" "$expected_date" "$expected_update_field" "$expected_update_value"
+      fi
     done <"$suite_file"
   done
 

@@ -97,6 +97,19 @@ class TestEnrichWithMock:
         assert tx.分類 == "個人/餐飲"
         assert tx.明細說明 == "同事午餐"
 
+    def test_enrich_cashflow_transaction(self, taipei_now):
+        """現金流交易應產生有效的 EnrichedTransaction"""
+        envelope = parse("合庫提款5000", context_date=taipei_now)
+
+        result = enrich(envelope, skip_gpt=True)
+
+        assert isinstance(result, EnrichedEnvelope)
+        assert len(result.transactions) == 1
+        tx = result.transactions[0]
+        assert isinstance(tx, EnrichedTransaction)
+        assert tx.type == TransactionType.WITHDRAWAL
+        assert tx.分類 == "提款"
+
 
 class TestCategoryValidation:
     """Tests for category validation in enricher."""

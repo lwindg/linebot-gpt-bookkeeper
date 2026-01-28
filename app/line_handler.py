@@ -10,10 +10,17 @@ from linebot.models import MessageEvent, TextSendMessage
 from linebot import LineBotApi
 from linebot.v3.messaging import MessagingApiBlob
 
-from app.gpt_processor import process_multi_expense, process_receipt_data
-from app.gpt.types import MultiExpenseResult, BookkeepingEntry
+from app.gpt_processor import process_multi_expense
 from app.services.webhook_sender import send_multiple_webhooks
-from app.services.image_handler import download_image, process_receipt_image, ImageDownloadError, ImageTooLargeError, VisionAPIError
+from app.services.image_handler import (
+    download_image,
+    process_receipt_image,
+    build_image_authoritative_envelope,
+    ImageDownloadError,
+    ImageTooLargeError,
+    VisionAPIError,
+)
+from app.pipeline.image_flow import process_image_envelope
 from app.line.formatters import (
     format_confirmation_message,
     format_multi_confirmation_message,
@@ -148,8 +155,6 @@ def handle_image_message(event: MessageEvent, messaging_api_blob: MessagingApiBl
             # 識別失敗：根據錯誤碼回覆不同訊息
             if error_code == "not_receipt":
                 reply_text = f"❌ 無法辨識收據資訊\n\n{error_message}\n\n💡 請提供文字描述進行記帳，格式如：\n「午餐花了150元，用現金」"
-            elif error_code == "unsupported_currency":
-                reply_text = f"❌ 不支援的幣別\n\n{error_message}\n\n💡 請提供文字描述並手動換算台幣金額，格式如：\n「午餐花了150元，用現金」"
             elif error_code == "unclear":
                 reply_text = f"❌ 收據圖片不清晰\n\n{error_message}\n\n💡 請提供文字描述，格式如：\n「品項、金額、付款方式」\n範例：「午餐花了150元，用現金」"
             elif error_code == "incomplete":
@@ -160,33 +165,21 @@ def handle_image_message(event: MessageEvent, messaging_api_blob: MessagingApiBl
             logger.warning(f"收據識別失敗: {error_code} - {error_message}")
 
         else:
-            # 識別成功：處理收據資料
+            # 識別成功：走 Parser-first image pipeline
             logger.info(f"收據識別成功，共 {len(receipt_items)} 個項目")
 
-            # 4. 轉換為 BookkeepingEntry 列表
-            # process_receipt_data 會自動處理每個項目的日期（v1.8.1）
-            result = process_receipt_data(receipt_items, receipt_date=None)
+            image_envelope = build_image_authoritative_envelope(receipt_items)
+            result = process_image_envelope(image_envelope)
 
-            if result.intent == "multi_bookkeeping":
-                # 成功轉換為記帳項目
+            if result.intent in ("multi_bookkeeping", "cashflow_intents"):
                 entries = result.entries
                 total_items = len(entries)
-
                 logger.info(f"轉換為 {total_items} 筆記帳項目")
 
-                # 5. 發送 webhook（傳入 user_id 以儲存到 KV，支援「修改上一筆」功能）
                 success_count, failure_count = send_multiple_webhooks(entries, user_id)
-
-                # 6. 回覆確認訊息（使用統一的多項目格式）
                 reply_text = format_multi_confirmation_message(result, success_count, failure_count)
 
-                # 如果付款方式是預設值，顯示警告訊息
-                if result.response_text:
-                    reply_text += f"\n\n{result.response_text}"
-                    reply_text += "\n💡 如不正確，請用文字補充記帳\n範例：「剛買的咖啡用Line Pay，50元」"
-
             elif result.intent == "error":
-                # 處理收據資料時發生錯誤
                 reply_text = f"❌ 處理收據資料時發生錯誤\n\n{result.error_message}"
                 logger.error(f"處理收據資料失敗: {result.error_message}")
 

@@ -8,14 +8,12 @@ from datetime import datetime
 from typing import List, Optional
 from zoneinfo import ZoneInfo
 
-from openai import OpenAI
-
-from app.config import OPENAI_API_KEY, GPT_MODEL
 from app.gpt.types import BookkeepingEntry, MultiExpenseResult
 from app.pipeline.transaction_id import generate_transaction_id
-from app.shared.category_resolver import resolve_category_autocorrect
-from app.shared.project_resolver import infer_project
 from app.shared.payment_resolver import normalize_payment_method
+from app.services.exchange_rate import ExchangeRateService
+from app.enricher.receipt_batch import enrich_receipt_items
+from app.pipeline.image_flow import ImageItem
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +52,20 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
         payment_method_raw = receipt_items[0].付款方式 if receipt_items[0].付款方式 else "現金"
         payment_method = normalize_payment_method(payment_method_raw)
         payment_method_is_default = not receipt_items[0].付款方式  # 標記是否使用預設值
+
+        # Batch enrichment (single GPT call)
+        image_items = [
+            ImageItem(
+                item=receipt_item.品項,
+                amount=float(receipt_item.原幣金額),
+                currency=(receipt_item.原幣別 or "TWD").upper(),
+            )
+            for receipt_item in receipt_items
+        ]
+        enrichment_list = enrich_receipt_items(image_items, source_text="收據圖片")
+        enrichment_map = {item.get("id"): item for item in enrichment_list}
+
+        exchange_rate_service = ExchangeRateService()
 
         # v1.9.0: 生成批次時間戳（用於識別同一批次的項目）
         # 使用當前時間作為批次識別符
@@ -120,35 +132,44 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
 
             transaction_id = final_transaction_ids[idx - 1]
 
-            # 分類處理：優先使用 Vision API 提供的分類，沒有則用 GPT 推斷
             品項 = receipt_item.品項
-            if receipt_item.分類:
-                # Vision API 已提供分類
-                分類 = receipt_item.分類
-                logger.info(f"使用 Vision API 分類：{品項} → {分類}")
-            else:
-                # Vision API 未提供分類，使用 GPT 推斷
-                分類 = _infer_category(品項)
-                logger.info(f"使用 GPT 推斷分類：{品項} → {分類}")
+            enrichment = enrichment_map.get(f"t{idx}", {})
+            分類 = enrichment.get("分類", "未分類")
+            專案 = enrichment.get("專案", "日常")
+            必要性 = enrichment.get("必要性", "必要日常支出")
+            明細說明 = enrichment.get("明細說明", "") or f"收據識別 {idx}/{len(receipt_items)}"
 
-            # Normalize and enforce allow-list (auto-correct; fallback to 家庭支出)
-            分類 = resolve_category_autocorrect(分類, fallback="家庭支出")
-            專案 = infer_project(分類)
+            原幣別 = (receipt_item.原幣別 or "TWD").upper()
+            if 原幣別 not in ExchangeRateService.SUPPORTED_CURRENCIES:
+                return MultiExpenseResult(
+                    intent="error",
+                    error_message=f"不支援的幣別：{原幣別}",
+                )
+
+            匯率 = 1.0
+            if 原幣別 != "TWD":
+                rate = exchange_rate_service.get_rate(原幣別)
+                if rate is None:
+                    return MultiExpenseResult(
+                        intent="error",
+                        error_message=f"無法取得 {原幣別} 匯率，請稍後再試或改用新台幣記帳",
+                    )
+                匯率 = rate
 
             entry = BookkeepingEntry(
                 intent="bookkeeping",
                 日期=item_date,  # 使用項目自己的日期
                 品項=品項,
-                原幣別="TWD",
+                原幣別=原幣別,
                 原幣金額=float(receipt_item.原幣金額),
-                匯率=1.0,
+                匯率=匯率,
                 付款方式=payment_method,
                 交易ID=transaction_id,  # 使用實際日期的交易ID
-                明細說明=f"收據識別 {idx}/{len(receipt_items)}",
+                明細說明=明細說明,
                 分類=分類,
                 交易類型="支出",
                 專案=專案,
-                必要性="必要日常支出",
+                必要性=必要性,
                 代墊狀態="無",
                 收款支付對象="",
                 附註=""
@@ -173,83 +194,3 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
             intent="error",
             error_message="處理收據資料時發生錯誤，請重試"
         )
-
-
-def _infer_category(品項: str) -> str:
-    """
-    使用 GPT 進行智能分類推斷
-    """
-    from app.gpt.prompts import CLASSIFICATION_RULES
-
-    try:
-        client = OpenAI(api_key=OPENAI_API_KEY)
-
-        classification_prompt = f"""請根據品項名稱判斷最合適的分類。
-
-{CLASSIFICATION_RULES}
-
-**任務**：
-- 品項：「{品項}」
-- 請從上述分類列表中選擇**最合適**的分類
-- 必須使用「大類／子類」或「大類／子類／細類」格式
-- 只能使用已定義的分類，不可自創
-
-**輸出格式**：
-只回傳分類名稱，不要有其他文字。
-
-範例：
-- 輸入：咖啡 → 輸出：家庭／飲品
-- 輸入：面紙 → 輸出：家庭／用品／雜項
-- 輸入：早餐 → 輸出：家庭／餐飲／早餐
-- 輸入：火車票 → 輸出：交通／接駁
-"""
-
-        response = client.chat.completions.create(
-            model=GPT_MODEL,
-            messages=[
-                {"role": "user", "content": classification_prompt}
-            ],
-            max_tokens=50,
-            temperature=0.3
-        )
-
-        分類 = response.choices[0].message.content.strip()
-        logger.info(f"GPT 分類推斷：{品項} → {分類}")
-
-        return 分類
-
-    except Exception as e:
-        logger.error(f"GPT 分類推斷失敗：{e}")
-        return _simple_category_fallback(品項)
-
-
-def _simple_category_fallback(品項: str) -> str:
-    """
-    簡單的分類推斷（作為 GPT 分類失敗時的備選方案）
-    """
-    品項_lower = 品項.lower()
-
-    # 餐飲類別
-    if any(keyword in 品項_lower for keyword in ["早餐", "三明治", "蛋餅", "豆漿", "漢堡"]):
-        return "家庭／餐飲／早餐"
-    if any(keyword in 品項_lower for keyword in ["午餐", "便當", "麵", "飯"]):
-        return "家庭／餐飲／午餐"
-    if any(keyword in 品項_lower for keyword in ["晚餐", "火鍋"]):
-        return "家庭／餐飲／晚餐"
-    if any(keyword in 品項_lower for keyword in ["咖啡", "茶", "飲料", "果汁", "冰沙", "奶茶"]):
-        return "家庭／飲品"
-    if any(keyword in 品項_lower for keyword in ["點心", "蛋糕", "甜點", "餅乾", "糖果", "巧克力"]):
-        return "家庭／點心"
-
-    # 家庭用品
-    if any(keyword in 品項_lower for keyword in ["面紙", "衛生紙", "紙巾", "棉條", "衛生棉"]):
-        return "家庭／用品／雜項"
-
-    # 交通類別
-    if any(keyword in 品項_lower for keyword in ["計程車", "uber", "高鐵", "火車", "捷運", "公車"]):
-        return "交通／接駁"
-    if any(keyword in 品項_lower for keyword in ["加油", "汽油", "柴油"]):
-        return "交通／加油"
-
-    # 預設分類
-    return "家庭支出"

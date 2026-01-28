@@ -116,6 +116,7 @@ class TestProcessReceiptImage:
         assert len(receipt_items) == 1
         assert receipt_items[0].品項 == "咖啡"
         assert receipt_items[0].原幣金額 == 50
+        assert receipt_items[0].原幣別 == "TWD"
         assert receipt_items[0].付款方式 == "現金"
 
     def test_process_receipt_success_multi_items(self):
@@ -147,6 +148,8 @@ class TestProcessReceiptImage:
         # 兩個項目共用付款方式
         assert receipt_items[0].付款方式 == "現金"
         assert receipt_items[1].付款方式 == "現金"
+        assert receipt_items[0].原幣別 == "TWD"
+        assert receipt_items[1].原幣別 == "TWD"
 
     def test_process_receipt_not_receipt(self):
         """測試非收據圖片（風景照）"""
@@ -166,23 +169,29 @@ class TestProcessReceiptImage:
         assert error_message == "這不是收據圖片"
         assert len(receipt_items) == 0
 
-    def test_process_receipt_unsupported_currency(self):
-        """測試非台幣收據（日幣）"""
-        # 模擬 GPT Vision API 回應（非台幣）
+    def test_process_receipt_success_foreign_currency(self):
+        """測試成功識別外幣收據（日幣）"""
         vision_response = {
-            "status": "unsupported_currency",
-            "message": "收據幣別為 JPY，v1.5.0 僅支援台幣"
+            "status": "success",
+            "currency": "JPY",
+            "date": "2025-11-15",
+            "items": [
+                {"品項": "拉麵", "金額": 900}
+            ],
+            "total": 900,
+            "payment_method": "現金"
         }
         mock_client = make_openai_client_with_json(vision_response)
 
-        # 執行測試
         test_image = b'fake_image_data'
         receipt_items, error_code, error_message = process_receipt_image(test_image, mock_client)
 
-        # 驗證結果
-        assert error_code == "unsupported_currency"
-        assert "JPY" in error_message
-        assert len(receipt_items) == 0
+        assert error_code is None
+        assert error_message is None
+        assert len(receipt_items) == 1
+        assert receipt_items[0].品項 == "拉麵"
+        assert receipt_items[0].原幣金額 == 900
+        assert receipt_items[0].原幣別 == "JPY"
 
     def test_process_receipt_unclear(self):
         """測試模糊收據圖片"""
@@ -252,14 +261,14 @@ class TestReceiptItem:
         item = ReceiptItem(
             品項="咖啡",
             原幣金額=50.0,
-            付款方式="現金",
-            分類="家庭／飲品"
+            原幣別="TWD",
+            付款方式="現金"
         )
 
         assert item.品項 == "咖啡"
         assert item.原幣金額 == 50.0
+        assert item.原幣別 == "TWD"
         assert item.付款方式 == "現金"
-        assert item.分類 == "家庭／飲品"
 
     def test_receipt_item_optional_fields(self):
         """測試 ReceiptItem 的可選欄位"""
@@ -267,5 +276,5 @@ class TestReceiptItem:
 
         assert item.品項 == "咖啡"
         assert item.原幣金額 == 50.0
+        assert item.原幣別 == "TWD"
         assert item.付款方式 is None
-        assert item.分類 is None

@@ -9,7 +9,7 @@ import logging
 from typing import Optional
 
 from app.parser import AuthoritativeEnvelope, Transaction, TransactionType
-from app.shared.category_resolver import allowed_categories
+from app.enricher.validator import validate_category
 from .types import EnrichedTransaction, EnrichedEnvelope
 from .gpt_client import call_gpt_enrichment
 
@@ -30,34 +30,6 @@ def _transaction_to_dict(tx: Transaction) -> dict:
     }
 
 
-def _validate_category(category: str) -> str:
-    """
-    驗證分類是否在允許清單內。
-    
-    若不在清單內，嘗試找最接近的分類，
-    若仍無匹配則回傳 "未分類"。
-    """
-    # 處理空白或只含空白的分類 - 直接回傳未分類
-    if not category or not category.strip():
-        logger.warning("Empty category received, using '未分類'")
-        return "未分類"
-    
-    category = category.strip()
-    categories = allowed_categories()
-    
-    # 完全匹配
-    if category in categories:
-        return category
-    
-    # 嘗試部分匹配（例如 "午餐" → "家庭/餐飲/午餐"）
-    for cat in categories:
-        if category in cat or cat.endswith(category):
-            logger.warning(f"Category '{category}' normalized to '{cat}'")
-            return cat
-    
-    # 無匹配，回傳未分類
-    logger.warning(f"Unknown category '{category}', using '未分類'")
-    return "未分類"
 
 
 def _cashflow_category(tx_type: TransactionType) -> str:
@@ -92,7 +64,7 @@ def _merge_enrichment(
         category = _cashflow_category(tx.type)
     else:
         # 驗證分類
-        category = _validate_category(enrichment.get("分類", "未分類"))
+        category = validate_category(enrichment.get("分類", "未分類"))
     
     return EnrichedTransaction(
         # Parser 權威欄位
@@ -106,6 +78,7 @@ def _merge_enrichment(
         date=tx.date,
         accounts_from=tx.accounts.get("from") if tx.accounts else None,
         accounts_to=tx.accounts.get("to") if tx.accounts else None,
+        fx_rate=1.0,
         # AI Enrichment 欄位
         分類=category,
         專案=enrichment.get("專案", "日常"),

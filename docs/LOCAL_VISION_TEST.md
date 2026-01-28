@@ -1,6 +1,11 @@
 # 本地圖片識別測試指南
 
-本文件說明如何在本地測試 Phase 2 的圖片識別功能，不需要透過 LINE Bot。
+本文件說明如何在本地測試圖片識別功能，不需要透過 LINE Bot。
+
+圖片流程已改為 Parser-first：
+- Vision 只抽取權威欄位（品項/金額/幣別/日期/付款方式）
+- 分類/專案/必要性由 **單次 GPT 批次 enrichment** 補齊
+- 外幣會以匯率換算成 TWD（保留原幣別與匯率）
 
 ## 前置準備
 
@@ -29,7 +34,7 @@ LINE_CHANNEL_SECRET=test_secret
 ### 2. 安裝依賴
 
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 ## 測試方法
@@ -65,7 +70,7 @@ python test_local_vision.py /path/to/receipt.png
   2. 三明治 - 80.0 元
      付款方式: 現金
 
-🔄 轉換為記帳資料...
+🔄 轉換為記帳資料（batch enrichment）...
 ✅ 轉換成功！
 
 記帳項目 #1:
@@ -114,13 +119,13 @@ if error_code:
 else:
     print(f"成功識別 {len(receipt_items)} 個項目:")
     for item in receipt_items:
-        print(f"  - {item.品項}: {item.原幣金額} 元")
+        print(f"  - {item.品項}: {item.原幣金額} {item.原幣別}")
 
 # 轉換為記帳資料
 result = process_receipt_data(receipt_items)
 print(f"\n記帳結果: {result.intent}")
 for entry in result.entries:
-    print(f"  {entry.品項} - {entry.原幣金額} TWD - {entry.分類}")
+    print(f"  {entry.品項} - {entry.原幣金額} {entry.原幣別} - {entry.分類}")
 ```
 
 ### 方法 3：使用單元測試
@@ -134,10 +139,10 @@ export LINE_CHANNEL_SECRET=test_secret
 export OPENAI_API_KEY=your-api-key
 
 # 執行所有圖片處理測試
-python -m pytest tests/test_image_handler.py -v
+uv run pytest tests/unit/test_image_handler.py -v
 
 # 執行特定測試
-python -m pytest tests/test_image_handler.py::TestProcessReceiptImage::test_process_receipt_success_single_item -v
+uv run pytest tests/unit/test_image_handler.py::TestProcessReceiptImage::test_process_receipt_success_single_item -v
 ```
 
 ## 測試收據圖片準備
@@ -154,7 +159,7 @@ python -m pytest tests/test_image_handler.py::TestProcessReceiptImage::test_proc
    - 多筆項目收據
    - 模糊的收據（測試錯誤處理）
    - 非收據圖片（測試錯誤處理）
-   - 外幣收據（測試錯誤處理）
+   - 外幣收據（測試匯率換算）
 
 ### 拍攝收據建議
 
@@ -203,16 +208,16 @@ python test_local_vision.py landscape.jpg
 python test_local_vision.py receipt_jpy.jpg
 ```
 
-**預期結果**：回傳 `unsupported_currency` 錯誤
+**預期結果**：成功識別並換算匯率（若匯率不可用會回錯）
 
 ## 錯誤處理測試
 
 測試腳本會顯示不同的錯誤訊息和建議：
 
 - **not_receipt**: 非收據圖片
-- **unsupported_currency**: 非台幣收據
 - **unclear**: 圖片模糊
 - **incomplete**: 資訊不完整
+- **rate_unavailable**: 匯率取得失敗（在 pipeline 階段）
 
 ## 成本估算
 
@@ -226,26 +231,9 @@ python test_local_vision.py receipt_jpy.jpg
 
 ## 進階測試
 
-### 測試分類推斷
+### 測試批次分類（可選）
 
-驗證 `_infer_category()` 函式的分類邏輯：
-
-```python
-from app.gpt_processor import _infer_category
-
-# 測試不同品項的分類
-test_items = [
-    "咖啡",      # 應該分類為 家庭／飲品
-    "早餐",      # 應該分類為 家庭／餐飲／早餐
-    "午餐便當",  # 應該分類為 家庭／餐飲／午餐
-    "計程車",    # 應該分類為 交通／接駁
-    "加油",      # 應該分類為 交通／加油
-]
-
-for item in test_items:
-    category = _infer_category(item)
-    print(f"{item:10s} → {category}")
-```
+圖片分類採用 batch enrichment（單次 GPT），可直接透過 `test_local_vision.py` 驗證輸出的分類欄位。
 
 ### 測試 Webhook 發送（可選）
 
@@ -289,5 +277,5 @@ convert receipt.jpg -resize 2048x2048\> receipt_resized.jpg
 
 ---
 
-**版本**: v1.5.0 Phase 2
-**更新日期**: 2025-11-15
+**版本**: v1.5.0+
+**更新日期**: 2026-01-28

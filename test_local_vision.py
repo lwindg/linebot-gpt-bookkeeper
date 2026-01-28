@@ -7,10 +7,12 @@
 
 使用方式：
     python test_local_vision.py <圖片路徑>
+    python test_local_vision.py --fixture <json> [--raw] [--skip-gpt]
 
 範例：
     python test_local_vision.py receipt.jpg
     python test_local_vision.py ~/Downloads/receipt.png
+    python test_local_vision.py --fixture tests/functional/fixtures/image_receipt_tc001.json --raw --skip-gpt
 """
 
 import sys
@@ -21,8 +23,14 @@ from pathlib import Path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from app.services.image_handler import process_receipt_image, ReceiptItem, compress_image
+from app.services.image_handler import (
+    process_receipt_image,
+    ReceiptItem,
+    compress_image,
+    build_image_authoritative_envelope,
+)
 from app.gpt_processor import process_receipt_data, process_multi_expense
+from app.pipeline.image_flow import process_image_envelope
 from openai import OpenAI
 from app.config import OPENAI_API_KEY
 from app.services.kv_store import save_last_transaction, KV_ENABLED
@@ -52,18 +60,23 @@ def main():
     """主函式"""
     # 檢查參數
     if len(sys.argv) < 2:
-        print("❌ 使用方式: python test_local_vision.py <圖片路徑> [--no-compress] [--user-id <id>] [--update <訊息>]")
+        print("❌ 使用方式: python test_local_vision.py <圖片路徑> [--no-compress] [--user-id <id>] [--update <訊息>] [--raw] [--skip-gpt]")
+        print("   或: python test_local_vision.py --fixture <json> [--raw] [--skip-gpt]")
         print("\n範例:")
         print("  python test_local_vision.py receipt.jpg")
         print("  python test_local_vision.py ~/Downloads/receipt.png")
         print("  python test_local_vision.py receipt.jpg --no-compress  # 測試不壓縮")
         print("  python test_local_vision.py receipt.jpg --user-id U123 --update \"上一筆付款方式改為富邦\"")
+        print("  python test_local_vision.py --fixture tests/functional/fixtures/image_receipt_tc001.json --raw --skip-gpt")
         sys.exit(1)
 
     image_path = None
     enable_compression = True
     user_id = None
     update_message = None
+    fixture_path = None
+    raw_mode = False
+    skip_gpt = False
 
     args = sys.argv[1:]
     idx = 0
@@ -71,6 +84,16 @@ def main():
         arg = args[idx]
         if arg == "--no-compress":
             enable_compression = False
+        elif arg == "--raw":
+            raw_mode = True
+        elif arg == "--skip-gpt":
+            skip_gpt = True
+        elif arg == "--fixture":
+            if idx + 1 >= len(args):
+                print("❌ 缺少參數值: --fixture")
+                sys.exit(1)
+            fixture_path = args[idx + 1]
+            idx += 1
         elif arg in ("--user-id", "--update"):
             if idx + 1 >= len(args):
                 print(f"❌ 缺少參數值: {arg}")
@@ -91,59 +114,66 @@ def main():
             print(f"⚠️  忽略未知參數: {arg}")
         idx += 1
 
-    if not image_path:
-        print("❌ 請提供圖片路徑")
+    raw_stdout = None
+    if raw_mode:
+        raw_stdout = sys.stdout
+        sys.stdout = sys.stderr
+
+    if not image_path and not fixture_path:
+        print("❌ 請提供圖片路徑或 fixture")
         sys.exit(1)
 
-    # 檢查檔案是否存在
-    if not os.path.exists(image_path):
-        print(f"❌ 圖片檔案不存在: {image_path}")
-        sys.exit(1)
+    image_data = None
+    if image_path:
+        # 檢查檔案是否存在
+        if not os.path.exists(image_path):
+            print(f"❌ 圖片檔案不存在: {image_path}")
+            sys.exit(1)
 
-    print(f"📸 讀取圖片: {image_path}")
+        print(f"📸 讀取圖片: {image_path}")
 
-    # 載入圖片
-    try:
-        image_data = load_image_from_file(image_path)
-        image_size_mb = len(image_data) / (1024 * 1024)
-        print(f"✅ 圖片載入成功 ({image_size_mb:.2f} MB)")
-    except Exception as e:
-        print(f"❌ 圖片載入失敗: {e}")
-        sys.exit(1)
+        # 載入圖片
+        try:
+            image_data = load_image_from_file(image_path)
+            image_size_mb = len(image_data) / (1024 * 1024)
+            print(f"✅ 圖片載入成功 ({image_size_mb:.2f} MB)")
+        except Exception as e:
+            print(f"❌ 圖片載入失敗: {e}")
+            sys.exit(1)
 
-    # 檢查圖片大小
-    if len(image_data) > 10 * 1024 * 1024:
-        print("⚠️  圖片過大（超過 10MB），可能導致處理失敗")
+        # 檢查圖片大小
+        if len(image_data) > 10 * 1024 * 1024:
+            print("⚠️  圖片過大（超過 10MB），可能導致處理失敗")
 
-    # 壓縮圖片並儲存供人眼確認（僅在啟用壓縮時）
-    if enable_compression:
-        print("\n🗜️  壓縮圖片...")
-        compressed_data = compress_image(image_data)
-        compressed_size_mb = len(compressed_data) / (1024 * 1024)
-        compression_ratio = (1 - len(compressed_data) / len(image_data)) * 100
+        # 壓縮圖片並儲存供人眼確認（僅在啟用壓縮時）
+        if enable_compression:
+            print("\n🗜️  壓縮圖片...")
+            compressed_data = compress_image(image_data)
+            compressed_size_mb = len(compressed_data) / (1024 * 1024)
+            compression_ratio = (1 - len(compressed_data) / len(image_data)) * 100
 
-        print(f"   原始大小: {image_size_mb:.2f} MB")
-        print(f"   壓縮後大小: {compressed_size_mb:.2f} MB")
-        print(f"   壓縮率: {compression_ratio:.1f}%")
+            print(f"   原始大小: {image_size_mb:.2f} MB")
+            print(f"   壓縮後大小: {compressed_size_mb:.2f} MB")
+            print(f"   壓縮率: {compression_ratio:.1f}%")
 
-        # 儲存壓縮後的圖片
-        compressed_path = save_compressed_image(compressed_data, image_path)
-        print(f"✅ 壓縮後圖片已儲存: {compressed_path}")
-        print(f"   請用圖片查看器打開確認品質是否足以辨識")
-    else:
-        print("\n⚠️  壓縮已停用，將使用原圖測試")
+            # 儲存壓縮後的圖片
+            compressed_path = save_compressed_image(compressed_data, image_path)
+            print(f"✅ 壓縮後圖片已儲存: {compressed_path}")
+            print(f"   請用圖片查看器打開確認品質是否足以辨識")
+        else:
+            print("\n⚠️  壓縮已停用，將使用原圖測試")
 
-    # 初始化 OpenAI client
-    print("\n🤖 初始化 OpenAI client...")
-    client = OpenAI(api_key=OPENAI_API_KEY)
+        # 初始化 OpenAI client
+        print("\n🤖 初始化 OpenAI client...")
+        client = OpenAI(api_key=OPENAI_API_KEY)
 
-    # 處理圖片
-    if enable_compression:
-        print("🔍 開始分析收據...\n")
-        print("   ℹ️  注意：process_receipt_image 會壓縮圖片")
-        print("   ℹ️  你可以對比儲存的 _compressed.jpg 與實際發送給 API 的壓縮版本\n")
-    else:
-        print("🔍 開始分析收據（使用原圖，不壓縮）...\n")
+        # 處理圖片
+        if enable_compression:
+            print("🔍 開始分析收據...\n")
+            print("   ℹ️  注意：process_receipt_image 會壓縮圖片")
+            print("   ℹ️  你可以對比儲存的 _compressed.jpg 與實際發送給 API 的壓縮版本\n")
+        else:
+            print("🔍 開始分析收據（使用原圖，不壓縮）...\n")
 
     try:
         # 為了診斷，我們需要看到原始的 Vision API 回應
@@ -151,40 +181,48 @@ def main():
         from app.gpt.prompts import RECEIPT_VISION_PROMPT
         from app.config import GPT_VISION_MODEL
 
-        # 準備圖片（compress_image 已在頂部 import）
-        if enable_compression:
-            compressed_image = compress_image(image_data)
+        if fixture_path:
+            if not os.path.exists(fixture_path):
+                print(f"❌ Fixture 檔案不存在: {fixture_path}")
+                sys.exit(1)
+            print(f"🧪 使用 fixture: {fixture_path}")
+            with open(fixture_path, "r", encoding="utf-8") as f:
+                response_text = f.read()
         else:
-            compressed_image = image_data
+            # 準備圖片（compress_image 已在頂部 import）
+            if enable_compression:
+                compressed_image = compress_image(image_data)
+            else:
+                compressed_image = image_data
 
-        base64_image = encode_image_base64(compressed_image)
+            base64_image = encode_image_base64(compressed_image)
 
-        # 直接呼叫 Vision API 並顯示原始回應
-        print("🔍 呼叫 Vision API...")
-        response = client.chat.completions.create(
-            model=GPT_VISION_MODEL,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": RECEIPT_VISION_PROMPT
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{base64_image}"
+            # 直接呼叫 Vision API 並顯示原始回應
+            print("🔍 呼叫 Vision API...")
+            response = client.chat.completions.create(
+                model=GPT_VISION_MODEL,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": RECEIPT_VISION_PROMPT
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{base64_image}"
+                                }
                             }
-                        }
-                    ]
-                }
-            ],
-            max_tokens=2000,  # 提高 token 上限以支援更複雜的收據
-            response_format={"type": "json_object"}
-        )
+                        ]
+                    }
+                ],
+                max_tokens=2000,  # 提高 token 上限以支援更複雜的收據
+                response_format={"type": "json_object"}
+            )
 
-        response_text = response.choices[0].message.content
+            response_text = response.choices[0].message.content
 
         # 顯示原始 API 回應
         print("\n" + "=" * 60)
@@ -209,12 +247,13 @@ def main():
             for item in items_data:
                 # 提取項目日期，若無則使用 fallback
                 item_date = item.get("日期") or fallback_date
+                item_currency = item.get("幣別") or result.get("currency", "TWD")
 
                 receipt_items.append(ReceiptItem(
                     品項=item["品項"],
                     原幣金額=float(item["金額"]),
+                    原幣別=item_currency,
                     付款方式=payment_method,
-                    分類=item.get("分類"),  # Vision API 提供的分類（可選）
                     日期=item_date  # Vision API 提供的日期（可選）
                 ))
 
@@ -247,8 +286,7 @@ def main():
             if error_code == "not_receipt":
                 print("  - 請確認圖片是否為收據或發票")
             elif error_code == "unsupported_currency":
-                print("  - 目前僅支援台幣（TWD）收據")
-                print("  - 請使用文字描述並手動換算台幣金額")
+                print("  - 不支援的幣別")
             elif error_code == "unclear":
                 print("  - 請重新拍攝更清晰的圖片")
                 print("  - 確保收據上的文字清楚可見")
@@ -260,7 +298,11 @@ def main():
             print(f"✅ 識別成功！共 {len(receipt_items)} 個項目\n")
 
             # 轉換為記帳資料
-            result = process_receipt_data(receipt_items)
+            if skip_gpt:
+                image_envelope = build_image_authoritative_envelope(receipt_items)
+                result = process_image_envelope(image_envelope, skip_gpt=True)
+            else:
+                result = process_receipt_data(receipt_items)
 
             if result.intent == "multi_bookkeeping":
                 entries = result.entries
@@ -379,6 +421,52 @@ def main():
                         print(reply)
             else:
                 print(f"❌ 轉換失敗: {result.error_message}")
+
+        if raw_mode:
+            sys.stdout = raw_stdout
+            if error_code:
+                raw_output = {
+                    "intent": "error",
+                    "intent_display": "錯誤",
+                    "error_message": error_message,
+                    "reason": error_code,
+                }
+            else:
+                if result.intent == "multi_bookkeeping":
+                    raw_output = {
+                        "intent": "multi_bookkeeping",
+                        "intent_display": "記帳",
+                        "entries": [
+                            {
+                                "日期": entry.日期,
+                                "品項": entry.品項,
+                                "原幣別": entry.原幣別,
+                                "原幣金額": entry.原幣金額,
+                                "匯率": entry.匯率,
+                                "付款方式": entry.付款方式,
+                                "交易ID": entry.交易ID,
+                                "明細說明": entry.明細說明,
+                                "分類": entry.分類,
+                                "交易類型": entry.交易類型,
+                                "專案": entry.專案,
+                                "必要性": entry.必要性,
+                                "代墊狀態": entry.代墊狀態,
+                                "收款支付對象": entry.收款支付對象,
+                                "附註": entry.附註,
+                            }
+                            for entry in result.entries
+                        ],
+                    }
+                else:
+                    raw_output = {
+                        "intent": "error",
+                        "intent_display": "錯誤",
+                        "error_message": getattr(result, "error_message", "未知錯誤"),
+                        "reason": getattr(result, "error_reason", None),
+                    }
+
+            print(json.dumps(raw_output, ensure_ascii=False))
+            return
 
         print("=" * 60)
 

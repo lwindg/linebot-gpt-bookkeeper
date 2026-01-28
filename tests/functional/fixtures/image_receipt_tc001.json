@@ -1,0 +1,15 @@
+{
+  "status": "success",
+  "currency": "TWD",
+  "date": "2025-11-15",
+  "items": [
+    {
+      "品項": "咖啡",
+      "金額": 50,
+      "幣別": "TWD",
+      "日期": "2025-11-15"
+    }
+  ],
+  "total": 50,
+  "payment_method": "現金"
+}

@@ -20,6 +20,7 @@ from linebot.v3.messaging import MessagingApiBlob
 
 from app.config import OPENAI_API_KEY, GPT_VISION_MODEL
 from app.gpt.prompts import RECEIPT_VISION_PROMPT
+from app.pipeline.image_flow import ImageItem, ImageAuthoritativeEnvelope, build_image_envelope
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +30,8 @@ class ReceiptItem:
     """單筆收據項目"""
     品項: str
     原幣金額: float
+    原幣別: str = "TWD"
     付款方式: Optional[str] = None
-    分類: Optional[str] = None
     日期: Optional[str] = None  # YYYY-MM-DD 格式
 
 
@@ -47,6 +48,45 @@ class ImageTooLargeError(Exception):
 class VisionAPIError(Exception):
     """Vision API 失敗"""
     pass
+
+
+def build_image_authoritative_envelope(
+    receipt_items: list[ReceiptItem],
+) -> ImageAuthoritativeEnvelope:
+    """
+    將收據項目轉為 ImageAuthoritativeEnvelope。
+
+    規則：
+    - 付款方式以單一值為主；若不一致或缺失則為 None
+    - 收據日期若所有項目一致則作為 receipt_date，否則為 None
+    """
+    payment_values = {item.付款方式 for item in receipt_items if item.付款方式}
+    payment_method = None
+    if len(payment_values) == 1:
+        payment_method = next(iter(payment_values))
+    elif len(payment_values) > 1:
+        logger.warning("Multiple payment methods detected in image items, ignore shared payment.")
+
+    date_values = {item.日期 for item in receipt_items if item.日期}
+    receipt_date = None
+    if len(date_values) == 1:
+        receipt_date = next(iter(date_values))
+
+    items = [
+        ImageItem(
+            item=item.品項,
+            amount=item.原幣金額,
+            currency=item.原幣別,
+            date=item.日期,
+        )
+        for item in receipt_items
+    ]
+
+    return build_image_envelope(
+        items,
+        receipt_date=receipt_date,
+        payment_method=payment_method,
+    )
 
 
 def download_image(message_id: str, messaging_api_blob: MessagingApiBlob) -> bytes:
@@ -212,7 +252,6 @@ def process_receipt_image(
 
         錯誤狀態碼：
         - "not_receipt": 非收據圖片
-        - "unsupported_currency": 非台幣收據
         - "unclear": 圖片模糊/無法辨識
         - "incomplete": 缺少關鍵資訊
         - "api_error": API 呼叫失敗
@@ -285,6 +324,7 @@ def process_receipt_image(
             items_data = result.get("items", [])
             payment_method = result.get("payment_method")
             fallback_date = result.get("date")  # 最外層日期作為 fallback
+            default_currency = result.get("currency", "TWD")
 
             # 轉換為 ReceiptItem 列表
             receipt_items = []
@@ -292,12 +332,13 @@ def process_receipt_image(
                 # 提取項目日期，若無則使用 fallback
                 item_date = item.get("日期") or fallback_date
 
+                item_currency = item.get("幣別") or default_currency
                 receipt_items.append(ReceiptItem(
                     品項=item["品項"],
                     原幣金額=float(item["金額"]),
+                    原幣別=item_currency,
                     付款方式=payment_method,
-                    分類=item.get("分類"),  # Vision API 提供的分類（可選）
-                    日期=item_date  # Vision API 提供的日期（可選）
+                    日期=item_date,  # Vision API 提供的日期（可選）
                 ))
 
             logger.info(f"成功識別 {len(receipt_items)} 個收據項目")
@@ -311,7 +352,7 @@ def process_receipt_image(
 
         elif status == "unsupported_currency":
             # 非台幣收據
-            message = result.get("message", "v1.5.0 僅支援台幣")
+            message = result.get("message", "不支援的幣別")
             logger.warning(f"非台幣收據: {message}")
             return [], "unsupported_currency", message
 

@@ -1,0 +1,4 @@
+# Image receipt functional suite
+{"id":"TC-IMG-001","group":"基本識別","name":"單筆台幣收據","message":"<image:tc001>","fixture":"tests/functional/fixtures/image_receipt_tc001.json","expected_desc":"","expected":{"intent":"記帳","bookkeeping":{"item_contains":"咖啡","amount":"50","payment":"現金","category":"未分類","item_count":"1","date":"2025-11-15"}}}
+{"id":"TC-IMG-002","group":"繳費單","name":"多日期項目","message":"<image:tc002>","fixture":"tests/functional/fixtures/image_receipt_tc002.json","expected_desc":"","expected":{"intent":"記帳","bookkeeping":{"item_contains":"台水水費","amount":"262","payment":"轉帳","category":"未分類","item_count":"4","date":"2025-10-13"}}}
+{"id":"TC-IMG-003","group":"錯誤處理","name":"非收據圖片","message":"<image:tc003>","fixture":"tests/functional/fixtures/image_receipt_tc003.json","expected_desc":"","expected":{"intent":"錯誤","error":{"contains":"不是收據"}}}

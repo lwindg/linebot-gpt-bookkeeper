@@ -37,6 +37,9 @@ class EnrichedTransaction:
     專案: str = "日常"
     必要性: str = "必要日常支出"
     明細說明: str = ""
+
+    # === FX ===
+    fx_rate: float = 1.0
     
     # === 帳戶資訊（現金流用）===
     accounts_from: Optional[str] = None
