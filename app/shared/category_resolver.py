@@ -98,6 +98,19 @@ def get_classification_rules_description() -> str:
                     desc += f" (例外：{exception})"
                 descriptions.append(desc)
             descriptions.append("")
+
+    # 3. 特殊關鍵字規則
+    if "special_cases" in rules:
+        items = rules.get("special_cases") or []
+        if items:
+            descriptions.append("### 特殊關鍵字規則")
+            for r in items:
+                pattern = r.get("pattern")
+                category = r.get("category")
+                if not pattern or not category:
+                    continue
+                descriptions.append(f"- 遇到「{pattern}」時，分類為 `{category}`")
+            descriptions.append("")
         
     return "\n".join(descriptions)
 
