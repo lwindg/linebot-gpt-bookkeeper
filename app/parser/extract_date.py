@@ -17,7 +17,7 @@ from typing import Optional
 # 1. YYYY-MM-DD or YYYY/MM/DD (完整日期格式)
 _FULL_DATE_PATTERN = re.compile(r"(20\d{2})[/-](\d{1,2})[/-](\d{1,2})")
 # 2. MM/DD or MM-DD (簡短日期格式)
-_SHORT_DATE_PATTERN = re.compile(r"(\d{1,2})[/-](\d{1,2})")
+_SHORT_DATE_PATTERN = re.compile(r"(\d{1,2})[/-](\d{1,2})(?!\d?月)")
 
 def extract_date(text: str, context_date: datetime) -> Optional[str]:
     """

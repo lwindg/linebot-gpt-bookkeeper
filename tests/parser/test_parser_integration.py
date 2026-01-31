@@ -210,3 +210,21 @@ class TestParserIntegration:
         assert envelope.transactions[1].amount == 150.0
         for tx in envelope.transactions:
             assert tx.payment_method == "現金"
+
+    def test_month_range_not_split(self, taipei_now):
+        """月份範圍不應被當成分項切割"""
+        envelope = parse("大兒子1、2月零用錢1000 現金", context_date=taipei_now)
+        assert len(envelope.transactions) == 1
+        tx = envelope.transactions[0]
+        assert tx.amount == 1000.0
+        assert tx.payment_method == "現金"
+        assert tx.date is None
+        assert "1、2月" in tx.raw_item
+
+    def test_month_range_not_date(self, taipei_now):
+        """月份範圍不應被解析為日期"""
+        envelope = parse("妹2025年11-12月心理諮商10500合庫", context_date=taipei_now)
+        tx = envelope.transactions[0]
+        assert tx.amount == 10500.0
+        assert tx.payment_method == "合庫"
+        assert tx.date is None

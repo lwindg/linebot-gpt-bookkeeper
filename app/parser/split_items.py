@@ -37,13 +37,16 @@ def split_items(text: str) -> list[str]:
     # 這也能幫助後續金額解析
     normalized = re.sub(r"(\d),(\d{3})", r"\1\2", text)
     
-    # 2. 進行分割
+    # 2. 避免切斷月份範圍 (e.g. "1、2月")
+    normalized = re.sub(r"(\d{1,2})、(\d{1,2})(?=月)", r"\1@@\2", normalized)
+
+    # 3. 進行分割
     parts = _SPLIT_PATTERN.split(normalized)
     
-    # 3. 過濾空字串與清理
+    # 4. 過濾空字串與清理
     results = []
     for part in parts:
-        clean_part = part.strip()
+        clean_part = part.replace("@@", "、").strip()
         if clean_part:
             results.append(clean_part)
             
