@@ -58,6 +58,19 @@ class TestParserIntegration:
         assert tx.type == TransactionType.TRANSFER
         assert tx.amount == 500.0
 
+    @pytest.mark.parametrize(
+        "message, expected_from, expected_to",
+        [
+            ("Richart轉帳到 Line 2000", "台新 Richart", "Line Pay"),
+            ("Richart轉帳到合庫2000", "台新 Richart", "合庫"),
+        ],
+    )
+    def test_transfer_accounts_order(self, taipei_now, message, expected_from, expected_to):
+        envelope = parse(message, context_date=taipei_now)
+        tx = envelope.transactions[0]
+        assert tx.accounts["from"] == expected_from
+        assert tx.accounts["to"] == expected_to
+
     def test_income_intent(self, taipei_now):
         """薪水 50000"""
         envelope = parse("薪水 50000", context_date=taipei_now)

@@ -49,11 +49,21 @@ def normalize_cashflow_payment_method(value: str) -> str:
 
 def _detect_accounts(message: str) -> list[str]:
     text = (message or "").lower()
-    hits: list[str] = []
+    if not text:
+        return []
+
+    positions: dict[str, int] = {}
     for alias, canonical in _ACCOUNT_ALIASES:
-        if alias in text and canonical not in hits:
-            hits.append(canonical)
-    return hits
+        alias_lower = alias.lower()
+        index = text.find(alias_lower)
+        if index == -1:
+            continue
+        existing = positions.get(canonical)
+        if existing is None or index < existing:
+            positions[canonical] = index
+
+    ordered = sorted(positions.items(), key=lambda item: item[1])
+    return [canonical for canonical, _ in ordered]
 
 
 def infer_transfer_mode(message: str) -> str:
