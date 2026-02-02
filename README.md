@@ -139,6 +139,35 @@ https://your-project.vercel.app/api/webhook
 | `11/12 花磚甜點$410大戶` | 品項：花磚甜點<br>金額：410 TWD<br>付款：大戶信用卡<br>日期：2025-11-12 |
 | `前天 午餐$120現金` | 品項：午餐<br>金額：120 TWD<br>付款：現金<br>日期：2025-11-12（假設今天是 11/14） |
 
+### 多項目記帳（Parser-first 注意事項）
+
+- 分隔符號：支援換行、逗號（, / ，）、分號（; / ；）、頓號（、）。
+- **付款方式不能被分隔符切成獨立一段**；必須跟最後一個項目同段（前面最多只有空白）。
+- 推薦格式：`品項金額、品項金額 付款方式` 或使用換行分隔。
+
+✅ 正確：
+- `早餐80、午餐150 現金`
+- `早餐80\n午餐150 現金`
+
+❌ 錯誤（付款方式被切成單獨段）：
+- `早餐80、午餐150、現金`
+- `現金，早餐80，午餐150`
+
+### Advance Payment / Need to Pay (Parser-first)
+
+- **Advance paid (you paid for someone)**: `幫/代 + 對象 + 買/付/墊/代墊/墊付/購買`
+- **Need to pay (someone paid for you)**: `對象 + 代訂/代付/幫買/先墊/幫購買`
+- **No-claim**: contains `不用還 / 不索取 / 送給 / 請客 / 我請`, or patterns like `請{對象}喝/吃/早餐/午餐/晚餐`
+- Keep the counterparty close to the keyword (short phrase works best).
+- If you haven't paid yet, omit the payment method to keep it `NA`.
+- In multi-item messages, only the item that contains the keyword gets the advance status.
+
+Examples:
+- Advance paid: `幫同事墊付計程車費300元現金`
+- Need to pay: `同事先墊午餐費150元`
+- No-claim: `幫媽媽買藥500元現金不用還`
+- Mixed items: `早餐80、午餐150幫同事代墊 現金`
+
 ### 一般對話
 
 | 使用者輸入 | 系統回應 |
