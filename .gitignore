@@ -82,6 +82,8 @@ IMG_*.jpg
 
 # Vibe coding stuff
 .specify
+.claude/
+.codex/
 .codex/auth.json
 .codex/config.toml
 .codex/history.jsonl
