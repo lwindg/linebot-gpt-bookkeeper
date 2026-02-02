@@ -83,7 +83,9 @@ IMG_*.jpg
 # Vibe coding stuff
 .specify
 .codex/auth.json
+.codex/config.toml
 .codex/history.jsonl
 .codex/log/
 .codex/sessions/
 .codex/tmp/
+.codex/version.json
