@@ -38,6 +38,30 @@ def _load_config_from_yaml() -> dict:
         return yaml.safe_load(f) or {}
 
 
+def _load_health_medical_rules() -> dict:
+    data = _load_config_from_yaml()
+    rules = data.get("rules") if isinstance(data, dict) else None
+    health_rules = rules.get("health_medical") if isinstance(rules, dict) else None
+    return health_rules if isinstance(health_rules, dict) else {}
+
+
+@lru_cache(maxsize=1)
+def _health_family_keyword_pattern() -> re.Pattern[str] | None:
+    rules = _load_health_medical_rules()
+    keywords = rules.get("family_keywords")
+    if not keywords:
+        return None
+    return re.compile(keywords)
+
+
+@lru_cache(maxsize=1)
+def _health_medical_categories() -> tuple[str, str]:
+    rules = _load_health_medical_rules()
+    category_self = rules.get("category_self") or "健康/醫療/本人"
+    category_family = rules.get("category_family") or "健康/醫療/家庭成員"
+    return (category_self, category_family)
+
+
 def _load_categories_from_yaml() -> set[str]:
     """Load categories from YAML config file."""
     data = _load_config_from_yaml()
@@ -111,6 +135,22 @@ def get_classification_rules_description() -> str:
                     continue
                 descriptions.append(f"- 遇到「{pattern}」時，分類為 `{category}`")
             descriptions.append("")
+
+    # 4. 健康/醫療規則
+    if "health_medical" in rules:
+        r = rules.get("health_medical") or {}
+        title = r.get("description") or "健康/醫療分類規則"
+        medical_patterns = r.get("medical_patterns")
+        family_keywords = r.get("family_keywords")
+        category_self = r.get("category_self") or "健康/醫療/本人"
+        category_family = r.get("category_family") or "健康/醫療/家庭成員"
+        descriptions.append(f"### {title}")
+        if medical_patterns:
+            descriptions.append(f"- 遇到「{medical_patterns}」時，分類為 `{category_self}`")
+        if family_keywords:
+            keyword_text = str(family_keywords).replace("|", "、")
+            descriptions.append(f"- 若同時包含家人關鍵字（{keyword_text}）→ `{category_family}`")
+        descriptions.append("")
         
     return "\n".join(descriptions)
 
@@ -185,11 +225,32 @@ def resolve_category_input(value: str, *, original_category: str | None = None) 
     raise ValueError(f"unknown category: {raw} (suggestions: {suggestion_text})")
 
 
+def apply_health_medical_default(category: str, *, context_text: str | None = None) -> str:
+    """
+    Normalize health medical categories to a third-level path when needed.
+
+    Only applies when category is exactly "健康/醫療" and context_text is provided.
+    """
+    if not category:
+        return category
+    normalized = _normalize_separators(str(category).strip())
+    if normalized != "健康/醫療":
+        return category
+    if not context_text:
+        return category
+    family_pattern = _health_family_keyword_pattern()
+    category_self, category_family = _health_medical_categories()
+    if family_pattern and family_pattern.search(str(context_text)):
+        return category_family
+    return category_self
+
+
 def resolve_category_autocorrect(
     value: str,
     *,
     original_category: str | None = None,
     fallback: str = "家庭支出",
+    context_text: str | None = None,
 ) -> str:
     """
     Resolve a category to an allowed path, auto-correcting to the closest match.
@@ -199,7 +260,8 @@ def resolve_category_autocorrect(
     """
 
     try:
-        return resolve_category_input(value, original_category=original_category)
+        resolved = resolve_category_input(value, original_category=original_category)
+        return apply_health_medical_default(resolved, context_text=context_text)
     except ValueError:
         raw = (value or "").strip()
         normalized = _normalize_separators(raw)
@@ -224,9 +286,9 @@ def resolve_category_autocorrect(
         # Fallback: best-effort suggestions
         suggestions = _suggest_categories(normalized, allowed, limit=1)
         if suggestions:
-            return suggestions[0]
+            return apply_health_medical_default(suggestions[0], context_text=context_text)
 
-        return _normalize_separators(fallback)
+        return apply_health_medical_default(_normalize_separators(fallback), context_text=context_text)
 
 _TOP_LEVEL_DEFAULTS: dict[str, str] = {
     "交通": "交通/接駁",

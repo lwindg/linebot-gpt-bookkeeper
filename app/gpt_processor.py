@@ -400,7 +400,10 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False) -> Mu
                 transaction_id = batch_id
 
                 # 補充預設值和共用欄位
-                分類 = resolve_category_autocorrect(item_data.get("分類", ""))
+                分類 = resolve_category_autocorrect(
+                    item_data.get("分類", ""),
+                    context_text=base_message,
+                )
                 project_raw = item_data.get("專案")
                 project = project_raw.strip() if isinstance(project_raw, str) else ""
                 inferred_project = infer_project(分類)

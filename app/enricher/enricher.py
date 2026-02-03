@@ -10,6 +10,7 @@ from typing import Optional
 
 from app.parser import AuthoritativeEnvelope, Transaction, TransactionType
 from app.enricher.validator import validate_category
+from app.shared.category_resolver import apply_health_medical_default
 from .types import EnrichedTransaction, EnrichedEnvelope
 from .gpt_client import call_gpt_enrichment
 
@@ -48,6 +49,8 @@ def _cashflow_category(tx_type: TransactionType) -> str:
 def _merge_enrichment(
     tx: Transaction,
     enrichment: dict,
+    *,
+    context_text: str | None = None,
 ) -> EnrichedTransaction:
     """
     合併 Parser 權威欄位與 AI Enrichment 結果。
@@ -65,6 +68,7 @@ def _merge_enrichment(
     else:
         # 驗證分類
         category = validate_category(enrichment.get("分類", "未分類"))
+        category = apply_health_medical_default(category, context_text=context_text)
     
     return EnrichedTransaction(
         # Parser 權威欄位
@@ -160,7 +164,8 @@ def enrich(
             "必要性": "必要日常支出",
             "明細說明": "",
         })
-        enriched_tx = _merge_enrichment(tx, enrichment)
+        context_text = f"{envelope.source_text} {tx.raw_item}".strip()
+        enriched_tx = _merge_enrichment(tx, enrichment, context_text=context_text)
         enriched_transactions.append(enriched_tx)
     
     return EnrichedEnvelope(
