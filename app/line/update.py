@@ -9,6 +9,12 @@ import re
 from app.shared.category_resolver import resolve_category_input
 from app.services.kv_store import KVStore, delete_last_transaction
 from app.shared.payment_resolver import normalize_payment_method
+from app.shared.project_resolver import (
+    extract_project_date_range,
+    get_long_term_project,
+    match_short_term_project,
+)
+from app.services.project_options import get_project_options
 from app.services.webhook_sender import send_update_webhook_batch
 
 logger = logging.getLogger(__name__)
@@ -33,6 +39,18 @@ def _extract_category_from_update_message(message: str) -> str | None:
         return value or None
 
     return None
+
+
+def _format_project_candidates_message(candidates: list[str]) -> str:
+    if not candidates:
+        return "❌ 找不到唯一專案\n請輸入完整名稱（含日期）。"
+    lines = [
+        "❌ 找不到唯一專案",
+        "請輸入完整名稱（含日期），或從以下候選擇一個：",
+    ]
+    for idx, candidate in enumerate(candidates, start=1):
+        lines.append(f"{idx}) {candidate}")
+    return "\n".join(lines)
 
 
 def handle_update_last_entry(user_id: str, fields_to_update: dict, *, raw_message: str | None = None) -> str:
@@ -97,6 +115,32 @@ def handle_update_last_entry(user_id: str, fields_to_update: dict, *, raw_messag
     if payment_value not in (None, ""):
         normalized = normalize_payment_method(str(payment_value))
         fields_to_update = {**fields_to_update, "付款方式": normalized}
+
+    project_value = fields_to_update.get("專案")
+    if project_value not in (None, ""):
+        project_text = str(project_value).strip()
+        long_term_project = get_long_term_project(project_text)
+        if long_term_project:
+            fields_to_update = {**fields_to_update, "專案": long_term_project}
+        else:
+            has_date_prefix = extract_project_date_range(project_text) is not None
+            options, error = get_project_options(kv_store)
+            if options:
+                resolved, candidates = match_short_term_project(project_text, options)
+                if resolved:
+                    fields_to_update = {**fields_to_update, "專案": resolved}
+                elif has_date_prefix:
+                    fields_to_update = {**fields_to_update, "專案": project_text}
+                else:
+                    return _format_project_candidates_message(candidates)
+            else:
+                if has_date_prefix:
+                    fields_to_update = {**fields_to_update, "專案": project_text}
+                else:
+                    logger.warning(
+                        "Failed to fetch project options: %s", error or "unknown_error"
+                    )
+                    return "❌ 無法取得專案清單，請稍後再試或提供完整名稱（含日期）。"
 
     # Step 5: Update target fields in transaction dict (skip empty/None values)
     updated_tx = original_tx.copy()

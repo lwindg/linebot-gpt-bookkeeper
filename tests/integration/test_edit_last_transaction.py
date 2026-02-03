@@ -10,16 +10,17 @@ Test coverage:
 - Error handling: empty fields, not found, expired, concurrency
 """
 
+from datetime import date, timedelta
 from unittest.mock import MagicMock, patch
-from app.line_handler import handle_update_last_entry
+from app.line.update import handle_update_last_entry
 
 
 class TestEditItemName:
     """US1: Edit item name (品項)"""
 
-    @patch('app.line_handler.delete_last_transaction')
-    @patch('app.line_handler.send_update_webhook_batch')
-    @patch('app.line_handler.KVStore')
+    @patch('app.line.update.delete_last_transaction')
+    @patch('app.line.update.send_update_webhook_batch')
+    @patch('app.line.update.KVStore')
     def test_edit_item_name_success(self, mock_kv_store_class, mock_send_webhook, mock_delete_tx):
         """
         TC-US1-001: Edit item name success scenario
@@ -74,7 +75,7 @@ class TestEditItemName:
         # Verify KV record was deleted after success
         mock_delete_tx.assert_called_once_with(user_id)
 
-    @patch('app.line_handler.KVStore')
+    @patch('app.line.update.KVStore')
     def test_edit_item_name_not_found(self, mock_kv_store_class):
         """
         TC-US1-002: Edit item name when no transaction exists
@@ -97,7 +98,7 @@ class TestEditItemName:
         assert "找不到最近的記帳記錄" in result_message
         assert mock_kv_store.set.call_count == 0  # Should not attempt to save
 
-    @patch('app.line_handler.KVStore')
+    @patch('app.line.update.KVStore')
     def test_edit_item_name_empty_fields(self, mock_kv_store_class):
         """
         TC-US1-003: Edit item name with empty fields_to_update
@@ -123,9 +124,9 @@ class TestEditItemName:
 class TestEditCategory:
     """US2: Edit category (分類)"""
 
-    @patch('app.line_handler.delete_last_transaction')
-    @patch('app.line_handler.send_update_webhook_batch')
-    @patch('app.line_handler.KVStore')
+    @patch('app.line.update.delete_last_transaction')
+    @patch('app.line.update.send_update_webhook_batch')
+    @patch('app.line.update.KVStore')
     def test_edit_category_success(self, mock_kv_store_class, mock_send_webhook, mock_delete_tx):
         """
         TC-US2-001: Edit category success scenario
@@ -162,9 +163,9 @@ class TestEditCategory:
         )
         mock_delete_tx.assert_called_once_with(user_id)
 
-    @patch('app.line_handler.delete_last_transaction')
-    @patch('app.line_handler.send_update_webhook_batch')
-    @patch('app.line_handler.KVStore')
+    @patch('app.line.update.delete_last_transaction')
+    @patch('app.line.update.send_update_webhook_batch')
+    @patch('app.line.update.KVStore')
     def test_edit_category_resolve_short_label(self, mock_kv_store_class, mock_send_webhook, mock_delete_tx):
         """
         TC-US2-003: Edit category with short label should resolve to existing path
@@ -196,9 +197,9 @@ class TestEditCategory:
         )
         mock_delete_tx.assert_called_once_with(user_id)
 
-    @patch('app.line_handler.send_update_webhook_batch')
-    @patch('app.line_handler.delete_last_transaction')
-    @patch('app.line_handler.KVStore')
+    @patch('app.line.update.send_update_webhook_batch')
+    @patch('app.line.update.delete_last_transaction')
+    @patch('app.line.update.KVStore')
     def test_edit_category_reject_new_category(self, mock_kv_store_class, mock_delete_tx, mock_send_webhook):
         """
         TC-US2-004: Reject category updates that would create a new category
@@ -221,9 +222,9 @@ class TestEditCategory:
         mock_send_webhook.assert_not_called()
         mock_delete_tx.assert_not_called()
 
-    @patch('app.line_handler.send_update_webhook_batch')
-    @patch('app.line_handler.delete_last_transaction')
-    @patch('app.line_handler.KVStore')
+    @patch('app.line.update.send_update_webhook_batch')
+    @patch('app.line.update.delete_last_transaction')
+    @patch('app.line.update.KVStore')
     def test_edit_category_reject_new_category_even_if_gpt_resolves(self, mock_kv_store_class, mock_delete_tx, mock_send_webhook):
         """
         TC-US2-005: Reject user-provided new category even if GPT resolves to an existing one
@@ -253,9 +254,9 @@ class TestEditCategory:
         mock_send_webhook.assert_not_called()
         mock_delete_tx.assert_not_called()
 
-    @patch('app.line_handler.delete_last_transaction')
-    @patch('app.line_handler.send_update_webhook_batch')
-    @patch('app.line_handler.KVStore')
+    @patch('app.line.update.delete_last_transaction')
+    @patch('app.line.update.send_update_webhook_batch')
+    @patch('app.line.update.KVStore')
     def test_edit_category_preserve_on_empty(self, mock_kv_store_class, mock_send_webhook, mock_delete_tx):
         """
         TC-US2-002: Edit category with empty value - webhook still sent but empty field skipped
@@ -292,15 +293,22 @@ class TestEditCategory:
 class TestEditProject:
     """US3: Edit project (專案)"""
 
-    @patch('app.line_handler.delete_last_transaction')
-    @patch('app.line_handler.send_update_webhook_batch')
-    @patch('app.line_handler.KVStore')
-    def test_edit_project_success(self, mock_kv_store_class, mock_send_webhook, mock_delete_tx):
+    @patch('app.line.update.get_project_options')
+    @patch('app.line.update.delete_last_transaction')
+    @patch('app.line.update.send_update_webhook_batch')
+    @patch('app.line.update.KVStore')
+    def test_edit_project_long_term_success(
+        self,
+        mock_kv_store_class,
+        mock_send_webhook,
+        mock_delete_tx,
+        mock_get_options,
+    ):
         """
         TC-US3-001: Edit project success scenario
 
         Given: KV contains transaction with 專案="日常"
-        When: Call handle_update_last_entry(user_id, {"專案": "Q4 行銷活動"})
+        When: Call handle_update_last_entry(user_id, {"專案": "旅遊"})
         Then: UPDATE webhook sent, KV deleted
         """
         # Arrange
@@ -318,16 +326,59 @@ class TestEditProject:
         mock_send_webhook.return_value = (1, 0)
 
         # Act
-        result_message = handle_update_last_entry(user_id, {"專案": "Q4 行銷活動"})
+        result_message = handle_update_last_entry(user_id, {"專案": "旅遊"})
 
         # Assert
         assert "修改成功" in result_message
         assert "專案" in result_message
-        assert "Q4 行銷活動" in result_message
+        assert "旅遊" in result_message
+        mock_get_options.assert_not_called()
 
         # Verify webhook called
         mock_send_webhook.assert_called_once_with(
-            user_id, ["20251129-140000"], {"專案": "Q4 行銷活動"}
+            user_id, ["20251129-140000"], {"專案": "旅遊"}
+        )
+        mock_delete_tx.assert_called_once_with(user_id)
+
+    @patch('app.line.update.get_project_options')
+    @patch('app.line.update.delete_last_transaction')
+    @patch('app.line.update.send_update_webhook_batch')
+    @patch('app.line.update.KVStore')
+    def test_edit_project_short_term_unique(
+        self,
+        mock_kv_store_class,
+        mock_send_webhook,
+        mock_delete_tx,
+        mock_get_options,
+    ):
+        """
+        TC-US3-002: Edit project with short-term unique match
+        """
+        user_id = "test_user_project_short_term"
+        original_transaction = {
+            "交易ID": "20251129-140000",
+            "品項": "印刷費",
+            "專案": "日常",
+            "原幣金額": 500.0
+        }
+
+        today = date.today()
+        start = today + timedelta(days=5)
+        end = today + timedelta(days=7)
+        option = f"{start:%Y%m%d}-{end:%Y%m%d} 日本玩雪"
+
+        mock_kv_store = MagicMock()
+        mock_kv_store_class.return_value = mock_kv_store
+        mock_kv_store.get.side_effect = [original_transaction, original_transaction]
+        mock_send_webhook.return_value = (1, 0)
+        mock_get_options.return_value = ([option], None)
+
+        result_message = handle_update_last_entry(user_id, {"專案": "日本玩雪"})
+
+        assert "修改成功" in result_message
+        assert option in result_message
+        mock_send_webhook.assert_called_once_with(
+            user_id, ["20251129-140000"], {"專案": option}
         )
         mock_delete_tx.assert_called_once_with(user_id)
 
@@ -335,9 +386,9 @@ class TestEditProject:
 class TestEditAmount:
     """US4: Edit amount (原幣金額)"""
 
-    @patch('app.line_handler.delete_last_transaction')
-    @patch('app.line_handler.send_update_webhook_batch')
-    @patch('app.line_handler.KVStore')
+    @patch('app.line.update.delete_last_transaction')
+    @patch('app.line.update.send_update_webhook_batch')
+    @patch('app.line.update.KVStore')
     def test_edit_amount_success(self, mock_kv_store_class, mock_send_webhook, mock_delete_tx):
         """
         TC-US4-001: Edit amount success scenario
@@ -373,9 +424,9 @@ class TestEditAmount:
         )
         mock_delete_tx.assert_called_once_with(user_id)
 
-    @patch('app.line_handler.delete_last_transaction')
-    @patch('app.line_handler.send_update_webhook_batch')
-    @patch('app.line_handler.KVStore')
+    @patch('app.line.update.delete_last_transaction')
+    @patch('app.line.update.send_update_webhook_batch')
+    @patch('app.line.update.KVStore')
     def test_edit_amount_zero_is_valid(self, mock_kv_store_class, mock_send_webhook, mock_delete_tx):
         """
         TC-US4-002: Edit amount to zero (valid for free items)
@@ -413,9 +464,9 @@ class TestEditAmount:
 class TestConcurrencyControl:
     """Optimistic locking and concurrency control"""
 
-    @patch('app.line_handler.delete_last_transaction')
-    @patch('app.line_handler.send_update_webhook_batch')
-    @patch('app.line_handler.KVStore')
+    @patch('app.line.update.delete_last_transaction')
+    @patch('app.line.update.send_update_webhook_batch')
+    @patch('app.line.update.KVStore')
     def test_optimistic_lock_detects_concurrent_update(self, mock_kv_store_class, mock_send_webhook, mock_delete_tx):
         """
         TC-CONCURRENCY-001: Optimistic lock detects concurrent modification
@@ -454,9 +505,9 @@ class TestConcurrencyControl:
         mock_send_webhook.assert_not_called()  # Should NOT send webhook
         mock_delete_tx.assert_not_called()  # Should NOT delete KV
 
-    @patch('app.line_handler.delete_last_transaction')
-    @patch('app.line_handler.send_update_webhook_batch')
-    @patch('app.line_handler.KVStore')
+    @patch('app.line.update.delete_last_transaction')
+    @patch('app.line.update.send_update_webhook_batch')
+    @patch('app.line.update.KVStore')
     def test_transaction_expired_during_update(self, mock_kv_store_class, mock_send_webhook, mock_delete_tx):
         """
         TC-CONCURRENCY-002: Transaction expired during update
@@ -492,9 +543,9 @@ class TestConcurrencyControl:
 class TestMultiFieldUpdate:
     """Test updating multiple fields at once"""
 
-    @patch('app.line_handler.delete_last_transaction')
-    @patch('app.line_handler.send_update_webhook_batch')
-    @patch('app.line_handler.KVStore')
+    @patch('app.line.update.delete_last_transaction')
+    @patch('app.line.update.send_update_webhook_batch')
+    @patch('app.line.update.KVStore')
     def test_update_multiple_fields(self, mock_kv_store_class, mock_send_webhook, mock_delete_tx):
         """
         TC-MULTI-001: Update multiple fields in one operation

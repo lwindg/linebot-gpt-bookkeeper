@@ -27,6 +27,7 @@ from app.line.formatters import (
     format_cashflow_confirmation_message,
 )
 from app.line.update import handle_update_last_entry
+from app.line.project_list import handle_project_list_request, is_project_list_command
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,14 @@ def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
     logger.info(f"Received message from user {user_id}: {user_message}")
 
     try:
+        if is_project_list_command(user_message):
+            reply_text = handle_project_list_request()
+            line_bot_api.reply_message(
+                reply_token,
+                TextSendMessage(text=reply_text)
+            )
+            return
+
         # Process message via GPT (v1.5.0: using process_multi_expense)
         result = process_multi_expense(user_message)
 

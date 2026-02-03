@@ -19,6 +19,8 @@ WEBHOOK_URL = os.getenv('WEBHOOK_URL', '')
 GPT_MODEL = os.getenv('GPT_MODEL', 'gpt-4o-mini')
 GPT_VISION_MODEL = os.getenv('GPT_VISION_MODEL', 'gpt-4o')
 WEBHOOK_TIMEOUT = int(os.getenv('WEBHOOK_TIMEOUT', '10'))
+PROJECT_OPTIONS_WEBHOOK_URL = os.getenv('PROJECT_OPTIONS_WEBHOOK_URL', '')
+PROJECT_OPTIONS_TTL = int(os.getenv('PROJECT_OPTIONS_TTL', '21600'))
 
 # Vercel Redis configuration (optional, for update-last-entry feature)
 # Vercel provides REDIS_URL when you connect a Redis database

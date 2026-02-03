@@ -8,6 +8,9 @@
   python test_local.py '早餐80元，午餐150元，現金'  # 單次測試（僅 GPT 解析）
   python test_local.py --raw '11/12 午餐120元現金'  # 單次測試（僅輸出 JSON，給測試 runner 用）
   python test_local.py --full '午餐 100 現金'      # 完整流程測試（GPT + Webhook + KV）
+  python test_local.py --parser '專案改為日本玩雪'  # 解析更新意圖並嘗試 DRY-RUN 修改（需 KV）
+  python test_local.py --list-projects             # 列出近期專案清單（Make + Notion）
+  python test_local.py --parser --mock-kv '專案改為日本玩雪'  # 無 KV 時使用 mock 交易測試
 
 完整流程模式（--full）：
   python test_local.py --full               # 互動模式，啟用完整流程（預設 dry-run）
@@ -46,16 +49,27 @@ import logging
 import json
 import argparse
 import re
-from unittest.mock import patch
+from contextlib import ExitStack
+from unittest.mock import patch, MagicMock
 from app.gpt.types import MultiExpenseResult, BookkeepingEntry
 from app.pipeline.router import process_message
 from app.services.kv_store import get_last_transaction, KVStore
 from app.config import KV_ENABLED
 from app.services.webhook_sender import send_multiple_webhooks, build_create_payload, build_update_payload
-from app.line_handler import handle_update_last_entry, format_multi_confirmation_message
+from app.line.update import handle_update_last_entry
+from app.line.project_list import handle_project_list_request
+from app.line.formatters import format_multi_confirmation_message
 
 # Default test user ID for local testing
 DEFAULT_TEST_USER_ID = "test_local_user"
+_DEFAULT_MOCK_TRANSACTION = {
+    "交易ID": "LOCAL-UPDATE-TEST-001",
+    "品項": "測試項目",
+    "原幣金額": 100.0,
+    "付款方式": "現金",
+    "分類": "健康/醫療",
+    "日期": "2026-02-01",
+}
 
 
 def entry_to_dict(entry: BookkeepingEntry) -> dict:
@@ -91,6 +105,51 @@ def normalize_error_message(result: MultiExpenseResult) -> str:
 
 def normalize_error_reason(result: MultiExpenseResult) -> str | None:
     return getattr(result, "error_reason", None)
+
+
+def build_mock_transaction() -> dict:
+    return dict(_DEFAULT_MOCK_TRANSACTION)
+
+
+def get_update_transaction(user_id: str, *, use_mock: bool = False) -> tuple[dict | None, bool]:
+    transaction = get_last_transaction(user_id)
+    if transaction:
+        return transaction, False
+    if use_mock:
+        return build_mock_transaction(), True
+    return None, False
+
+
+def get_project_list_message() -> str:
+    return handle_project_list_request()
+
+
+def run_update_dry_run(
+    user_id: str,
+    fields_to_update: dict,
+    *,
+    raw_message: str | None = None,
+    success_count: int = 1,
+    mock_transaction: dict | None = None,
+) -> str:
+    success_tuple = (max(success_count, 1), 0)
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch('app.line.update.send_update_webhook_batch', return_value=success_tuple)
+        )
+        stack.enter_context(
+            patch('app.line.update.delete_last_transaction', return_value=True)
+        )
+        if mock_transaction is not None:
+            mock_kv = MagicMock()
+            mock_kv.get.side_effect = [mock_transaction, mock_transaction]
+            stack.enter_context(
+                patch('app.line.update.KVStore', return_value=mock_kv)
+            )
+        reply = handle_update_last_entry(user_id, fields_to_update, raw_message=raw_message)
+    if reply.startswith("✅ "):
+        reply = reply.replace("✅ ", "✅ [DRY-RUN] ", 1)
+    return reply
 
 
 def result_to_raw_json(result) -> dict:
@@ -149,6 +208,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--user", default=DEFAULT_TEST_USER_ID, help="Test user id used for KV/full flow.")
     parser.add_argument("--debug", action="store_true", help="Enable debug logs for prompt routing and GPT output.")
     parser.add_argument("--parser", action="store_true", help="Use parser-first pipeline (process_with_parser).")
+    parser.add_argument("--list-projects", action="store_true", help="List recent projects from Notion via Make.")
+    parser.add_argument("--mock-kv", action="store_true", help="Use mock transaction when KV is empty.")
     parser.add_argument("--kv", action="store_true", help="Show last transaction stored in KV and exit.")
     parser.add_argument("--clear", action="store_true", help="Clear KV record for the user and exit.")
     return parser
@@ -161,6 +222,7 @@ def simulate_full_flow(
     live_mode: bool = False,
     debug: bool = False,
     use_parser: bool = False,
+    use_mock_kv: bool = False,
 ):
     """
     模擬完整的 LINE handler 流程
@@ -248,9 +310,11 @@ def simulate_full_flow(
         print(f"   要更新的欄位: {result.fields_to_update}")
 
         # 先讀取 KV 顯示將發送的 UPDATE payload
-        tx = get_last_transaction(user_id)
+        tx, used_mock = get_update_transaction(user_id, use_mock=use_mock_kv)
         if tx:
             transaction_ids = tx.get("transaction_ids", [tx.get("交易ID")])
+            if used_mock:
+                print("⚠️ KV 中無交易記錄，使用 mock 交易進行測試")
             print(f"\n📤 Webhook Payloads (UPDATE):")
             for i, txn_id in enumerate(transaction_ids, 1):
                 payload = build_update_payload(user_id, txn_id, result.fields_to_update, item_count=1)
@@ -263,13 +327,14 @@ def simulate_full_flow(
             else:
                 # Dry-run 模式：仍執行完整的驗證/處理流程，但 mock 掉 webhook 與 KV 刪除
                 print(f"\n⏭️  DRY-RUN: 模擬執行修改上一筆（不發送 UPDATE webhook、不刪除 KV）")
-                success_tuple = (len([t for t in transaction_ids if t]), 0)
-                with patch('app.line_handler.send_update_webhook_batch', return_value=success_tuple), patch(
-                    'app.line_handler.delete_last_transaction', return_value=True
-                ):
-                    reply = handle_update_last_entry(user_id, result.fields_to_update, raw_message=message)
-                if reply.startswith("✅ "):
-                    reply = reply.replace("✅ ", "✅ [DRY-RUN] ", 1)
+                success_count = len([t for t in transaction_ids if t])
+                reply = run_update_dry_run(
+                    user_id,
+                    result.fields_to_update,
+                    raw_message=message,
+                    success_count=success_count,
+                    mock_transaction=tx if used_mock else None,
+                )
         else:
             print(f"\n⚠️ KV 中無交易記錄，無法顯示 UPDATE payload")
             reply = "❌ 找不到上一筆交易記錄"
@@ -571,7 +636,12 @@ def print_multi_result(result: MultiExpenseResult, show_json=False):
     print("=" * 60)
 
 
-def interactive_mode(test_user_id=DEFAULT_TEST_USER_ID, full_mode=False, live_mode=False):
+def interactive_mode(
+    test_user_id=DEFAULT_TEST_USER_ID,
+    full_mode=False,
+    live_mode=False,
+    use_mock_kv: bool = False,
+):
     """互動模式 - 持續接收輸入並測試"""
     print("=" * 60)
     print("🤖 LINE Bot GPT Bookkeeper - 本地測試工具")
@@ -655,11 +725,27 @@ def interactive_mode(test_user_id=DEFAULT_TEST_USER_ID, full_mode=False, live_mo
                         live_mode,
                         debug=args.debug,
                         use_parser=args.parser,
+                        use_mock_kv=use_mock_kv,
                     )
                 else:
                     mode = "parser" if args.parser else "auto"
                     result = process_message(user_input, mode=mode, debug=args.debug)
                     print_multi_result(result, show_json)
+                    if result.intent == "update_last_entry" and args.parser:
+                        tx, used_mock = get_update_transaction(test_user_id, use_mock=use_mock_kv)
+                        if tx:
+                            transaction_ids = tx.get("transaction_ids", [tx.get("交易ID")])
+                            success_count = len([t for t in transaction_ids if t])
+                            reply = run_update_dry_run(
+                                test_user_id,
+                                result.fields_to_update,
+                                raw_message=user_input,
+                                success_count=success_count,
+                                mock_transaction=tx if used_mock else None,
+                            )
+                            print(f"\n💬 回覆訊息:\n{reply}")
+                        else:
+                            print("\n⚠️ KV 中無交易記錄，無法執行修改上一筆")
             except Exception as e:
                 print(f"\n❌ 錯誤: {str(e)}\n")
                 import traceback
@@ -680,6 +766,7 @@ def single_test(
     live_mode=False,
     debug: bool = False,
     use_parser: bool = False,
+    use_mock_kv: bool = False,
 ):
     """單次測試模式"""
     if full_mode:
@@ -695,6 +782,7 @@ def single_test(
                 live_mode=live_mode,
                 debug=debug,
                 use_parser=use_parser,
+                use_mock_kv=use_mock_kv,
             )
         except Exception as e:
             print(f"\n❌ 錯誤: {str(e)}\n")
@@ -710,6 +798,21 @@ def single_test(
         mode = "parser" if use_parser else "auto"
         result = process_message(message, mode=mode, debug=debug)
         print_multi_result(result, show_json=True)
+        if result.intent == "update_last_entry" and use_parser:
+            tx, used_mock = get_update_transaction(test_user_id, use_mock=use_mock_kv)
+            if tx:
+                transaction_ids = tx.get("transaction_ids", [tx.get("交易ID")])
+                success_count = len([t for t in transaction_ids if t])
+                reply = run_update_dry_run(
+                    test_user_id,
+                    result.fields_to_update,
+                    raw_message=message,
+                    success_count=success_count,
+                    mock_transaction=tx if used_mock else None,
+                )
+                print(f"\n💬 回覆訊息:\n{reply}")
+            else:
+                print("\n⚠️ KV 中無交易記錄，無法執行修改上一筆")
     except Exception as e:
         print(f"\n❌ 錯誤: {str(e)}\n")
         import traceback
@@ -730,6 +833,10 @@ if __name__ == "__main__":
     live_mode = args.live  # Default is DRY-RUN (no webhook sending)
     test_user_id = args.user
 
+    if args.list_projects:
+        print(get_project_list_message())
+        raise SystemExit(0)
+
     if args.clear:
         clear_kv(test_user_id)
         if not args.kv and not args.message:
@@ -747,9 +854,17 @@ if __name__ == "__main__":
                 print("--raw cannot be used with --full.", file=sys.stderr)
                 raise SystemExit(2)
             raise SystemExit(single_test_raw(message, debug=args.debug, use_parser=args.parser))
-        single_test(message, full_mode, test_user_id, live_mode, debug=args.debug, use_parser=args.parser)
+        single_test(
+            message,
+            full_mode,
+            test_user_id,
+            live_mode,
+            debug=args.debug,
+            use_parser=args.parser,
+            use_mock_kv=args.mock_kv,
+        )
     else:
         if args.raw:
             print("--raw requires a message argument.", file=sys.stderr)
             raise SystemExit(2)
-        interactive_mode(test_user_id, full_mode, live_mode)
+        interactive_mode(test_user_id, full_mode, live_mode, use_mock_kv=args.mock_kv)
