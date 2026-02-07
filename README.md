@@ -1,43 +1,44 @@
-# LINE Bot GPT 記帳中介系統
+# LINE Bot GPT 記帳中介系統 (v2.0)
 
-一個智慧的記帳助手，透過 LINE Bot 和 GPT-4o-mini 將自然語言轉換為結構化記帳資料。
+一個智慧的記帳助手，透過 LINE Bot 和 GPT-4o-mini 將自然語言轉換為結構化記帳資料。**Version 2.0 採用 Parser-first 架構，實現更精準、更低延遲的解析體驗。**
 
 ## ✨ 功能特色
 
 - 🗣️ **自然語言記帳**：用對話方式記錄支出，如「午餐花了150元刷卡」
 - 🤖 **GPT 智慧解析**：自動識別品項、金額、付款方式、分類等資訊
-- 📅 **智慧日期處理**：支援「今天」、「昨天」、「前天」等語義化日期
+- 📅 **智慧日期時間處理**：支援語義化日期與精確時間 (HH:MM) 提取
+- 💴 **深層日圓支援**：精準識別 ¥、円 符號，並支援「日圓現金」等支付方式自動換匯
+- 🔄 **多重編輯修正**：在下一筆記帳開始前，可無限次修正上一筆記錄（支援修改幣別、匯率）
 - 🔗 **Webhook 整合**：將解析結果發送到外部記帳系統（如 Make.com、Google Sheets）
 - ☁️ **Serverless 架構**：部署在 Vercel，無需維護伺服器
-- 🧪 **本地測試工具**：無需 LINE webhook 即可快速測試 GPT 解析功能
+- 🧪 **自動化測試體系**：整合 `./run_tests.sh` 確保系統穩定性
 
-## ✅ 現況功能
+## ✅ 現況功能 (v2.0 Parser-first Architecture)
 
-- 支援單筆/多筆記帳（單句多項目）
-- 支援現金流（提款、轉帳、繳卡費、收入）
-- 支援語義日期與數字日期格式
-- 支援外幣與匯率換算
-- Parser-first + GPT enrichment（可切換）
-- 本地測試工具與自動化測試
+- **Parser-first 策略**：優先使用正則與邏輯解析 Authority Fields（金額、日期、時間、付款方式），GPT 僅負責語義 Enrichment。
+- **時間與 ID 同步**：從文字或圖片中提取時間 (HH:MM)，交易 ID 格式統一為 `YYYYMMDD-HHMMSS`。
+- **進階修正意圖**：支援「改幣別為日圓」、「匯率 0.22」等精確修正，自動查詢最新匯率。
+- **持久化編輯**：支援對最後一筆交易進行多次連續修正，直到開始新的一筆。
+- **多項目記帳**：支援單句多項目、現金流（提款、轉帳、繳卡費、收入）。
+- **外幣自動換算**：支援多幣別與即時/手動匯率換算。
 
 ## 🏗️ 技術架構
 
 ```
-LINE Platform → Vercel Serverless Function → GPT-4o-mini → Webhook (記帳系統)
+LINE Platform → Vercel Serverless Function → Parser (Authority Fields) → GPT (Enrichment) → Webhook
                        ↓
                    LINE Bot API (回覆使用者)
 ```
 
 ### 技術棧
 
+- **Environment Management**: [uv](https://astral.sh/uv) (快速、可靠的 Python 套件管理)
 - **Backend**: Python 3.11+
 - **Framework**: Flask (Serverless)
 - **LINE SDK**: line-bot-sdk 3.8.0
 - **OpenAI SDK**: openai >= 1.12.0
 - **部署平台**: Vercel
-- **開發方法論**: Spec Kit
-
-## 🚀 快速開始
+- **開發方法論**: Spec Kit & Parser-first Strategy
 
 ### 環境需求
 
@@ -269,15 +270,25 @@ linebot-gpt-bookkeeper/
 - **提交格式**：`$action(module): $message`（例如：`feat(gpt): add semantic date parsing`）
 - **允許的動作**：`feat`, `fix`, `refactor`, `docs`, `test`, `style`, `chore`
 
-### 測試
+### 測試 (Testing)
+
+本專案擁有完整的自動化測試套件，涵蓋單元測試、解析器測試與端到端測試。
 
 ```bash
+# 執行全量測試（推薦）
+./run_tests.sh
+
 # 執行單元測試
 pytest
 
-# 執行本地整合測試
+# 執行本地互動式測試
 python test_local.py
 ```
+
+## 🔮 未來展望
+
+- **Notion 直接整合**：預計開發直接與 Notion API 對接的功能，擺脫中間人（如 Make.com）的 API 呼叫次數限制。
+- **更精細的分類邏輯**：基於歷史記帳習慣的個性化分類推薦。
 
 ## 📚 相關文件
 
@@ -318,4 +329,4 @@ MIT License
 ---
 
 **專案維護者**：lwindg
-**最後更新**：2026-01-26
+**最後更新**：2026-02-07 (v2.0 Milestone)
