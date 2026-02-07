@@ -222,7 +222,7 @@ def handle_image_message(event: MessageEvent, messaging_api_blob: MessagingApiBl
 
     except VisionAPIError as e:
         logger.error(f"Vision API 失敗: {e}")
-        reply_text = "❌ 無法處理圖片\n\n系統暫時無法分析收據，請使用文字描述進行記帳"
+        reply_text = f"❌ 無法處理圖片\n\n系統暫時無法分析收據。\n錯誤細節：{str(e)}\n\n請使用文字描述進行記帳"
         line_bot_api.reply_message(
             reply_token,
             TextSendMessage(text=reply_text)

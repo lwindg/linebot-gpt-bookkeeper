@@ -10,6 +10,7 @@ from app.shared.category_resolver import resolve_category_input
 from app.services.kv_store import KVStore, delete_last_transaction, save_last_transaction
 from app.shared.payment_resolver import normalize_payment_method
 from app.parser.extract_amount import _CURRENCY_MAP
+from app.services.exchange_rate import ExchangeRateService
 from app.shared.project_resolver import (
     extract_project_date_range,
     get_long_term_project,
@@ -130,7 +131,15 @@ def handle_update_last_entry(user_id: str, fields_to_update: dict, *, raw_messag
         # Normalize currency (e.g., "日幣" -> "JPY")
         val = str(currency_value).strip()
         normalized = _CURRENCY_MAP.get(val, _CURRENCY_MAP.get(val.upper(), val.upper()))
-        fields_to_update = {**fields_to_update, "原幣別": normalized}
+        fields_to_update["原幣別"] = normalized
+
+        # 自動更新匯率 (v1.10.2)
+        if "匯率" not in fields_to_update:
+            rate_service = ExchangeRateService(kv_store)
+            new_rate = rate_service.get_rate(normalized)
+            if new_rate:
+                fields_to_update["匯率"] = new_rate
+                logger.info(f"Auto-updated exchange rate for {normalized}: {new_rate}")
 
     rate_value = fields_to_update.get("匯率")
     if rate_value not in (None, ""):
