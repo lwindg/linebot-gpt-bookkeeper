@@ -10,8 +10,9 @@ from typing import Tuple, List, Optional
 
 import requests
 
-from app.config import PROJECT_OPTIONS_WEBHOOK_URL, PROJECT_OPTIONS_TTL, WEBHOOK_TIMEOUT
+from app.config import PROJECT_OPTIONS_WEBHOOK_URL, PROJECT_OPTIONS_TTL, WEBHOOK_TIMEOUT, USE_NOTION_API, NOTION_TOKEN
 from app.services.kv_store import KVStore
+from app.services.notion_service import NotionService
 
 logger = logging.getLogger(__name__)
 
@@ -20,20 +21,34 @@ _PROJECT_OPTIONS_CACHE_KEY = "project_options"
 
 def get_project_options(kv_store: Optional[KVStore] = None) -> Tuple[Optional[List[str]], Optional[str]]:
     """
-    Fetch project options from Make.com webhook, with KV cache.
+    Fetch project options from Notion API or Make.com webhook, with KV cache.
 
     Returns:
         (options, error_code)
     """
-    if not PROJECT_OPTIONS_WEBHOOK_URL:
-        return None, "missing_webhook"
-
     kv_store = kv_store or KVStore()
     cached = kv_store.get(_PROJECT_OPTIONS_CACHE_KEY) if kv_store else None
     if isinstance(cached, dict):
         options = cached.get("options")
         if isinstance(options, list):
             return options, None
+
+    # Try Notion API first if enabled
+    if USE_NOTION_API and NOTION_TOKEN:
+        logger.info("Fetching project options from Notion API")
+        try:
+            options = NotionService().get_database_options("專案")
+            if options:
+                cleaned = [str(option).strip() for option in options if str(option).strip()]
+                if kv_store:
+                    kv_store.set(_PROJECT_OPTIONS_CACHE_KEY, {"options": cleaned}, ttl=PROJECT_OPTIONS_TTL)
+                return cleaned, None
+            logger.warning("No options found from Notion API, falling back to webhook")
+        except Exception as exc:
+            logger.error(f"Failed to fetch project options from Notion: {exc}")
+
+    if not PROJECT_OPTIONS_WEBHOOK_URL:
+        return None, "missing_webhook"
 
     try:
         response = requests.post(

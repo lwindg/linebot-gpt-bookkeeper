@@ -22,6 +22,11 @@ WEBHOOK_TIMEOUT = int(os.getenv('WEBHOOK_TIMEOUT', '10'))
 PROJECT_OPTIONS_WEBHOOK_URL = os.getenv('PROJECT_OPTIONS_WEBHOOK_URL', '')
 PROJECT_OPTIONS_TTL = int(os.getenv('PROJECT_OPTIONS_TTL', '21600'))
 
+# Notion configuration
+NOTION_TOKEN = os.getenv('NOTION_TOKEN', '')
+NOTION_DATABASE_ID = os.getenv('NOTION_DATABASE_ID', '')
+USE_NOTION_API = os.getenv('USE_NOTION_API', 'false').lower() == 'true'
+
 # Vercel Redis configuration (optional, for update-last-entry feature)
 # Vercel provides REDIS_URL when you connect a Redis database
 REDIS_URL = os.getenv('REDIS_URL', '')

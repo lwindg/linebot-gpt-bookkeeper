@@ -10,9 +10,10 @@ import re
 import requests
 import time
 from typing import List, Tuple, Optional
-from app.config import WEBHOOK_URL, WEBHOOK_TIMEOUT
+from app.config import WEBHOOK_URL, WEBHOOK_TIMEOUT, USE_NOTION_API, NOTION_TOKEN
 from app.gpt.types import BookkeepingEntry
 from app.services.kv_store import save_last_transaction, delete_last_transaction
+from app.services.notion_service import NotionService
 
 logger = logging.getLogger(__name__)
 
@@ -83,10 +84,7 @@ def build_update_payload(user_id: str, transaction_id: str, fields_to_update: di
 
 def send_to_webhook(entry: BookkeepingEntry, user_id: Optional[str] = None) -> bool:
     """
-    Send bookkeeping data to Make.com webhook
-
-    Converts BookkeepingEntry to JSON format expected by Make.com
-    and sends via POST request to webhook URL.
+    Send bookkeeping data to Make.com webhook or Notion API.
 
     Args:
         entry: BookkeepingEntry object
@@ -94,15 +92,39 @@ def send_to_webhook(entry: BookkeepingEntry, user_id: Optional[str] = None) -> b
 
     Returns:
         bool: True if success, False if failed
-
-    Error handling:
-        - Network errors: returns False
-        - HTTP 4xx/5xx: returns False
-        - Timeout (default 10s): returns False
     """
+    # 1. Notion API Integration (v2.0)
+    if USE_NOTION_API and NOTION_TOKEN:
+        logger.info(f"Using Notion API for transaction {entry.交易ID}")
+        notion = NotionService()
+        success = notion.create_page(entry)
+        
+        if success:
+            # v1.10.1: Clear previous last transaction before saving new one (single entry)
+            if user_id:
+                delete_last_transaction(user_id)
+                
+                # 儲存最後一筆交易到 KV（用於「修改上一筆」功能）
+                transaction_data = {
+                    "交易ID": entry.交易ID,
+                    "品項": entry.品項,
+                    "原幣金額": entry.原幣金額,
+                    "原幣別": entry.原幣別,
+                    "匯率": entry.匯率,
+                    "付款方式": entry.付款方式,
+                    "分類": entry.分類,
+                    "日期": entry.日期,
+                }
+                save_last_transaction(user_id, transaction_data)
+            return True
+        else:
+            logger.error(f"Notion API failed for transaction {entry.交易ID}")
+            return False
+
+    # 2. Legacy Webhook Integration
     # Check if webhook URL is configured
     if not WEBHOOK_URL:
-        logger.warning("WEBHOOK_URL not configured, skipping webhook send")
+        logger.warning("Neither Notion nor Webhook URL is configured, skipping")
         return True
 
     # Prepare payload for Make.com (using Chinese field names as per spec)
@@ -302,32 +324,18 @@ def send_update_webhook_batch(user_id: str, transaction_ids: List[str], fields_t
 
 def send_update_webhook(user_id: str, transaction_id: str, fields_to_update: dict, item_count: int = 1) -> bool:
     """
-    發送 UPDATE webhook 到 Make.com（v1.5.0 新功能）
-
-    用於「修改上一筆」功能，發送 UPDATE 操作到 Make.com Router。
-    支援多項目交易批次更新（相同交易ID的所有項目）。
-
-    Args:
-        user_id: LINE 使用者 ID
-        transaction_id: 要更新的交易 ID
-        fields_to_update: 要更新的欄位（dict）
-        item_count: 項目數量（預設為 1，多項目交易時傳入實際數量）
-
-    Returns:
-        bool: 成功回傳 True，失敗回傳 False
-
-    Examples:
-        >>> # 單筆更新
-        >>> send_update_webhook("U1234567890abcdef", "20251115-143052", {"付款方式": "Line Pay"}, 1)
-        True
-
-        >>> # 多項目批次更新（5 個項目共享同一交易ID）
-        >>> send_update_webhook("U1234567890abcdef", "20251116-143027", {"付款方式": "Line Pay"}, 5)
-        True
+    發送 UPDATE 操作到 Notion API 或 Make.com Webhook。
     """
+    # 1. Notion API Integration
+    if USE_NOTION_API and NOTION_TOKEN:
+        logger.info(f"Using Notion API for UPDATE transaction {transaction_id}")
+        notion = NotionService()
+        return notion.update_page(transaction_id, fields_to_update)
+
+    # 2. Legacy Webhook Integration
     # Check if webhook URL is configured
     if not WEBHOOK_URL:
-        logger.warning("WEBHOOK_URL not configured, skipping update webhook")
+        logger.warning("Neither Notion nor Webhook URL is configured for update")
         return True
 
     # Prepare UPDATE payload

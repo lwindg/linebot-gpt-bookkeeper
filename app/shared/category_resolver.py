@@ -19,6 +19,10 @@ from typing import Iterable
 
 import yaml
 
+from app.config import USE_NOTION_API, NOTION_TOKEN
+from app.services.notion_service import NotionService
+from app.services.kv_store import KVStore
+
 # Legacy import for fallback (will be removed after migration)
 from app.gpt.prompts import CLASSIFICATION_RULES
 
@@ -165,13 +169,45 @@ def _iter_category_tokens_from_rules(rules_text: str) -> Iterable[str]:
             yield token
 
 
+_CATEGORY_OPTIONS_CACHE_KEY = "category_options"
+
+
+def _load_categories_from_notion() -> set[str]:
+    """Load categories from Notion database schema."""
+    if not USE_NOTION_API or not NOTION_TOKEN:
+        return set()
+
+    kv_store = KVStore()
+    cached = kv_store.get(_CATEGORY_OPTIONS_CACHE_KEY)
+    if isinstance(cached, dict):
+        options = cached.get("options")
+        if isinstance(options, list):
+            return {str(opt).strip() for opt in options if opt}
+
+    try:
+        options = NotionService().get_database_options("分類")
+        if options:
+            cleaned = [str(option).strip() for option in options if str(option).strip()]
+            kv_store.set(_CATEGORY_OPTIONS_CACHE_KEY, {"options": cleaned}, ttl=21600)  # 6 hours
+            return set(cleaned)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Failed to fetch categories from Notion: {e}")
+
+    return set()
+
+
 @lru_cache(maxsize=1)
 def allowed_categories() -> set[str]:
-    """Get all allowed categories (from YAML or legacy fallback)."""
-    # Try loading from YAML first
-    categories = _load_categories_from_yaml()
-    
-    # Fallback to legacy if YAML is empty
+    """Get all allowed categories (from Notion, YAML or legacy fallback)."""
+    # 1. Try Notion API first if enabled
+    categories = _load_categories_from_notion()
+
+    # 2. Try loading from YAML if Notion failed or disabled
+    if not categories:
+        categories = _load_categories_from_yaml()
+
+    # 3. Fallback to legacy if both are empty
     if not categories:
         categories = {_normalize_separators(token) for token in _iter_category_tokens_from_rules(CLASSIFICATION_RULES)}
 
