@@ -8,11 +8,13 @@ AI Enrichment Module (Phase 2)
 - 權威欄位不可被 AI 修改
 """
 
-from .enricher import enrich
+from .enricher import enrich, apply_exchange_rates, ExchangeRateUnavailableError
 from .types import EnrichedTransaction, EnrichedEnvelope
 
 __all__ = [
     "enrich",
+    "apply_exchange_rates",
+    "ExchangeRateUnavailableError",
     "EnrichedTransaction",
     "EnrichedEnvelope",
 ]

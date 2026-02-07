@@ -61,6 +61,22 @@ class TestEndToEndIntegration:
         assert "午餐" in entry2.品項
         assert entry2.付款方式 == "現金"
 
+    def test_e2e_foreign_currency_exchange_rate(self, mock_parser_context, mocker):
+        """Test foreign currency rate lookup in parser-first flow."""
+        mocker.patch(
+            "app.enricher.enricher.ExchangeRateService.get_rate",
+            return_value=0.21,
+        )
+
+        result = process_with_parser("拉麵 日幣 1500 現金", skip_gpt=True)
+
+        assert result.intent == "multi_bookkeeping"
+        assert len(result.entries) == 1
+        entry = result.entries[0]
+        assert entry.原幣別 == "JPY"
+        assert entry.原幣金額 == 1500.0
+        assert entry.匯率 == 0.21
+
     def test_e2e_cashflow_transfer(self, mock_parser_context):
         """Test cashflow intent handling (Withdrawal)."""
         # "從richart提款5000" -> withdrawal intent, source=Richart

@@ -10,11 +10,38 @@ from typing import Optional
 
 from app.parser import AuthoritativeEnvelope, Transaction, TransactionType
 from app.enricher.validator import validate_category
+from app.services.exchange_rate import ExchangeRateService
 from app.shared.category_resolver import apply_health_medical_default
 from .types import EnrichedTransaction, EnrichedEnvelope
 from .gpt_client import call_gpt_enrichment
 
 logger = logging.getLogger(__name__)
+
+
+class ExchangeRateUnavailableError(Exception):
+    """Raised when exchange rate lookup fails for a foreign currency."""
+
+    def __init__(self, currency: str):
+        super().__init__(f"無法取得 {currency} 匯率，請稍後再試或改用新台幣記帳")
+        self.currency = currency
+
+
+def apply_exchange_rates(transactions: list[EnrichedTransaction]) -> None:
+    """Populate fx_rate for non-TWD currencies."""
+    if not transactions:
+        return
+
+    exchange_rate_service = ExchangeRateService()
+    for tx in transactions:
+        currency = (tx.currency or "TWD").upper()
+        tx.currency = currency
+        if currency == "TWD":
+            tx.fx_rate = 1.0
+            continue
+        rate = exchange_rate_service.get_rate(currency)
+        if rate is None:
+            raise ExchangeRateUnavailableError(currency)
+        tx.fx_rate = rate
 
 
 def _transaction_to_dict(tx: Transaction) -> dict:

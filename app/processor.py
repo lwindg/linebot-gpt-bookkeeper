@@ -10,7 +10,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from app.parser import parse, ParserError
-from app.enricher import enrich
+from app.enricher import enrich, apply_exchange_rates, ExchangeRateUnavailableError
 from app.converter import enriched_to_multi_result
 from app.gpt.types import MultiExpenseResult, BookkeepingEntry
 from app.shared.payment_resolver import detect_payment_method
@@ -53,6 +53,7 @@ def process_with_parser(
         
         # Step 2: Enricher
         enriched = enrich(envelope, skip_gpt=skip_gpt)
+        apply_exchange_rates(enriched.transactions)
         logger.info(f"Enricher processed {len(enriched.transactions)} transactions")
         
         # Step 3: Convert to legacy format（套用共用付款方式）
@@ -67,6 +68,14 @@ def process_with_parser(
             entries=[],
             error_message=e.message,
             error_reason=str(e.code),
+        )
+    except ExchangeRateUnavailableError as e:
+        logger.warning(f"Exchange rate unavailable: {e.currency}")
+        return MultiExpenseResult(
+            intent="error",
+            entries=[],
+            error_message=str(e),
+            error_reason="rate_unavailable",
         )
     except Exception as e:
         # 其他錯誤
