@@ -34,6 +34,7 @@ class Transaction:
     payment_method: str = "NA"             # 付款方式
     counterparty: str = ""                 # 收款/支付對象
     date: Optional[str] = None             # 日期
+    time: Optional[str] = None             # 時間 (Task 5)
     accounts: dict = field(default_factory=lambda: {"from": None, "to": None})
     notes_raw: str = ""                    # 原文中的額外描述
 
@@ -94,6 +95,7 @@ def parse(message: str, *, context_date: Optional[datetime] = None) -> Authorita
     from app.parser.extract_amount import extract_amount_and_currency
     from app.parser.extract_payment import extract_payment_method, clean_item_text
     from app.parser.extract_date import extract_date
+    from app.parser.extract_time import extract_time, clean_time_text
     from app.parser.extract_advance import extract_advance_status
     from app.parser.extract_cashflow import detect_cashflow_intent, extract_transfer_accounts
     from app.parser.split_items import split_items
@@ -131,6 +133,9 @@ def parse(message: str, *, context_date: Optional[datetime] = None) -> Authorita
         # 抽取日期
         date_str = extract_date(item_text, now)
         
+        # 抽取時間 (Task 5)
+        time_str = extract_time(item_text)
+        
         # 抽取代墊狀態與對象
         advance_status, counterparty = extract_advance_status(item_text)
         
@@ -144,9 +149,10 @@ def parse(message: str, *, context_date: Optional[datetime] = None) -> Authorita
         else:
             tx_type = TransactionType.EXPENSE
         
-        # 清理品項文字（移除付款方式關鍵字）
+        # 清理品項文字（移除付款方式關鍵字與時間）
         raw_item = remaining or item_text
         cleaned_item = clean_item_text(raw_item, payment_method)
+        cleaned_item = clean_time_text(cleaned_item)
         if not cleaned_item or not cleaned_item.strip():
             raise ParserError.from_code(ParserErrorCode.MISSING_ITEM)
         
@@ -166,6 +172,7 @@ def parse(message: str, *, context_date: Optional[datetime] = None) -> Authorita
             payment_method=payment_method,
             counterparty=counterparty,
             date=date_str,
+            time=time_str,
             accounts=accounts,
         )
         transactions.append(tx)

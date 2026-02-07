@@ -29,6 +29,11 @@ _DATE_PATTERN = re.compile(
     r"\d{3}[/-]\d{1,2}[/-]\d{1,2}|"     # ROC YYY/MM/DD or YYY-MM-DD
     r"\d{1,2}[/-]\d{1,2})"               # MM/DD or MM-DD
 )
+# 時間格式 Pattern（需排除，避免將時間當作金額）
+# 支援: HH:MM, HH:MM:SS
+_TIME_PATTERN = re.compile(
+    r"\b\d{1,2}:\d{2}(?::\d{2})?\b"
+)
 
 # 貨幣代碼對照表（支援中英文）
 _CURRENCY_MAP = {
@@ -79,31 +84,32 @@ def extract_amount_and_currency(text: str) -> Tuple[float, str, str]:
     if not text:
         return 0.0, "TWD", ""
 
-    # 1. 排除日期格式的數字
+    # 1. 排除日期與時間格式的數字
     matches = list(_AMOUNT_PATTERN.finditer(text))
     date_matches = list(_DATE_PATTERN.finditer(text))
+    time_matches = list(_TIME_PATTERN.finditer(text))
     
-    if date_matches:
-        # 建立日期範圍集合（擴展邊界以捕獲相鄰數字）
-        date_spans = []
-        for dm in date_matches:
-            # 日期字串中的數字位置
-            start, end = dm.span()
-            date_spans.append((start, end))
+    # 建立排除範圍集合
+    exclude_spans = []
+    for dm in date_matches:
+        exclude_spans.append(dm.span())
+    for tm in time_matches:
+        exclude_spans.append(tm.span())
         
-        def _overlaps_date(match_span: tuple[int, int]) -> bool:
-            """檢查是否與日期範圍重疊或完全被包含"""
+    if exclude_spans:
+        def _overlaps_excluded(match_span: tuple[int, int]) -> bool:
+            """檢查是否與日期/時間範圍重疊或完全被包含"""
             ms, me = match_span
-            for ds, de in date_spans:
+            for es, ee in exclude_spans:
                 # 完全包含或重疊
-                if ms >= ds and me <= de:
+                if ms >= es and me <= ee:
                     return True
                 # 部分重疊
-                if (ms < de and me > ds):
+                if (ms < ee and me > es):
                     return True
             return False
         
-        matches = [m for m in matches if not _overlaps_date(m.span())]
+        matches = [m for m in matches if not _overlaps_excluded(m.span())]
     
     if not matches:
         return 0.0, "TWD", text

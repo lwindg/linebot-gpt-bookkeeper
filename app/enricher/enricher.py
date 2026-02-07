@@ -107,6 +107,7 @@ def _merge_enrichment(
         payment_method=tx.payment_method,
         counterparty=tx.counterparty,
         date=tx.date,
+        time=tx.time,
         accounts_from=tx.accounts.get("from") if tx.accounts else None,
         accounts_to=tx.accounts.get("to") if tx.accounts else None,
         fx_rate=1.0,

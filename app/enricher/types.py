@@ -31,6 +31,7 @@ class EnrichedTransaction:
     payment_method: str
     counterparty: str = ""
     date: Optional[str] = None
+    time: Optional[str] = None
     
     # === AI Enrichment 欄位 ===
     分類: str = ""

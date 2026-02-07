@@ -16,6 +16,7 @@ from app.pipeline.transaction_id import generate_transaction_id
 
 def build_batch_id(
     date_str: Optional[str],
+    time_str: Optional[str] = None,
     *,
     item: Optional[str] = None,
     use_current_time: bool = False,
@@ -25,7 +26,7 @@ def build_batch_id(
         date_str = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d")
     return generate_transaction_id(
         date_str,
-        None,
+        time_str,
         item,
         use_current_time=use_current_time,
     )

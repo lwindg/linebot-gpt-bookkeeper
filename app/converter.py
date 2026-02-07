@@ -45,6 +45,7 @@ def _enriched_tx_to_entry(
     # 生成交易 ID（若已提供批次ID，優先使用）
     transaction_id = batch_id or build_batch_id(
         date_str,
+        tx.time,
         item=tx.raw_item,
         use_current_time=not has_explicit_date,
     )
@@ -67,7 +68,7 @@ def _enriched_tx_to_entry(
     return BookkeepingEntry(
         intent="bookkeeping",
         日期=date_str,
-        時間=None,
+        時間=tx.time,
         品項=tx.raw_item,
         原幣別=tx.currency,
         原幣金額=tx.amount,
@@ -104,12 +105,15 @@ def enriched_to_multi_result(
 
     # 取得第一筆的日期作為共用日期（如有）
     shared_date = None
+    shared_time = None
     if envelope.transactions:
         shared_date = envelope.transactions[0].date
+        shared_time = envelope.transactions[0].time
     first_item = envelope.transactions[0].raw_item if envelope.transactions else None
     use_current_time = not bool(shared_date)
     batch_id = build_batch_id(
         shared_date or datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d"),
+        shared_time,
         item=first_item,
         use_current_time=use_current_time,
     )
