@@ -37,6 +37,20 @@ def detect_update_intent(message: str) -> bool:
     )
 
 
+def count_update_fields(message: str) -> int:
+    """Count how many update fields are mentioned in the message, avoiding substring issues."""
+    text = message or ""
+    count = 0
+    # Sort by length descending to match longest first (e.g., "原幣別" before "幣別")
+    sorted_fields = sorted(_UPDATE_FIELD_KEYWORDS, key=len, reverse=True)
+    for field in sorted_fields:
+        if field in text:
+            count += 1
+            # Replace with placeholder to avoid matching substrings of what we already matched
+            text = text.replace(field, "___")
+    return count
+
+
 def extract_update_fields_simple(message: str) -> Optional[dict]:
     """Try to extract update fields without GPT for simple patterns."""
     text = (message or "").strip()
