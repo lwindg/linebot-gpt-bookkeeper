@@ -120,7 +120,7 @@ def fallback_cashflow_items_from_message(message: str, intent_type: str) -> list
     item_text = text
     if amount_match:
         item_text = item_text.replace(amount_match.group(0), "")
-    item_text = re.sub(r"(元|twd|ntd|nt\\$)", "", item_text, flags=re.IGNORECASE).strip()
+    item_text = re.sub(r"(元|twd|ntd|nt\$|USD|JPY|EUR|CNY|¥|円|日幣|日圓|日元|美元|美金|歐元|人民幣|台幣)", "", item_text, flags=re.IGNORECASE).strip()
     item_text = item_text or text.strip()
 
     payment = normalize_cashflow_payment_method(infer_transfer_accounts(text)[0] or "")

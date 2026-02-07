@@ -56,8 +56,11 @@ class ExchangeRateService:
         # Japanese Yen
         "日圓": "JPY",
         "日幣": "JPY",
+        "日元": "JPY",
         "JPY": "JPY",
         "jpy": "JPY",
+        "¥": "JPY",
+        "円": "JPY",
 
         # British Pound
         "英鎊": "GBP",

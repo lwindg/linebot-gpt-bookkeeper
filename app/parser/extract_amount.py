@@ -15,7 +15,13 @@ import re
 from typing import Tuple
 
 # 編譯正則表達式以提升效能
-_AMOUNT_PATTERN = re.compile(r"(\$|USD|JPY|EUR|CNY|TWD)?\s*(-?\d+(?:\.\d+)?)")
+_CURRENCY_SYMBOLS = r"\$|USD|JPY|EUR|CNY|TWD|¥|円"
+_CURRENCY_WORDS = r"美金|美元|日幣|日圓|日元|歐元|人民幣|台幣"
+_CURRENCY_ALL = rf"{_CURRENCY_SYMBOLS}|{_CURRENCY_WORDS}"
+_AMOUNT_PATTERN = re.compile(
+    rf"({_CURRENCY_ALL})?\s*(-?\d+(?:\.\d+)?)\s*({_CURRENCY_ALL})?",
+    re.IGNORECASE
+)
 # 日期格式 Pattern（需排除，避免將日期當作金額）
 # 支援: 2024/1/15, 2024-01-15, 1/15, 01-15
 _DATE_PATTERN = re.compile(
@@ -33,6 +39,9 @@ _CURRENCY_MAP = {
     "JPY": "JPY",
     "日幣": "JPY",
     "日圓": "JPY",
+    "日元": "JPY",
+    "¥": "JPY",
+    "円": "JPY",
     "EUR": "EUR",
     "歐元": "EUR",
     "CNY": "CNY",
@@ -105,7 +114,8 @@ def extract_amount_and_currency(text: str) -> Tuple[float, str, str]:
     best_match = None
     for match in matches:
         prefix = match.group(1)
-        if prefix:  # 有貨幣符號前綴，優先權高
+        suffix = match.group(3)
+        if prefix or suffix:  # 有貨幣符號前綴或後綴，優先權高
             best_match = match
             break
     
@@ -116,6 +126,7 @@ def extract_amount_and_currency(text: str) -> Tuple[float, str, str]:
     # 3. 解析金額
     prefix = best_match.group(1)
     amount_str = best_match.group(2)
+    suffix = best_match.group(3)
     try:
         amount = float(amount_str)
     except ValueError:
@@ -125,10 +136,13 @@ def extract_amount_and_currency(text: str) -> Tuple[float, str, str]:
     currency = "TWD"
     if prefix:
         # 有前綴貨幣符號
-        currency = _CURRENCY_MAP.get(prefix.upper(), "TWD")
+        currency = _CURRENCY_MAP.get(prefix.upper(), _CURRENCY_MAP.get(prefix, "TWD"))
+    elif suffix:
+        # 有後綴貨幣符號
+        currency = _CURRENCY_MAP.get(suffix.upper(), _CURRENCY_MAP.get(suffix, "TWD"))
     else:
-        # 沒有前綴，檢查整句是否有貨幣關鍵字（可能是後綴或前面的中文）
-        # e.g. "午餐 100 USD", "拉麵 日幣 1500"
+        # 沒有前綴也沒後綴，檢查整句是否有貨幣關鍵字（可能是前面的中文）
+        # e.g. "拉麵 日幣 1500" (若沒被 regex 抓到)
         currency = _detect_currency_in_text(text)
 
     # 5. 產生 remaining_text
