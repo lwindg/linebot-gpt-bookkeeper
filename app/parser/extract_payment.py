@@ -73,6 +73,13 @@ def clean_item_text(text: str, payment_method: str) -> str:
     
     # 僅移除與偵測到的付款方式相關的關鍵字
     scoped_keywords = get_keywords_for_payment_method(payment_method)
+    
+    # 處理複合付款方式可能被金額解析器部分消耗的情況 (e.g. "日圓現金" 被吃掉 "日圓" 剩下 "現金")
+    if payment_method == "日圓現金":
+        for extra in ["現金", "cash", "日圓", "日幣", "円"]:
+            if extra not in scoped_keywords:
+                scoped_keywords.append(extra)
+    
     sorted_keywords = sorted(scoped_keywords, key=len, reverse=True)
     
     # 付款方式關鍵字清理
