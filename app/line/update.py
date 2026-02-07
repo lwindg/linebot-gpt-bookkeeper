@@ -7,7 +7,7 @@ import logging
 import re
 
 from app.shared.category_resolver import resolve_category_input
-from app.services.kv_store import KVStore, delete_last_transaction
+from app.services.kv_store import KVStore, delete_last_transaction, save_last_transaction
 from app.shared.payment_resolver import normalize_payment_method
 from app.shared.project_resolver import (
     extract_project_date_range,
@@ -181,9 +181,9 @@ def handle_update_last_entry(user_id: str, fields_to_update: dict, *, raw_messag
         logger.error(f"All UPDATE webhooks failed for user {user_id}")
         return "❌ 更新失敗\n\n請稍後再試，或直接輸入完整記帳資訊。"
 
-    # Step 9: Delete KV record to prevent duplicate modifications
-    delete_last_transaction(user_id)
-    logger.info(f"Deleted last transaction from KV for user {user_id}")
+    # Step 9: Update KV record instead of deleting it to support multiple updates (v1.10.1)
+    save_last_transaction(user_id, updated_tx)
+    logger.info(f"Updated last transaction in KV for user {user_id}")
 
     # Step 10: Format success message
     logger.info(f"Transaction {target_id} updated successfully for user {user_id}")

@@ -12,7 +12,7 @@ import time
 from typing import List, Tuple, Optional
 from app.config import WEBHOOK_URL, WEBHOOK_TIMEOUT
 from app.gpt.types import BookkeepingEntry
-from app.services.kv_store import save_last_transaction
+from app.services.kv_store import save_last_transaction, delete_last_transaction
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +108,11 @@ def send_to_webhook(entry: BookkeepingEntry, user_id: Optional[str] = None) -> b
     # Prepare payload for Make.com (using Chinese field names as per spec)
     payload = build_create_payload(entry)
     
+    # v1.10.1: Clear previous last transaction before saving new one (single entry)
+    if user_id:
+        delete_last_transaction(user_id)
+        logger.info(f"Cleared previous last transaction for user {user_id} before new single bookkeeping")
+    
     try:
         logger.info(f"Sending webhook for transaction {entry.交易ID}")
         
@@ -184,6 +189,11 @@ def send_multiple_webhooks(entries: List[BookkeepingEntry], user_id: Optional[st
     failure_count = 0
 
     logger.info(f"Sending {len(entries)} webhooks for multi-item transaction (delay={delay_seconds}s)")
+
+    # v1.10.1: Delete any existing 'last transaction' before saving new ones
+    if user_id:
+        delete_last_transaction(user_id)
+        logger.info(f"Cleared previous last transaction for user {user_id} before new bookkeeping")
 
     # Handle empty entries list
     if not entries:
