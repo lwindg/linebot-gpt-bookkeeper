@@ -20,6 +20,15 @@ ALL_MODE=false
 SMOKE_MODE=false
 PARSER_MODE=false
 
+# Auto-detect python command
+if command -v uv >/dev/null 2>&1; then
+  PYTHON_CMD="uv run python"
+elif command -v python3 >/dev/null 2>&1; then
+  PYTHON_CMD="python3"
+else
+  PYTHON_CMD="python"
+fi
+
 TOTAL_TESTS=0
 PASSED_TESTS=0
 FAILED_TESTS=0
@@ -358,7 +367,7 @@ extract_json_block() {
 extract_json_fallback() {
   # Fallback JSON extraction when the marker+separator heuristic fails (e.g., separator not matched).
   # Tries (1) first JSON after "📄 完整 JSON:"; otherwise (2) last JSON object/array in the output.
-  python - <<'PY'
+  $PYTHON_CMD - <<'PY'
 import json
 import re
 import sys
@@ -589,7 +598,7 @@ run_case_manual() {
     echo "Expected: $expected_desc"
   fi
   echo ""
-  python test_local.py "$message"
+  $PYTHON_CMD test_local.py "$message"
   echo ""
   read -r -p "Press Enter to continue..." </dev/tty
 }
@@ -609,9 +618,9 @@ run_case_auto() {
   local output
   # Prefer raw JSON output to avoid parsing human-readable text.
   if [[ "$PARSER_MODE" == true ]]; then
-    output="$(python test_local.py --raw --parser "$message" 2> >(cat >&2))"
+    output="$($PYTHON_CMD test_local.py --raw --parser "$message" 2> >(cat >&2))"
   else
-    output="$(python test_local.py --raw "$message" 2> >(cat >&2))"
+    output="$($PYTHON_CMD test_local.py --raw "$message" 2> >(cat >&2))"
   fi
 
   local actual_intent
@@ -741,7 +750,7 @@ run_case_manual_image() {
   echo "Message: $message"
   echo "Fixture: $fixture"
   echo ""
-  python test_local_vision.py --fixture "$fixture" --skip-gpt
+  $PYTHON_CMD test_local_vision.py --fixture "$fixture" --skip-gpt
   echo ""
   read -r -p "Press Enter to continue..." </dev/tty
 }
@@ -760,7 +769,7 @@ run_case_auto_image() {
   echo "Fixture: $fixture"
 
   local output
-  output="$(python test_local_vision.py --fixture "$fixture" --raw --skip-gpt 2> >(cat >&2))"
+  output="$($PYTHON_CMD test_local_vision.py --fixture "$fixture" --raw --skip-gpt 2> >(cat >&2))"
 
   local actual_intent
   actual_intent="$(extract_intent_text "$output")"

@@ -140,12 +140,12 @@ def extract_amount_and_currency(text: str) -> Tuple[float, str, str]:
 
     # 4. 決定幣別
     currency = "TWD"
-    if prefix:
+    if suffix:
+        # 有後綴貨幣符號 (優先權高，處理如 $100 USD 或 $1000日圓)
+        currency = _CURRENCY_MAP.get(suffix.upper(), _CURRENCY_MAP.get(suffix, "TWD"))
+    elif prefix:
         # 有前綴貨幣符號
         currency = _CURRENCY_MAP.get(prefix.upper(), _CURRENCY_MAP.get(prefix, "TWD"))
-    elif suffix:
-        # 有後綴貨幣符號
-        currency = _CURRENCY_MAP.get(suffix.upper(), _CURRENCY_MAP.get(suffix, "TWD"))
     else:
         # 沒有前綴也沒後綴，檢查整句是否有貨幣關鍵字（可能是前面的中文）
         # e.g. "拉麵 日幣 1500" (若沒被 regex 抓到)
