@@ -482,6 +482,7 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False) -> Mu
                 "金額": "原幣金額",
                 "明細": "明細說明",
                 "帳戶": "付款方式",
+                "幣別": "原幣別",
             }
             field_name = field_aliases.get(field_name, field_name)
 
@@ -490,6 +491,8 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False) -> Mu
                 "分類",
                 "專案",
                 "原幣金額",
+                "原幣別",
+                "匯率",
                 "付款方式",
                 "明細說明",
                 "必要性",
@@ -526,6 +529,15 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False) -> Mu
                         error_message="金額不可為負數"
                     )
                 field_value = amount_value
+
+            if field_name == "匯率":
+                try:
+                    field_value = float(field_value)
+                except (TypeError, ValueError):
+                    return MultiExpenseResult(
+                        intent="error",
+                        error_message="匯率格式錯誤，請提供正確數字。"
+                    )
 
             return MultiExpenseResult(
                 intent="update_last_entry",

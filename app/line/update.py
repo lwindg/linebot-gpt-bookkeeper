@@ -9,6 +9,7 @@ import re
 from app.shared.category_resolver import resolve_category_input
 from app.services.kv_store import KVStore, delete_last_transaction, save_last_transaction
 from app.shared.payment_resolver import normalize_payment_method
+from app.parser.extract_amount import _CURRENCY_MAP
 from app.shared.project_resolver import (
     extract_project_date_range,
     get_long_term_project,
@@ -91,6 +92,14 @@ def handle_update_last_entry(user_id: str, fields_to_update: dict, *, raw_messag
     logger.info(f"Original transaction: {original_tx}")
     logger.info(f"Fields to update: {fields_to_update}")
 
+    # Field name normalization
+    if "幣別" in fields_to_update:
+        fields_to_update["原幣別"] = fields_to_update.pop("幣別")
+    if "金額" in fields_to_update:
+        fields_to_update["原幣金額"] = fields_to_update.pop("金額")
+    if "明細" in fields_to_update:
+        fields_to_update["明細說明"] = fields_to_update.pop("明細")
+
     # Category validation/normalization: do not create new categories.
     raw_category = _extract_category_from_update_message(raw_message or "") if raw_message else None
     category_value = raw_category if raw_category is not None else fields_to_update.get("分類")
@@ -115,6 +124,29 @@ def handle_update_last_entry(user_id: str, fields_to_update: dict, *, raw_messag
     if payment_value not in (None, ""):
         normalized = normalize_payment_method(str(payment_value))
         fields_to_update = {**fields_to_update, "付款方式": normalized}
+
+    currency_value = fields_to_update.get("原幣別")
+    if currency_value not in (None, ""):
+        # Normalize currency (e.g., "日幣" -> "JPY")
+        val = str(currency_value).strip()
+        normalized = _CURRENCY_MAP.get(val, _CURRENCY_MAP.get(val.upper(), val.upper()))
+        fields_to_update = {**fields_to_update, "原幣別": normalized}
+
+    rate_value = fields_to_update.get("匯率")
+    if rate_value not in (None, ""):
+        try:
+            fields_to_update["匯率"] = float(rate_value)
+        except ValueError:
+            return f"❌ 匯率格式錯誤：{rate_value}"
+
+    amount_value = fields_to_update.get("原幣金額")
+    if amount_value not in (None, ""):
+        try:
+            # Handle cases like "100元" -> 100
+            clean_amount = re.sub(r"[^\d.]", "", str(amount_value))
+            fields_to_update["原幣金額"] = float(clean_amount)
+        except ValueError:
+            return f"❌ 金額格式錯誤：{amount_value}"
 
     project_value = fields_to_update.get("專案")
     if project_value not in (None, ""):
