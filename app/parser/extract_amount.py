@@ -20,6 +20,7 @@ _AMOUNT_PATTERN = re.compile(r"(\$|USD|JPY|EUR|CNY|TWD)?\s*(-?\d+(?:\.\d+)?)")
 # 支援: 2024/1/15, 2024-01-15, 1/15, 01-15
 _DATE_PATTERN = re.compile(
     r"(20\d{2}[/-]\d{1,2}[/-]\d{1,2}|"  # YYYY/MM/DD or YYYY-MM-DD
+    r"\d{3}[/-]\d{1,2}[/-]\d{1,2}|"     # ROC YYY/MM/DD or YYY-MM-DD
     r"\d{1,2}[/-]\d{1,2})"               # MM/DD or MM-DD
 )
 
@@ -137,4 +138,3 @@ def extract_amount_and_currency(text: str) -> Tuple[float, str, str]:
     remaining = re.sub(r"\s+", " ", remaining).strip()
 
     return amount, currency, remaining
-

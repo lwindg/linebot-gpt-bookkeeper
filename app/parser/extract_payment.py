@@ -54,9 +54,15 @@ def clean_item_text(text: str, payment_method: str) -> str:
         return ""
     
     cleaned = text
-    # 先移除日期（避免品項包含日期片段）
-    cleaned = re.sub(r'\b20\d{2}[/-]\d{1,2}[/-]\d{1,2}\b', ' ', cleaned)
-    cleaned = re.sub(r'\b\d{1,2}[/-]\d{1,2}\b', ' ', cleaned)
+    # 先移除開頭日期（避免品項包含日期片段）
+    for pattern in (
+        r'^\s*20\d{2}[/-]\d{1,2}[/-]\d{1,2}',
+        r'^\s*\d{3}[/-]\d{1,2}[/-]\d{1,2}',
+        r'^\s*\d{1,2}[/-]\d{1,2}(?!\d?月)',
+    ):
+        if re.match(pattern, cleaned):
+            cleaned = re.sub(pattern, ' ', cleaned, count=1)
+            break
     # 再處理通用的「元」與空白（即使沒有付款方式也要清理）
     cleaned = re.sub(r'\s+', ' ', cleaned)
     cleaned = re.sub(r'\s*元\s*$', '', cleaned)  # 移除結尾的「元」

@@ -119,6 +119,12 @@ class TestParserIntegration:
         tx = envelope.transactions[0]
         assert tx.date == "2026-01-20"
 
+    def test_roc_date(self, taipei_now):
+        """115/02/06 午餐 80"""
+        envelope = parse("115/02/06 午餐 80", context_date=taipei_now)
+        tx = envelope.transactions[0]
+        assert tx.date == "2026-02-06"
+
     # === Payment method detection ===
 
     def test_payment_flygo(self, taipei_now):

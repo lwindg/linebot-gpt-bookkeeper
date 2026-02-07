@@ -85,6 +85,11 @@ class TestExtractAmountAndCurrency:
         amount, currency, remaining = extract_amount_and_currency("2026/1/23 午餐 80")
         assert amount == 80.0
 
+    def test_date_not_amount_roc(self):
+        """115/2/6 午餐 80 -> 不應將日期數字當金額"""
+        amount, currency, remaining = extract_amount_and_currency("115/2/6 午餐 80")
+        assert amount == 80.0
+
     # === Edge cases ===
 
     def test_no_amount(self):
