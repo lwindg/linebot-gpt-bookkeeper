@@ -89,10 +89,10 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
                 item_date = current_date
                 logger.info(f"項目 {idx} 使用當前日期（fallback）：{item_date}")
 
-            # 生成基礎交易ID（使用實際日期）
+            # 生成基礎交易ID（使用實際日期與時間）
             base_id = generate_transaction_id(
                 item_date,
-                None,  # 暫不支援時間提取
+                receipt_item.時間,
                 receipt_item.品項,
                 use_current_time=False  # 收據識別不使用當前時間
             )
@@ -159,6 +159,7 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
             entry = BookkeepingEntry(
                 intent="bookkeeping",
                 日期=item_date,  # 使用項目自己的日期
+                時間=receipt_item.時間,
                 品項=品項,
                 原幣別=原幣別,
                 原幣金額=float(receipt_item.原幣金額),

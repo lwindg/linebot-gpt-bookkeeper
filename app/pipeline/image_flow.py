@@ -24,6 +24,7 @@ class ImageItem:
     amount: float
     currency: str = "TWD"
     date: Optional[str] = None
+    time: Optional[str] = None
 
 
 @dataclass
@@ -111,6 +112,7 @@ def process_image_envelope(
 
         payment_method = envelope.payment_method or "NA"
         item_date = item.date or envelope.receipt_date
+        item_time = item.time
 
         enriched_transactions.append(EnrichedTransaction(
             id=item_id,
@@ -121,6 +123,7 @@ def process_image_envelope(
             payment_method=payment_method,
             counterparty="",
             date=item_date,
+            time=item_time,
             分類=enrichment.get("分類", "未分類"),
             專案=enrichment.get("專案", "日常"),
             必要性=enrichment.get("必要性", "必要日常支出"),

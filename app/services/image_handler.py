@@ -33,6 +33,7 @@ class ReceiptItem:
     原幣別: str = "TWD"
     付款方式: Optional[str] = None
     日期: Optional[str] = None  # YYYY-MM-DD 格式
+    時間: Optional[str] = None  # HH:MM 格式
 
 
 class ImageDownloadError(Exception):
@@ -78,6 +79,7 @@ def build_image_authoritative_envelope(
             amount=item.原幣金額,
             currency=item.原幣別,
             date=item.日期,
+            time=item.時間,
         )
         for item in receipt_items
     ]
@@ -324,13 +326,15 @@ def process_receipt_image(
             items_data = result.get("items", [])
             payment_method = result.get("payment_method")
             fallback_date = result.get("date")  # 最外層日期作為 fallback
+            fallback_time = result.get("time")  # 最外層時間作為 fallback
             default_currency = result.get("currency", "TWD")
 
             # 轉換為 ReceiptItem 列表
             receipt_items = []
             for item in items_data:
-                # 提取項目日期，若無則使用 fallback
+                # 提取項目日期/時間，若無則使用 fallback
                 item_date = item.get("日期") or fallback_date
+                item_time = item.get("時間") or fallback_time
 
                 item_currency = item.get("幣別") or default_currency
                 receipt_items.append(ReceiptItem(
@@ -339,6 +343,7 @@ def process_receipt_image(
                     原幣別=item_currency,
                     付款方式=payment_method,
                     日期=item_date,  # Vision API 提供的日期（可選）
+                    時間=item_time,  # Vision API 提供的時間（可選）
                 ))
 
             logger.info(f"成功識別 {len(receipt_items)} 個收據項目")
