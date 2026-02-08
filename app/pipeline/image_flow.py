@@ -115,12 +115,16 @@ def process_image_envelope(
         item_date = item.date or envelope.receipt_date
         item_time = item.time
 
+        # 建立明細說明 (v1.9.1: 確保原文標記一致且不重複)
         明細說明 = enrichment.get("明細說明", "")
-        if item.original_text and item.original_text != item.item:
-            if 明細說明:
-                明細說明 = f"{明細說明} (原文: {item.original_text})"
-            else:
-                明細說明 = f"原文: {item.original_text}"
+        原文 = item.original_text
+        if 原文 and 原文 != item.item:
+            marker = f"原文: {原文}"
+            if marker not in 明細說明:
+                if 明細說明:
+                    明細說明 = f"{明細說明} ({marker})"
+                else:
+                    明細說明 = marker
 
         enriched_transactions.append(EnrichedTransaction(
             id=item_id,

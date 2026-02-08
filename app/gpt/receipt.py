@@ -140,12 +140,16 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
             必要性 = enrichment.get("必要性", "必要日常支出")
             明細說明 = enrichment.get("明細說明", "")
 
-            # 如果有原文且與品項不同，加入明細說明
-            if receipt_item.原文 and receipt_item.原文 != receipt_item.品項:
-                if 明細說明:
-                    明細說明 = f"{明細說明} (原文: {receipt_item.原文})"
-                else:
-                    明細說明 = f"原文: {receipt_item.原文}"
+            # 建立明細說明 (v1.9.1: 確保原文標記一致且不重複)
+            明細說明 = enrichment.get("明細說明", "")
+            原文 = receipt_item.原文
+            if 原文 and 原文 != 品項:
+                marker = f"原文: {原文}"
+                if marker not in 明細說明:
+                    if 明細說明:
+                        明細說明 = f"{明細說明} ({marker})"
+                    else:
+                        明細說明 = marker
 
             if not 明細說明:
                 明細說明 = f"收據識別 {idx}/{len(receipt_items)}"
