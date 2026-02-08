@@ -157,6 +157,31 @@ def handle_update_last_entry(user_id: str, fields_to_update: dict, *, raw_messag
         except ValueError:
             return f"❌ 金額格式錯誤：{amount_value}"
 
+    advance_status_value = fields_to_update.get("代墊狀態")
+    if advance_status_value not in (None, ""):
+        # Normalize status
+        status_map = {
+            "無": "無",
+            "代墊": "代墊",
+            "需支付": "需支付",
+            "不索取": "不索取",
+            "幫墊": "代墊",
+            "先墊": "代墊",
+            "幫買": "代墊",
+            "代付": "代墊",
+            "幫付": "代墊",
+        }
+        normalized = status_map.get(str(advance_status_value), str(advance_status_value))
+        fields_to_update["代墊狀態"] = normalized
+
+    # Auto-set status if recipient updated but current status is "無"
+    recipient_value = fields_to_update.get("收款支付對象")
+    if recipient_value not in (None, "") and "代墊狀態" not in fields_to_update:
+        current_status = original_tx.get("代墊狀態", "無")
+        if current_status == "無":
+            fields_to_update["代墊狀態"] = "代墊"
+            logger.info("Auto-set status to '代墊' because recipient was updated")
+
     project_value = fields_to_update.get("專案")
     if project_value not in (None, ""):
         project_text = str(project_value).strip()

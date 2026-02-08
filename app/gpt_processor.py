@@ -483,6 +483,8 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False) -> Mu
                 "明細": "明細說明",
                 "帳戶": "付款方式",
                 "幣別": "原幣別",
+                "對象": "收款支付對象",
+                "狀態": "代墊狀態",
             }
             field_name = field_aliases.get(field_name, field_name)
 
@@ -496,6 +498,8 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False) -> Mu
                 "付款方式",
                 "明細說明",
                 "必要性",
+                "收款支付對象",
+                "代墊狀態",
             }
             if field_name not in allowed_fields:
                 return MultiExpenseResult(
