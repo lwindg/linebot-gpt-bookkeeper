@@ -243,10 +243,12 @@ def main():
 
             # 轉換為 ReceiptItem 列表
             fallback_date = result.get("date")  # 最外層日期作為 fallback
+            fallback_time = result.get("time")  # 最外層時間作為 fallback
             receipt_items = []
             for item in items_data:
-                # 提取項目日期，若無則使用 fallback
+                # 提取項目日期/時間，若無則使用 fallback
                 item_date = item.get("日期") or fallback_date
+                item_time = item.get("時間") or fallback_time
                 item_currency = item.get("幣別") or result.get("currency", "TWD")
 
                 receipt_items.append(ReceiptItem(
@@ -255,6 +257,7 @@ def main():
                     原幣別=item_currency,
                     付款方式=payment_method,
                     日期=item_date,  # Vision API 提供的日期（可選）
+                    時間=item_time,  # Vision API 提供的時間（可選）
                     原文=item.get("原文")
                 ))
 
