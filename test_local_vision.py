@@ -254,7 +254,8 @@ def main():
                     原幣金額=float(item["金額"]),
                     原幣別=item_currency,
                     付款方式=payment_method,
-                    日期=item_date  # Vision API 提供的日期（可選）
+                    日期=item_date,  # Vision API 提供的日期（可選）
+                    原文=item.get("原文")
                 ))
 
             error_code = None

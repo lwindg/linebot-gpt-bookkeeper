@@ -59,6 +59,7 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
                 item=receipt_item.品項,
                 amount=float(receipt_item.原幣金額),
                 currency=(receipt_item.原幣別 or "TWD").upper(),
+                original_text=receipt_item.原文,
             )
             for receipt_item in receipt_items
         ]
@@ -137,7 +138,17 @@ def process_receipt_data(receipt_items: List, receipt_date: Optional[str] = None
             分類 = enrichment.get("分類", "未分類")
             專案 = enrichment.get("專案", "日常")
             必要性 = enrichment.get("必要性", "必要日常支出")
-            明細說明 = enrichment.get("明細說明", "") or f"收據識別 {idx}/{len(receipt_items)}"
+            明細說明 = enrichment.get("明細說明", "")
+
+            # 如果有原文且與品項不同，加入明細說明
+            if receipt_item.原文 and receipt_item.原文 != receipt_item.品項:
+                if 明細說明:
+                    明細說明 = f"{明細說明} (原文: {receipt_item.原文})"
+                else:
+                    明細說明 = f"原文: {receipt_item.原文}"
+
+            if not 明細說明:
+                明細說明 = f"收據識別 {idx}/{len(receipt_items)}"
 
             原幣別 = (receipt_item.原幣別 or "TWD").upper()
             if 原幣別 not in ExchangeRateService.SUPPORTED_CURRENCIES:

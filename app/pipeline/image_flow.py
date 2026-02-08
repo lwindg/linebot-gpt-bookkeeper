@@ -25,6 +25,7 @@ class ImageItem:
     currency: str = "TWD"
     date: Optional[str] = None
     time: Optional[str] = None
+    original_text: Optional[str] = None
 
 
 @dataclass
@@ -114,6 +115,13 @@ def process_image_envelope(
         item_date = item.date or envelope.receipt_date
         item_time = item.time
 
+        明細說明 = enrichment.get("明細說明", "")
+        if item.original_text and item.original_text != item.item:
+            if 明細說明:
+                明細說明 = f"{明細說明} (原文: {item.original_text})"
+            else:
+                明細說明 = f"原文: {item.original_text}"
+
         enriched_transactions.append(EnrichedTransaction(
             id=item_id,
             type=TransactionType.EXPENSE,
@@ -127,7 +135,7 @@ def process_image_envelope(
             分類=enrichment.get("分類", "未分類"),
             專案=enrichment.get("專案", "日常"),
             必要性=enrichment.get("必要性", "必要日常支出"),
-            明細說明=enrichment.get("明細說明", ""),
+            明細說明=明細說明,
             fx_rate=fx_rate,
         ))
 

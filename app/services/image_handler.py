@@ -34,6 +34,7 @@ class ReceiptItem:
     付款方式: Optional[str] = None
     日期: Optional[str] = None  # YYYY-MM-DD 格式
     時間: Optional[str] = None  # HH:MM 格式
+    原文: Optional[str] = None
 
 
 class ImageDownloadError(Exception):
@@ -80,6 +81,7 @@ def build_image_authoritative_envelope(
             currency=item.原幣別,
             date=item.日期,
             time=item.時間,
+            original_text=item.原文,
         )
         for item in receipt_items
     ]
@@ -344,6 +346,7 @@ def process_receipt_image(
                     付款方式=payment_method,
                     日期=item_date,  # Vision API 提供的日期（可選）
                     時間=item_time,  # Vision API 提供的時間（可選）
+                    原文=item.get("原文"),
                 ))
 
             logger.info(f"成功識別 {len(receipt_items)} 個收據項目")
