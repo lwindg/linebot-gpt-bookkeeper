@@ -127,7 +127,10 @@ def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
 • 「專案清單」：查看近期專案
 • 「結算 {專案名稱}」：產出結算報告
 
-💡 提示：使用「鎖定」功能可省去重複輸入專案或付款方式的時間！"""
+💡 提示：使用「鎖定」功能可省去重複輸入專案或付款方式的時間！
+
+🔗 專案位址：https://github.com/lwindg/linebot-gpt-bookkeeper
+🏷 目前版本：v2.2.0"""
             line_bot_api.reply_message(
                 reply_token,
                 TextSendMessage(text=reply_text)
