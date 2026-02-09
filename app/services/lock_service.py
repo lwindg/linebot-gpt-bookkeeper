@@ -31,6 +31,7 @@ _RE_LOCK_PAYMENT = re.compile(r"鎖定付款\s*(?:方式)?\s*(?P<name>.+)?")
 _RE_UNLOCK_PAYMENT = re.compile(r"解鎖付款\s*(?:方式)?")
 _RE_LOCK_CURRENCY = re.compile(r"鎖定幣別\s*(?:名稱)?\s*(?P<name>.+)?")
 _RE_UNLOCK_CURRENCY = re.compile(r"解鎖幣別\s*(?:名稱)?")
+_RE_UNLOCK_ALL = re.compile(r"(?:解鎖全部|全部解鎖)")
 _RE_LOCK_STATUS = re.compile(r"鎖定狀態")
 
 
@@ -69,6 +70,12 @@ class LockService:
 
     def remove_currency_lock(self):
         if self.kv.client:
+            self.kv.client.delete(LOCK_CURRENCY_KEY.format(user_id=self.user_id))
+
+    def remove_all_locks(self):
+        if self.kv.client:
+            self.kv.client.delete(LOCK_PROJECT_KEY.format(user_id=self.user_id))
+            self.kv.client.delete(LOCK_PAYMENT_KEY.format(user_id=self.user_id))
             self.kv.client.delete(LOCK_CURRENCY_KEY.format(user_id=self.user_id))
 
     def handle_command(self, text: str) -> Optional[str]:
@@ -135,6 +142,11 @@ class LockService:
         if _RE_UNLOCK_CURRENCY.search(text):
             self.remove_currency_lock()
             return "🔓 已解除幣別鎖定。"
+
+        # Unlock All
+        if _RE_UNLOCK_ALL.search(text):
+            self.remove_all_locks()
+            return "🔓 已解除所有鎖定設定（專案、付款方式、幣別）。"
 
         # Lock Currency
         m = _RE_LOCK_CURRENCY.search(text)
