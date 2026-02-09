@@ -8,6 +8,7 @@ Parser-first Processor (Phase 3)
 import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from typing import Optional
 
 from app.parser import parse, ParserError
 from app.enricher import enrich, apply_exchange_rates, ExchangeRateUnavailableError
