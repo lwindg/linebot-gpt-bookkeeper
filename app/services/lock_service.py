@@ -7,9 +7,15 @@ Handles per-user session locks for Project and Payment Method.
 
 import logging
 import re
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 from app.services.kv_store import KVStore
 from app.shared.payment_resolver import normalize_payment_method
+from app.shared.project_resolver import (
+    get_long_term_project,
+    match_short_term_project,
+    extract_project_date_range,
+)
+from app.services.project_options import get_project_options
 
 logger = logging.getLogger(__name__)
 
@@ -66,8 +72,34 @@ class LockService:
             name = (m.group("name") or "").strip()
             if not name:
                 return "❌ 請提供要鎖定的專案名稱。\n範例：鎖定專案 日本玩雪"
-            self.set_project_lock(name)
-            return f"🔒 專案已鎖定為：{name}\n後續記帳將自動帶入此專案。"
+            
+            # Fuzzy matching logic (v1.10.0 inspired)
+            long_term_project = get_long_term_project(name)
+            if long_term_project:
+                self.set_project_lock(long_term_project)
+                return f"🔒 專案已鎖定為：{long_term_project}\n後續記帳將自動帶入此專案。"
+            
+            has_date_prefix = extract_project_date_range(name) is not None
+            options, error = get_project_options(self.kv)
+            if options:
+                resolved, candidates = match_short_term_project(name, options)
+                if resolved:
+                    self.set_project_lock(resolved)
+                    return f"🔒 專案已鎖定為：{resolved}\n後續記帳將自動帶入此專案。"
+                elif has_date_prefix:
+                    self.set_project_lock(name)
+                    return f"🔒 專案已鎖定為：{name}\n後續記帳將自動帶入此專案。"
+                else:
+                    return self._format_project_candidates_message(candidates)
+            else:
+                if has_date_prefix:
+                    self.set_project_lock(name)
+                    return f"🔒 專案已鎖定為：{name}\n後續記帳將自動帶入此專案。"
+                else:
+                    logger.warning(
+                        "Failed to fetch project options: %s", error or "unknown_error"
+                    )
+                    return "❌ 無法取得專案清單，請稍後再試或提供完整名稱（含日期）。"
 
         # Unlock Payment
         if _RE_UNLOCK_PAYMENT.search(text):
@@ -96,3 +128,14 @@ class LockService:
             return res
 
         return None
+
+    def _format_project_candidates_message(self, candidates: List[str]) -> str:
+        if not candidates:
+            return "❌ 找不到唯一專案\n請輸入完整名稱（含日期）。"
+        lines = [
+            "❌ 找不到唯一專案",
+            "請輸入完整名稱（含日期），或從以下候選擇一個：",
+        ]
+        for idx, candidate in enumerate(candidates, start=1):
+            lines.append(f"{idx}) {candidate}")
+        return "\n".join(lines)
