@@ -112,6 +112,7 @@ def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
 • 轉帳：合庫轉帳到Richart 5000
 • 提款：提款 2000 大戶
 • 收入：收入 1000 獎金
+• 繳卡費：合庫繳卡費 5000 (或 繳大戶卡費 5000)
 
 4️⃣ 圖片記帳 📸
 • 直接上傳發票或收據照片
