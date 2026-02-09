@@ -22,6 +22,7 @@ def process_with_parser(
     user_message: str,
     *,
     skip_gpt: bool = False,
+    user_id: Optional[str] = None,
 ) -> MultiExpenseResult:
     """
     Parser-first 處理流程。
@@ -29,6 +30,7 @@ def process_with_parser(
     Args:
         user_message: 使用者訊息
         skip_gpt: 若為 True，跳過 GPT Enrichment（使用預設分類）
+        user_id: 使用者 ID (用於讀取鎖定設定)
     
     Returns:
         MultiExpenseResult: 與舊版相容的結果格式
@@ -57,7 +59,7 @@ def process_with_parser(
         logger.info(f"Enricher processed {len(enriched.transactions)} transactions")
         
         # Step 3: Convert to legacy format（套用共用付款方式）
-        result = enriched_to_multi_result(enriched, shared_payment=shared_payment)
+        result = enriched_to_multi_result(enriched, shared_payment=shared_payment, user_id=user_id)
         return result
         
     except ParserError as e:

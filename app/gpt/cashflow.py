@@ -12,6 +12,7 @@ from app.cashflow_rules import (
 from app.gpt.types import BookkeepingEntry, MultiExpenseResult
 from app.pipeline.normalize import build_batch_id, assign_transaction_ids
 from app.shared.project_resolver import infer_project
+from app.services.lock_service import LockService
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +139,7 @@ def fallback_cashflow_items_from_message(message: str, intent_type: str) -> list
     ]
 
 
-def process_cashflow_items(cashflow_items: list[dict], user_message: str) -> MultiExpenseResult:
+def process_cashflow_items(cashflow_items: list[dict], user_message: str, user_id: Optional[str] = None) -> MultiExpenseResult:
     if not cashflow_items:
         return MultiExpenseResult(
             intent="error",
@@ -176,6 +177,22 @@ def process_cashflow_items(cashflow_items: list[dict], user_message: str) -> Mul
         payment_method = normalize_cashflow_payment_method(payment_method_raw)
         category = normalize_cashflow_category(intent_type, category_raw)
         project = infer_project(category)
+
+        # --- Session Lock logic (v2.2.0) ---
+        if user_id:
+            lock_service = LockService(user_id)
+            
+            # 1. Project Lock
+            if project in ("日常", ""):
+                p_lock = lock_service.get_project_lock()
+                if p_lock:
+                    project = p_lock
+            
+            # 2. Payment Lock
+            if payment_method in ("NA", ""):
+                pay_lock = lock_service.get_payment_lock()
+                if pay_lock:
+                    payment_method = pay_lock
 
         date_str = item_data.get("日期")
         if isinstance(date_str, str) and date_str.strip().upper() == "NA":

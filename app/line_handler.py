@@ -10,7 +10,7 @@ from linebot.models import MessageEvent, TextSendMessage
 from linebot import LineBotApi
 from linebot.v3.messaging import MessagingApiBlob
 
-from app.gpt_processor import process_multi_expense
+from app.pipeline.router import process_message
 from app.services.webhook_sender import send_multiple_webhooks
 from app.services.image_handler import (
     download_image,
@@ -28,6 +28,7 @@ from app.line.formatters import (
 )
 from app.line.update import handle_update_last_entry
 from app.line.project_list import handle_project_list_request, is_project_list_command
+from app.services.lock_service import LockService
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +39,11 @@ def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
 
     Flow:
     1. Receive user message
-    2. Process via GPT (using process_multi_expense) to determine intent
-    3. If multi_bookkeeping -> send multiple webhooks + return confirmation
-    4. If conversation -> return GPT response
-    5. If error -> return error message
+    2. Check for commands (project list, locks)
+    3. Process via GPT (using process_multi_expense) to determine intent
+    4. If multi_bookkeeping -> send multiple webhooks + return confirmation
+    5. If conversation -> return GPT response
+    6. If error -> return error message
 
     Args:
         event: LINE MessageEvent
@@ -54,6 +56,7 @@ def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
     logger.info(f"Received message from user {user_id}: {user_message}")
 
     try:
+        # Step 2a: Project List Command
         if is_project_list_command(user_message):
             reply_text = handle_project_list_request()
             line_bot_api.reply_message(
@@ -62,8 +65,18 @@ def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
             )
             return
 
-        # Process message via GPT (v1.5.0: using process_multi_expense)
-        result = process_multi_expense(user_message)
+        # Step 2b: Lock Commands (v2.2.0)
+        lock_service = LockService(user_id)
+        lock_reply = lock_service.handle_command(user_message)
+        if lock_reply:
+            line_bot_api.reply_message(
+                reply_token,
+                TextSendMessage(text=lock_reply)
+            )
+            return
+
+        # Process message via Router (v2.2.0: pass user_id for locks)
+        result = process_message(user_message, user_id=user_id)
 
         if result.intent in ("multi_bookkeeping", "cashflow_intents"):
             # Multi-item or single-item bookkeeping
@@ -178,7 +191,7 @@ def handle_image_message(event: MessageEvent, messaging_api_blob: MessagingApiBl
             logger.info(f"收據識別成功，共 {len(receipt_items)} 個項目")
 
             image_envelope = build_image_authoritative_envelope(receipt_items)
-            result = process_image_envelope(image_envelope)
+            result = process_image_envelope(image_envelope, user_id=user_id)
 
             if result.intent in ("multi_bookkeeping", "cashflow_intents"):
                 entries = result.entries

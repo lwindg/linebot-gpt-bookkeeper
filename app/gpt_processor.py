@@ -39,7 +39,7 @@ from app.services.exchange_rate import ExchangeRateService
 from app.services.kv_store import KVStore
 from app.shared.category_resolver import resolve_category_autocorrect
 from app.shared.payment_resolver import normalize_payment_method, detect_payment_method
-from app.shared.project_resolver import infer_project
+from app.services.lock_service import LockService
 
 logger = logging.getLogger(__name__)
 
@@ -155,7 +155,7 @@ def process_message(user_message: str) -> BookkeepingEntry:
         raise ValueError(f"Unknown intent from process_multi_expense: {result.intent}")
 
 
-def process_multi_expense_gpt_only(user_message: str, *, debug: bool = False) -> MultiExpenseResult:
+def process_multi_expense_gpt_only(user_message: str, *, debug: bool = False, user_id: Optional[str] = None) -> MultiExpenseResult:
     """
     強制使用 GPT-first 路徑處理訊息（忽略 USE_PARSER_FIRST flag）。
     
@@ -164,14 +164,15 @@ def process_multi_expense_gpt_only(user_message: str, *, debug: bool = False) ->
     Args:
         user_message: 使用者訊息文字
         debug: 是否輸出除錯資訊
+        user_id: 使用者 ID (用於讀取鎖定設定)
     
     Returns:
         MultiExpenseResult: GPT-first 處理結果
     """
-    return _process_multi_expense_impl(user_message, debug=debug)
+    return _process_multi_expense_impl(user_message, debug=debug, user_id=user_id)
 
 
-def process_multi_expense(user_message: str, *, debug: bool = False) -> MultiExpenseResult:
+def process_multi_expense(user_message: str, *, debug: bool = False, user_id: Optional[str] = None) -> MultiExpenseResult:
     """
     處理單一訊息的多項目支出（v1.5.0 新功能）
 
@@ -184,6 +185,8 @@ def process_multi_expense(user_message: str, *, debug: bool = False) -> MultiExp
 
     Args:
         user_message: 使用者訊息文字
+        debug: 是否輸出除錯資訊
+        user_id: 使用者 ID (用於讀取鎖定設定)
 
     Returns:
         MultiExpenseResult: 處理後的結果
@@ -219,7 +222,7 @@ def process_multi_expense(user_message: str, *, debug: bool = False) -> MultiExp
             # 使用 Parser-first 流程
             from app.processor import process_with_parser
             try:
-                result = process_with_parser(user_message)
+                result = process_with_parser(user_message, user_id=user_id)
                 if debug:
                     logger.info(f"[parser-first] result.intent={result.intent}, entries={len(result.entries)}")
                 # 若 parser-first 成功解析出交易則回傳
@@ -232,10 +235,10 @@ def process_multi_expense(user_message: str, *, debug: bool = False) -> MultiExp
                 logger.debug(f"Parser-first failed, fallback to GPT: {e}")
     # === End Phase 3 ===
     
-    return _process_multi_expense_impl(user_message, debug=debug)
+    return _process_multi_expense_impl(user_message, debug=debug, user_id=user_id)
 
 
-def _process_multi_expense_impl(user_message: str, *, debug: bool = False) -> MultiExpenseResult:
+def _process_multi_expense_impl(user_message: str, *, debug: bool = False, user_id: Optional[str] = None) -> MultiExpenseResult:
     """GPT-first 實作（內部使用）"""
 
     try:
@@ -247,7 +250,7 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False) -> Mu
         if cashflow_hint:
             fallback_items = fallback_cashflow_items_from_message(base_message, cashflow_hint)
             if fallback_items:
-                return process_cashflow_items(fallback_items, base_message)
+                return process_cashflow_items(fallback_items, base_message, user_id=user_id)
 
         # 初始化 OpenAI client
         client = OpenAI(api_key=OPENAI_API_KEY)
@@ -412,6 +415,23 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False) -> Mu
                 elif project == "日常" and inferred_project != "日常":
                     project = inferred_project
 
+                # --- Session Lock logic (v2.2.0) ---
+                final_payment = payment_method
+                if user_id:
+                    lock_service = LockService(user_id)
+                    
+                    # 1. Project Lock
+                    if project in ("日常", ""):
+                        p_lock = lock_service.get_project_lock()
+                        if p_lock:
+                            project = p_lock
+                    
+                    # 2. Payment Lock
+                    if final_payment in ("NA", ""):
+                        pay_lock = lock_service.get_payment_lock()
+                        if pay_lock:
+                            final_payment = pay_lock
+
                 entry = BookkeepingEntry(
                     intent="bookkeeping",
                     日期=shared_date,
@@ -419,7 +439,7 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False) -> Mu
                     原幣別=原幣別,
                     原幣金額=float(原幣金額),
                     匯率=匯率,
-                    付款方式=payment_method,
+                    付款方式=final_payment,
                     交易ID=transaction_id,
                     明細說明=item_data.get("明細說明", ""),
                     分類=分類,

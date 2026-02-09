@@ -67,6 +67,7 @@ def process_image_envelope(
     envelope: ImageAuthoritativeEnvelope,
     *,
     skip_gpt: bool = False,
+    user_id: Optional[str] = None,
 ) -> MultiExpenseResult:
     if not envelope.items:
         return MultiExpenseResult(
@@ -150,4 +151,4 @@ def process_image_envelope(
         transactions=enriched_transactions,
     )
 
-    return enriched_to_multi_result(enriched_envelope, shared_payment=envelope.payment_method)
+    return enriched_to_multi_result(enriched_envelope, shared_payment=envelope.payment_method, user_id=user_id)

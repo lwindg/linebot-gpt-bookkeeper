@@ -13,6 +13,7 @@ from app.parser import TransactionType
 from app.enricher import EnrichedEnvelope, EnrichedTransaction
 from app.gpt.types import BookkeepingEntry, MultiExpenseResult
 from app.pipeline.normalize import build_batch_id, assign_transaction_ids
+from app.services.lock_service import LockService
 
 
 def _type_to_advance_status(tx_type: TransactionType, counterparty: str) -> str:
@@ -32,6 +33,7 @@ def _enriched_tx_to_entry(
     shared_date: Optional[str] = None,
     shared_payment: Optional[str] = None,
     batch_id: Optional[str] = None,
+    user_id: Optional[str] = None,
 ) -> BookkeepingEntry:
     """將 EnrichedTransaction 轉換為 BookkeepingEntry"""
     
@@ -65,6 +67,27 @@ def _enriched_tx_to_entry(
     else:
         tx_type = "支出"
 
+    # --- Session Lock logic (v2.2.0) ---
+    final_project = tx.專案
+    final_payment = tx.payment_method if tx.payment_method != "NA" else shared_payment or "NA"
+
+    if user_id:
+        lock_service = LockService(user_id)
+        
+        # 1. Project Lock
+        # Only apply if current project is "日常" or empty (indicating no explicit mention)
+        if final_project in ("日常", ""):
+            project_lock = lock_service.get_project_lock()
+            if project_lock:
+                final_project = project_lock
+        
+        # 2. Payment Method Lock
+        # Only apply if current payment is "NA" or empty
+        if final_payment in ("NA", ""):
+            payment_lock = lock_service.get_payment_lock()
+            if payment_lock:
+                final_payment = payment_lock
+
     return BookkeepingEntry(
         intent="bookkeeping",
         日期=date_str,
@@ -74,9 +97,9 @@ def _enriched_tx_to_entry(
         原幣金額=tx.amount,
         匯率=tx.fx_rate,
         明細說明=tx.明細說明,
-        付款方式=tx.payment_method if tx.payment_method != "NA" else shared_payment or "NA",
+        付款方式=final_payment,
         分類=tx.分類,
-        專案=tx.專案,
+        專案=final_project,
         必要性=tx.必要性,
         代墊狀態=advance_status,
         收款支付對象=tx.counterparty,
@@ -90,6 +113,7 @@ def _enriched_tx_to_entry(
 def enriched_to_multi_result(
     envelope: EnrichedEnvelope,
     shared_payment: Optional[str] = None,
+    user_id: Optional[str] = None,
 ) -> MultiExpenseResult:
     """
     將 EnrichedEnvelope 轉換為 MultiExpenseResult。
@@ -97,6 +121,7 @@ def enriched_to_multi_result(
     Args:
         envelope: Enricher 輸出的 EnrichedEnvelope
         shared_payment: 共用付款方式（若有）
+        user_id: 使用者 ID (用於讀取鎖定設定)
 
     Returns:
         MultiExpenseResult: 與舊版 gpt_processor 相容的格式
@@ -119,7 +144,7 @@ def enriched_to_multi_result(
     )
 
     for tx in envelope.transactions:
-        entry = _enriched_tx_to_entry(tx, shared_date, shared_payment, batch_id)
+        entry = _enriched_tx_to_entry(tx, shared_date, shared_payment, batch_id, user_id=user_id)
         entries.append(entry)
         
         # 特殊處理：提款 (WITHDRAWAL) 產生雙分錄
