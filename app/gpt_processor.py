@@ -417,6 +417,9 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False, user_
 
                 # --- Session Lock logic (v2.2.0) ---
                 final_payment = payment_method
+                final_currency = 原幣別
+                final_fx_rate = 匯率
+
                 if user_id:
                     lock_service = LockService(user_id)
                     
@@ -432,13 +435,23 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False, user_
                         if pay_lock:
                             final_payment = pay_lock
 
+                    # 3. Currency Lock (v2.4.0)
+                    if final_currency in ("TWD", ""):
+                        curr_lock = lock_service.get_currency_lock()
+                        if curr_lock and curr_lock != "TWD":
+                            final_currency = curr_lock
+                            # Update exchange rate for the locked currency
+                            rate = exchange_rate_service.get_rate(final_currency)
+                            if rate:
+                                final_fx_rate = rate
+
                 entry = BookkeepingEntry(
                     intent="bookkeeping",
                     日期=shared_date,
                     品項=品項,
-                    原幣別=原幣別,
+                    原幣別=final_currency,
                     原幣金額=float(原幣金額),
-                    匯率=匯率,
+                    匯率=final_fx_rate,
                     付款方式=final_payment,
                     交易ID=transaction_id,
                     明細說明=item_data.get("明細說明", ""),

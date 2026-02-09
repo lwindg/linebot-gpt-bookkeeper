@@ -16,17 +16,21 @@ from app.shared.project_resolver import (
     extract_project_date_range,
 )
 from app.services.project_options import get_project_options
+from app.parser.extract_amount import _CURRENCY_MAP
 
 logger = logging.getLogger(__name__)
 
 LOCK_PROJECT_KEY = "lock:project:{user_id}"
 LOCK_PAYMENT_KEY = "lock:payment:{user_id}"
+LOCK_CURRENCY_KEY = "lock:currency:{user_id}"
 
 # Command Patterns
 _RE_LOCK_PROJECT = re.compile(r"鎖定專案\s*(?P<name>.+)?")
 _RE_UNLOCK_PROJECT = re.compile(r"解鎖專案")
 _RE_LOCK_PAYMENT = re.compile(r"鎖定付款\s*(?P<name>.+)?")
 _RE_UNLOCK_PAYMENT = re.compile(r"解鎖付款")
+_RE_LOCK_CURRENCY = re.compile(r"鎖定幣別\s*(?P<name>.+)?")
+_RE_UNLOCK_CURRENCY = re.compile(r"解鎖幣別")
 _RE_LOCK_STATUS = re.compile(r"鎖定狀態")
 
 
@@ -55,6 +59,17 @@ class LockService:
     def remove_payment_lock(self):
         if self.kv.client:
             self.kv.client.delete(LOCK_PAYMENT_KEY.format(user_id=self.user_id))
+
+    def get_currency_lock(self) -> Optional[str]:
+        return self.kv.get(LOCK_CURRENCY_KEY.format(user_id=self.user_id))
+
+    def set_currency_lock(self, currency_name: str):
+        normalized = _CURRENCY_MAP.get(currency_name.upper(), _CURRENCY_MAP.get(currency_name, currency_name.upper()))
+        self.kv.set(LOCK_CURRENCY_KEY.format(user_id=self.user_id), normalized, ttl=86400 * 7)
+
+    def remove_currency_lock(self):
+        if self.kv.client:
+            self.kv.client.delete(LOCK_CURRENCY_KEY.format(user_id=self.user_id))
 
     def handle_command(self, text: str) -> Optional[str]:
         """
@@ -116,15 +131,32 @@ class LockService:
             lock_val = self.get_payment_lock()
             return f"🔒 付款方式已鎖定為：{lock_val}\n後續記帳將自動帶入此方式。"
 
+        # Unlock Currency
+        if _RE_UNLOCK_CURRENCY.search(text):
+            self.remove_currency_lock()
+            return "🔓 已解除幣別鎖定。"
+
+        # Lock Currency
+        m = _RE_LOCK_CURRENCY.search(text)
+        if m:
+            name = (m.group("name") or "").strip()
+            if not name:
+                return "❌ 請提供要鎖定的幣別。\n範例：鎖定幣別 日幣"
+            self.set_currency_lock(name)
+            lock_val = self.get_currency_lock()
+            return f"🔒 幣別已鎖定為：{lock_val}\n後續記帳將自動帶入此幣別。"
+
         # Status
         if _RE_LOCK_STATUS.search(text):
             p = self.get_project_lock()
             pay = self.get_payment_lock()
-            if not p and not pay:
+            curr = self.get_currency_lock()
+            if not p and not pay and not curr:
                 return "ℹ️ 目前沒有任何鎖定中的設定。"
             res = "📌 目前鎖定設定："
             if p: res += f"\n• 專案：{p}"
             if pay: res += f"\n• 付款方式：{pay}"
+            if curr: res += f"\n• 幣別：{curr}"
             return res
 
         return None

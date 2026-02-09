@@ -14,6 +14,8 @@ from app.enricher import EnrichedEnvelope, EnrichedTransaction
 from app.gpt.types import BookkeepingEntry, MultiExpenseResult
 from app.pipeline.normalize import build_batch_id, assign_transaction_ids
 from app.services.lock_service import LockService
+from app.services.exchange_rate import ExchangeRateService
+from app.services.kv_store import KVStore
 
 
 def _type_to_advance_status(tx_type: TransactionType, counterparty: str) -> str:
@@ -70,6 +72,8 @@ def _enriched_tx_to_entry(
     # --- Session Lock logic (v2.2.0) ---
     final_project = tx.專案
     final_payment = tx.payment_method if tx.payment_method != "NA" else shared_payment or "NA"
+    final_currency = tx.currency
+    final_fx_rate = tx.fx_rate
 
     if user_id:
         lock_service = LockService(user_id)
@@ -88,14 +92,27 @@ def _enriched_tx_to_entry(
             if payment_lock:
                 final_payment = payment_lock
 
+        # 3. Currency Lock (v2.4.0)
+        # Only apply if current currency is "TWD" (default) or empty
+        if final_currency in ("TWD", ""):
+            currency_lock = lock_service.get_currency_lock()
+            if currency_lock and currency_lock != "TWD":
+                final_currency = currency_lock
+                # Update exchange rate for the locked currency
+                kv = KVStore()
+                ex_service = ExchangeRateService(kv)
+                rate = ex_service.get_rate(final_currency)
+                if rate:
+                    final_fx_rate = rate
+
     return BookkeepingEntry(
         intent="bookkeeping",
         日期=date_str,
         時間=tx.time,
         品項=tx.raw_item,
-        原幣別=tx.currency,
+        原幣別=final_currency,
         原幣金額=tx.amount,
-        匯率=tx.fx_rate,
+        匯率=final_fx_rate,
         明細說明=tx.明細說明,
         付款方式=final_payment,
         分類=tx.分類,
