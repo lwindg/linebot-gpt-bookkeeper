@@ -85,25 +85,28 @@ def _enriched_tx_to_entry(
             if project_lock:
                 final_project = project_lock
         
-        # 2. Payment Method Lock
-        # Only apply if current payment is "NA" or empty
-        if final_payment in ("NA", ""):
-            payment_lock = lock_service.get_payment_lock()
-            if payment_lock:
-                final_payment = payment_lock
+        # 2. Payment Method Lock & 3. Currency Lock
+        # Only apply to non-cashflow transactions (EXPENSE, ADVANCE)
+        if not TransactionType.is_cashflow(tx.type):
+            # 2. Payment Method Lock
+            # Only apply if current payment is "NA" or empty
+            if final_payment in ("NA", ""):
+                payment_lock = lock_service.get_payment_lock()
+                if payment_lock:
+                    final_payment = payment_lock
 
-        # 3. Currency Lock (v2.4.0)
-        # Only apply if current currency is "TWD" (default) or empty
-        if final_currency in ("TWD", ""):
-            currency_lock = lock_service.get_currency_lock()
-            if currency_lock and currency_lock != "TWD":
-                final_currency = currency_lock
-                # Update exchange rate for the locked currency
-                kv = KVStore()
-                ex_service = ExchangeRateService(kv)
-                rate = ex_service.get_rate(final_currency)
-                if rate:
-                    final_fx_rate = rate
+            # 3. Currency Lock (v2.4.0)
+            # Only apply if current currency is "TWD" (default) or empty
+            if final_currency in ("TWD", ""):
+                currency_lock = lock_service.get_currency_lock()
+                if currency_lock and currency_lock != "TWD":
+                    final_currency = currency_lock
+                    # Update exchange rate for the locked currency
+                    kv = KVStore()
+                    ex_service = ExchangeRateService(kv)
+                    rate = ex_service.get_rate(final_currency)
+                    if rate:
+                        final_fx_rate = rate
 
     return BookkeepingEntry(
         intent="bookkeeping",

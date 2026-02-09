@@ -183,16 +183,14 @@ def process_cashflow_items(cashflow_items: list[dict], user_message: str, user_i
             lock_service = LockService(user_id)
             
             # 1. Project Lock
+            # Only apply if current project is "日常" or empty
             if project in ("日常", ""):
                 p_lock = lock_service.get_project_lock()
                 if p_lock:
                     project = p_lock
             
-            # 2. Payment Lock
-            if payment_method in ("NA", ""):
-                pay_lock = lock_service.get_payment_lock()
-                if pay_lock:
-                    payment_method = pay_lock
+            # NOTE: Payment Method Lock and Currency Lock are NOT applied to cashflow transactions
+            # to preserve the parsed accounts/currencies.
 
         date_str = item_data.get("日期")
         if isinstance(date_str, str) and date_str.strip().upper() == "NA":

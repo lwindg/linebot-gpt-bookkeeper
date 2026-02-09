@@ -25,12 +25,12 @@ LOCK_PAYMENT_KEY = "lock:payment:{user_id}"
 LOCK_CURRENCY_KEY = "lock:currency:{user_id}"
 
 # Command Patterns
-_RE_LOCK_PROJECT = re.compile(r"鎖定專案\s*(?P<name>.+)?")
-_RE_UNLOCK_PROJECT = re.compile(r"解鎖專案")
-_RE_LOCK_PAYMENT = re.compile(r"鎖定付款\s*(?P<name>.+)?")
-_RE_UNLOCK_PAYMENT = re.compile(r"解鎖付款")
-_RE_LOCK_CURRENCY = re.compile(r"鎖定幣別\s*(?P<name>.+)?")
-_RE_UNLOCK_CURRENCY = re.compile(r"解鎖幣別")
+_RE_LOCK_PROJECT = re.compile(r"鎖定專案\s*(?:名稱)?\s*(?P<name>.+)?")
+_RE_UNLOCK_PROJECT = re.compile(r"解鎖專案\s*(?:名稱)?")
+_RE_LOCK_PAYMENT = re.compile(r"鎖定付款\s*(?:方式)?\s*(?P<name>.+)?")
+_RE_UNLOCK_PAYMENT = re.compile(r"解鎖付款\s*(?:方式)?")
+_RE_LOCK_CURRENCY = re.compile(r"鎖定幣別\s*(?:名稱)?\s*(?P<name>.+)?")
+_RE_UNLOCK_CURRENCY = re.compile(r"解鎖幣別\s*(?:名稱)?")
 _RE_LOCK_STATUS = re.compile(r"鎖定狀態")
 
 

@@ -430,13 +430,13 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False, user_
                             project = p_lock
                     
                     # 2. Payment Lock
-                    if final_payment in ("NA", ""):
+                    if final_payment in ("NA", "") and not cashflow_hint:
                         pay_lock = lock_service.get_payment_lock()
                         if pay_lock:
                             final_payment = pay_lock
 
                     # 3. Currency Lock (v2.4.0)
-                    if final_currency in ("TWD", ""):
+                    if final_currency in ("TWD", "") and not cashflow_hint:
                         curr_lock = lock_service.get_currency_lock()
                         if curr_lock and curr_lock != "TWD":
                             final_currency = curr_lock
