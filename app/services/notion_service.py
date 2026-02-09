@@ -211,3 +211,82 @@ class NotionService:
         except Exception as e:
             logger.error(f"Unexpected error fetching Notion database options: {e}")
             return []
+
+    def get_project_settlement(self, project_name: str) -> Dict[str, Any]:
+        """
+        Query Notion for all pages where "專案" matches.
+        Calculate totals: Total Spent (Sum of Amount * FX), Grouped by Counterparty and Status (代墊, 需支付).
+        """
+        if not self.token or not self.database_id:
+            logger.warning("Notion token or database ID not configured")
+            return {}
+
+        url = f"https://api.notion.com/v1/databases/{self.database_id}/query"
+        payload = {
+            "filter": {
+                "property": "專案",
+                "select": {
+                    "equals": project_name
+                }
+            }
+        }
+        
+        all_results = []
+        has_more = True
+        start_cursor = None
+        
+        try:
+            while has_more:
+                if start_cursor:
+                    payload["start_cursor"] = start_cursor
+                
+                response = requests.post(url, json=payload, headers=self.headers, timeout=10)
+                if response.status_code == 200:
+                    data = response.json()
+                    all_results.extend(data.get("results", []))
+                    has_more = data.get("has_more", False)
+                    start_cursor = data.get("next_cursor")
+                else:
+                    logger.error(f"Notion API query failed: {response.text}")
+                    break
+            
+            # Process results
+            total_spent = 0.0
+            # Grouped by Counterparty and Status
+            # settlement_data = { counterparty: { status: amount } }
+            settlement_data = {}
+            
+            for page in all_results:
+                props = page.get("properties", {})
+                
+                # Get Amount and FX
+                amount = props.get("原幣金額", {}).get("number") or 0
+                fx = props.get("匯率", {}).get("number") or 1.0
+                twd_amount = amount * fx
+                
+                total_spent += twd_amount
+                
+                # Get Counterparty
+                counterparty_rich_text = props.get("收款／支付對象", {}).get("rich_text", [])
+                counterparty = counterparty_rich_text[0].get("text", {}).get("content", "未知") if counterparty_rich_text else "未知"
+                
+                # Get Status
+                status = props.get("代墊狀態", {}).get("select", {}).get("name") or "無"
+                
+                if counterparty not in settlement_data:
+                    settlement_data[counterparty] = {}
+                
+                if status not in settlement_data[counterparty]:
+                    settlement_data[counterparty][status] = 0.0
+                
+                settlement_data[counterparty][status] += twd_amount
+                
+            return {
+                "project_name": project_name,
+                "total_spent": total_spent,
+                "settlement": settlement_data
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting project settlement: {e}")
+            return {}

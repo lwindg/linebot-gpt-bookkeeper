@@ -6,7 +6,7 @@ This module handles LINE message events and user interactions.
 """
 
 import logging
-from linebot.models import MessageEvent, TextSendMessage
+from linebot.models import MessageEvent, TextSendMessage, FlexSendMessage
 from linebot import LineBotApi
 from linebot.v3.messaging import MessagingApiBlob
 
@@ -25,21 +25,24 @@ from app.line.formatters import (
     format_confirmation_message,
     format_multi_confirmation_message,
     format_cashflow_confirmation_message,
+    format_settlement_report,
+    create_flex_menu,
 )
 from app.line.update import handle_update_last_entry
 from app.line.project_list import handle_project_list_request, is_project_list_command
 from app.services.lock_service import LockService
+from app.services.notion_service import NotionService
 
 logger = logging.getLogger(__name__)
 
 
 def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
     """
-    Handle text message main flow (v1.5.0 更新：支援多項目支出)
+    Handle text message main flow (v2.7 更新：支援 Flex Menu 與 專案結算)
 
     Flow:
     1. Receive user message
-    2. Check for commands (project list, locks)
+    2. Check for commands (menu, project list, locks, settlement, help)
     3. Process via GPT (using process_multi_expense) to determine intent
     4. If multi_bookkeeping -> send multiple webhooks + return confirmation
     5. If conversation -> return GPT response
@@ -49,14 +52,25 @@ def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
         event: LINE MessageEvent
         line_bot_api: LINE Bot API client
     """
-    user_message = event.message.text
+    user_message = event.message.text.strip()
     reply_token = event.reply_token
     user_id = event.source.user_id  # 取得使用者 ID（用於 KV 儲存）
 
     logger.info(f"Received message from user {user_id}: {user_message}")
 
     try:
-        # Step 2a: Project List Command
+        # Step 2a: Menu Command (v2.7)
+        if user_message in ("功能", "選單"):
+            lock_service = LockService(user_id)
+            current_project = lock_service.get_project_lock()
+            flex_contents = create_flex_menu(current_project)
+            line_bot_api.reply_message(
+                reply_token,
+                FlexSendMessage(alt_text="功能選單", contents=flex_contents)
+            )
+            return
+
+        # Step 2b: Project List Command
         if is_project_list_command(user_message):
             reply_text = handle_project_list_request()
             line_bot_api.reply_message(
@@ -65,7 +79,49 @@ def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
             )
             return
 
-        # Step 2b: Lock Commands (v2.2.0)
+        # Step 2c: Settlement Command (v2.7)
+        if user_message.startswith("結算 "):
+            project_name = user_message[3:].strip()
+            if project_name:
+                notion_service = NotionService()
+                settlement_data = notion_service.get_project_settlement(project_name)
+                reply_text = format_settlement_report(project_name, settlement_data)
+                line_bot_api.reply_message(
+                    reply_token,
+                    TextSendMessage(text=reply_text)
+                )
+                return
+
+        # Step 2d: Help Command (v2.7)
+        if user_message == "記帳教學":
+            reply_text = """📖 記帳教學
+
+您可以直接輸入文字或上傳照片來記帳：
+
+1️⃣ 文字記帳
+• 單筆：午餐 150 現金
+• 多筆：
+  晚餐 200 悠遊卡
+  買水 25 現金
+• 代墊：幫 A 墊晚餐 500 現金
+
+2️⃣ 圖片記帳
+• 直接上傳發票或收據照片
+
+3️⃣ 功能指令
+• 「選單」：開啟功能選單
+• 「專案清單」：查看近期專案
+• 「鎖定狀態」：查看目前鎖定的專案/付款方式
+• 「結算 {專案名稱}」：產出該專案的結算報告
+
+💡 提示：輸入「鎖定專案 {名稱}」後，後續記帳會自動歸類到該專案。"""
+            line_bot_api.reply_message(
+                reply_token,
+                TextSendMessage(text=reply_text)
+            )
+            return
+
+        # Step 2e: Lock Commands (v2.2.0)
         lock_service = LockService(user_id)
         lock_reply = lock_service.handle_command(user_message)
         if lock_reply:

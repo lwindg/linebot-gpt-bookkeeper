@@ -184,3 +184,117 @@ def format_cashflow_confirmation_message(entries: list[BookkeepingEntry], succes
 
     message += f"\n- 記錄 {total_items} 筆現金流項目"
     return message
+
+
+def format_settlement_report(project_name: str, data: dict) -> str:
+    """
+    Format project settlement report (v2.7 新增)
+    """
+    if not data or data.get("total_spent", 0) == 0 and not data.get("settlement"):
+        return f"❌ 找不到專案「{project_name}」的記帳資料，或是該專案尚無任何支出。"
+
+    total_spent = data.get("total_spent", 0)
+    settlement = data.get("settlement", {})
+
+    report = [f"📊 【{project_name}】專案結算報告", ""]
+    report.append(f"💰 專案總支出：NT$ {total_spent:,.0f}")
+    report.append("-" * 20)
+
+    if not settlement:
+        report.append("（無代墊或需支付項目的結算細節）")
+    else:
+        for counterparty, statuses in settlement.items():
+            if counterparty == "未知" and not statuses:
+                continue
+                
+            report.append(f"👤 對象：{counterparty}")
+            for status, amount in statuses.items():
+                if status == "代墊":
+                    report.append(f"  💸 他欠我 (代墊)：NT$ {amount:,.0f}")
+                elif status == "需支付":
+                    report.append(f"  💰 我欠他 (需支付)：NT$ {amount:,.0f}")
+                elif status == "不索取":
+                    report.append(f"  🎁 不索取 (已代墊)：NT$ {amount:,.0f}")
+                elif status == "無":
+                    continue
+                else:
+                    report.append(f"  ❓ {status}：NT$ {amount:,.0f}")
+            report.append("")
+
+    report.append("💡 提示：以上金額由「原幣金額 * 匯率」計算得出。")
+    return "\n".join(report).strip()
+
+
+def create_flex_menu(current_project_lock: str = None) -> dict:
+    """
+    Create a JSON structure for a LINE Flex Message menu (v2.7 新增)
+    """
+    # Base buttons
+    buttons = [
+        {
+            "type": "button",
+            "action": {"type": "message", "label": "🔍 專案清單", "text": "專案清單"},
+            "style": "primary",
+            "color": "#4285F4",
+            "margin": "sm"
+        },
+        {
+            "type": "button",
+            "action": {"type": "message", "label": "🔐 鎖定狀態", "text": "鎖定狀態"},
+            "style": "secondary",
+            "margin": "sm"
+        },
+        {
+            "type": "button",
+            "action": {"type": "message", "label": "🔓 全部解鎖", "text": "全部解鎖"},
+            "style": "secondary",
+            "margin": "sm"
+        },
+        {
+            "type": "button",
+            "action": {"type": "message", "label": "📖 記帳教學", "text": "記帳教學"},
+            "style": "link",
+            "margin": "sm"
+        }
+    ]
+
+    # If lock exists, add settlement button at the top
+    if current_project_lock:
+        settlement_button = {
+            "type": "button",
+            "action": {
+                "type": "message",
+                "label": f"💰 結算 {current_project_lock}",
+                "text": f"結算 {current_project_lock}"
+            },
+            "style": "primary",
+            "color": "#34A853",
+            "height": "md",
+            "margin": "md"
+        }
+        buttons.insert(0, settlement_button)
+
+    flex_contents = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {"type": "text", "text": "記帳助手功能選單", "weight": "bold", "size": "lg", "color": "#1DB446"}
+            ]
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": buttons
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {"type": "text", "text": "v2.7 Flex Menu", "size": "xs", "color": "#aaaaaa", "align": "center"}
+            ]
+        }
+    }
+
+    return flex_contents
