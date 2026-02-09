@@ -474,7 +474,7 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False, user_
                     if fallback_intent
                     else []
                 )
-            return process_cashflow_items(cashflow_items, user_message)
+            return process_cashflow_items(cashflow_items, user_message, user_id=user_id)
 
         elif intent == "update_last_entry":
             # 修改上一筆記帳：提取要更新的欄位

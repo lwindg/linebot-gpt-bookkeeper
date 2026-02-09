@@ -209,7 +209,7 @@ def log_comparison(
         logger.warning(f"Shadow Mode log failed (non-critical): {e}")
 
 
-def run_shadow_mode(user_message: str) -> MultiExpenseResult:
+def run_shadow_mode(user_message: str, user_id: Optional[str] = None) -> MultiExpenseResult:
     """
     執行 Shadow Mode：同時執行兩條路徑並比對。
     
@@ -221,16 +221,16 @@ def run_shadow_mode(user_message: str) -> MultiExpenseResult:
     if not SHADOW_MODE_ENABLED:
         # Shadow Mode 未啟用，直接執行一般流程
         from app.gpt_processor import process_multi_expense
-        return process_multi_expense(user_message)
+        return process_multi_expense(user_message, user_id=user_id)
     
     # 執行 GPT-first（強制使用舊路徑）
     from app.gpt_processor import process_multi_expense_gpt_only
-    gpt_result = process_multi_expense_gpt_only(user_message)
+    gpt_result = process_multi_expense_gpt_only(user_message, user_id=user_id)
     
     # 執行 Parser-first
     from app.processor import process_with_parser
     try:
-        parser_result = process_with_parser(user_message)
+        parser_result = process_with_parser(user_message, user_id=user_id)
     except Exception as e:
         logger.error(f"Parser-first failed in shadow mode: {e}")
         parser_result = MultiExpenseResult(
