@@ -259,22 +259,31 @@ class NotionService:
             for page in all_results:
                 props = page.get("properties", {})
                 
-                # Get Amount and FX
-                amount = props.get("原幣金額", {}).get("number") or 0
-                fx = props.get("匯率", {}).get("number") or 1.0
-                fee = props.get("手續費", {}).get("number") or 0
+                # Get Amount and FX with safe access
+                amount = props.get("原幣金額", {}).get("number") if props.get("原幣金額") else 0
+                fx = props.get("匯率", {}).get("number") if props.get("匯率") else 1.0
+                fee = props.get("手續費", {}).get("number") if props.get("手續費") else 0
+                
+                # Ensure they are not None (in case property exists but number is null)
+                amount = amount if amount is not None else 0
+                fx = fx if fx is not None else 1.0
+                fee = fee if fee is not None else 0
                 
                 # Calculate TWD amount with rounding per item (matches Notion View v2.9)
                 twd_amount = round(amount * fx + fee)
                 
                 total_spent += twd_amount
                 
-                # Get Counterparty
+                # Get Counterparty with safe access
                 counterparty_rich_text = props.get("收款／支付對象", {}).get("rich_text", [])
-                counterparty = counterparty_rich_text[0].get("text", {}).get("content", "未知") if counterparty_rich_text else "未知"
+                counterparty = "未知"
+                if counterparty_rich_text:
+                    text_obj = counterparty_rich_text[0].get("text")
+                    if text_obj:
+                        counterparty = text_obj.get("content", "未知")
                 
-                # Get Status
-                status = props.get("代墊狀態", {}).get("select", {}).get("name") or "無"
+                # Get Status with safe access
+                status = props.get("代墊狀態", {}).get("select", {}).get("name") if props.get("代墊狀態") and props.get("代墊狀態").get("select") else "無"
                 
                 if counterparty not in settlement_data:
                     settlement_data[counterparty] = {}
