@@ -78,6 +78,40 @@ class LockService:
             self.kv.client.delete(LOCK_PAYMENT_KEY.format(user_id=self.user_id))
             self.kv.client.delete(LOCK_CURRENCY_KEY.format(user_id=self.user_id))
 
+    def resolve_project_name(self, name: str) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Resolve a project name using fuzzy matching.
+        Returns (resolved_name, error_message).
+        """
+        name = name.strip()
+        if not name:
+            return None, "❌ 請提供專案名稱。"
+
+        # 1. Check long term projects
+        long_term_project = get_long_term_project(name)
+        if long_term_project:
+            return long_term_project, None
+
+        # 2. Check for date range prefix
+        has_date_prefix = extract_project_date_range(name) is not None
+
+        # 3. Fuzzy matching with options
+        options, error = get_project_options(self.kv)
+        if options:
+            resolved, candidates = match_short_term_project(name, options)
+            if resolved:
+                return resolved, None
+            elif has_date_prefix:
+                return name, None
+            else:
+                return None, self.format_project_candidates_message(candidates)
+        else:
+            if has_date_prefix:
+                return name, None
+            else:
+                logger.warning("Failed to fetch project options: %s", error or "unknown_error")
+                return None, "❌ 無法取得專案清單，請稍後再試或提供完整名稱（含日期）。"
+
     def handle_command(self, text: str) -> Optional[str]:
         """
         Check if text is a lock command. 
@@ -92,36 +126,11 @@ class LockService:
         m = _RE_LOCK_PROJECT.search(text)
         if m:
             name = (m.group("name") or "").strip()
-            if not name:
-                return "❌ 請提供要鎖定的專案名稱。\n範例：鎖定專案 日本玩雪"
-            
-            # Fuzzy matching logic (v1.10.0 inspired)
-            long_term_project = get_long_term_project(name)
-            if long_term_project:
-                self.set_project_lock(long_term_project)
-                return f"🔒 專案已鎖定為：{long_term_project}\n後續記帳將自動帶入此專案。"
-            
-            has_date_prefix = extract_project_date_range(name) is not None
-            options, error = get_project_options(self.kv)
-            if options:
-                resolved, candidates = match_short_term_project(name, options)
-                if resolved:
-                    self.set_project_lock(resolved)
-                    return f"🔒 專案已鎖定為：{resolved}\n後續記帳將自動帶入此專案。"
-                elif has_date_prefix:
-                    self.set_project_lock(name)
-                    return f"🔒 專案已鎖定為：{name}\n後續記帳將自動帶入此專案。"
-                else:
-                    return self._format_project_candidates_message(candidates)
-            else:
-                if has_date_prefix:
-                    self.set_project_lock(name)
-                    return f"🔒 專案已鎖定為：{name}\n後續記帳將自動帶入此專案。"
-                else:
-                    logger.warning(
-                        "Failed to fetch project options: %s", error or "unknown_error"
-                    )
-                    return "❌ 無法取得專案清單，請稍後再試或提供完整名稱（含日期）。"
+            resolved, error = self.resolve_project_name(name)
+            if resolved:
+                self.set_project_lock(resolved)
+                return f"🔒 專案已鎖定為：{resolved}\n後續記帳將自動帶入此專案。"
+            return error
 
         # Unlock Payment
         if _RE_UNLOCK_PAYMENT.search(text):
@@ -173,7 +182,7 @@ class LockService:
 
         return None
 
-    def _format_project_candidates_message(self, candidates: List[str]) -> str:
+    def format_project_candidates_message(self, candidates: List[str]) -> str:
         if not candidates:
             return "❌ 找不到唯一專案\n請輸入完整名稱（含日期）。"
         lines = [

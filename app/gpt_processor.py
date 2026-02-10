@@ -39,6 +39,7 @@ from app.services.exchange_rate import ExchangeRateService
 from app.services.kv_store import KVStore
 from app.shared.category_resolver import resolve_category_autocorrect
 from app.shared.payment_resolver import normalize_payment_method, detect_payment_method
+from app.shared.project_resolver import infer_project
 from app.services.lock_service import LockService
 
 logger = logging.getLogger(__name__)

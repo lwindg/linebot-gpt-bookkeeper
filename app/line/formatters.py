@@ -190,7 +190,7 @@ def format_settlement_report(project_name: str, data: dict) -> str:
     """
     Format project settlement report (v2.7 新增)
     """
-    if not data or data.get("total_spent", 0) == 0 and not data.get("settlement"):
+    if not data or (data.get("total_spent", 0) == 0 and not data.get("settlement")):
         return f"❌ 找不到專案「{project_name}」的記帳資料，或是該專案尚無任何支出。"
 
     total_spent = data.get("total_spent", 0)
@@ -203,23 +203,31 @@ def format_settlement_report(project_name: str, data: dict) -> str:
     if not settlement:
         report.append("（無代墊或需支付項目的結算細節）")
     else:
+        # Filter settlement to only include counterparties with actual debt
+        has_actual_settlement = False
         for counterparty, statuses in settlement.items():
-            if counterparty == "未知" and not statuses:
+            # Check if there's any status other than "無" with amount > 0
+            # (Note: "無" is already filtered in notion_service.py, but we check amount > 0 here)
+            valid_statuses = {s: a for s, a in statuses.items() if a > 0}
+            
+            if not valid_statuses:
                 continue
                 
+            has_actual_settlement = True
             report.append(f"👤 對象：{counterparty}")
-            for status, amount in statuses.items():
+            for status, amount in valid_statuses.items():
                 if status == "代墊":
                     report.append(f"  💸 他欠我 (代墊)：NT$ {amount:,.0f}")
                 elif status == "需支付":
                     report.append(f"  💰 我欠他 (需支付)：NT$ {amount:,.0f}")
                 elif status == "不索取":
                     report.append(f"  🎁 不索取 (已代墊)：NT$ {amount:,.0f}")
-                elif status == "無":
-                    continue
                 else:
                     report.append(f"  ❓ {status}：NT$ {amount:,.0f}")
             report.append("")
+        
+        if not has_actual_settlement:
+            report.append("（無代墊或需支付項目的結算細節）")
 
     report.append("💡 提示：以上金額由「原幣金額 * 匯率」計算得出。")
     return "\n".join(report).strip()

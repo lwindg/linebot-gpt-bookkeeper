@@ -80,17 +80,36 @@ def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
             return
 
         # Step 2c: Settlement Command (v2.7)
-        if user_message.startswith("結算 "):
-            project_name = user_message[3:].strip()
-            if project_name:
-                notion_service = NotionService()
-                settlement_data = notion_service.get_project_settlement(project_name)
-                reply_text = format_settlement_report(project_name, settlement_data)
-                line_bot_api.reply_message(
-                    reply_token,
-                    TextSendMessage(text=reply_text)
-                )
-                return
+        if user_message == "結算" or user_message.startswith("結算 "):
+            lock_service = LockService(user_id)
+            raw_name = user_message[3:].strip() if user_message.startswith("結算 ") else None
+            
+            project_name = None
+            if raw_name:
+                resolved, error = lock_service.resolve_project_name(raw_name)
+                if resolved:
+                    project_name = resolved
+                else:
+                    line_bot_api.reply_message(reply_token, TextSendMessage(text=error))
+                    return
+            else:
+                project_name = lock_service.get_project_lock()
+                if not project_name:
+                    line_bot_api.reply_message(
+                        reply_token,
+                        TextSendMessage(text="ℹ️ 您目前沒有鎖定任何專案，請提供專案名稱或先進行鎖定。\n範例：結算 日本 / 鎖定專案 日本")
+                    )
+                    return
+            
+            # Perform settlement
+            notion_service = NotionService()
+            settlement_data = notion_service.get_project_settlement(project_name)
+            reply_text = format_settlement_report(project_name, settlement_data)
+            line_bot_api.reply_message(
+                reply_token,
+                TextSendMessage(text=reply_text)
+            )
+            return
 
         # Step 2d: Help Command (v2.7)
         if user_message == "記帳教學":

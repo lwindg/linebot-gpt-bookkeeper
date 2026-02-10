@@ -10,6 +10,7 @@ import requests
 from typing import Optional, Dict, Any, List
 from app.config import NOTION_TOKEN, NOTION_DATABASE_ID
 from app.gpt.types import BookkeepingEntry
+from app.services.exchange_rate import ExchangeRateService
 
 logger = logging.getLogger(__name__)
 
@@ -235,6 +236,8 @@ class NotionService:
         has_more = True
         start_cursor = None
         
+        exchange_rate_service = ExchangeRateService()
+        
         try:
             while has_more:
                 if start_cursor:
@@ -259,31 +262,50 @@ class NotionService:
             for page in all_results:
                 props = page.get("properties", {})
                 
-                # Get Amount and FX with safe access
+                # Get basic info
+                currency = props.get("原幣別", {}).get("select", {}).get("name") or "TWD"
                 amount = props.get("原幣金額", {}).get("number") if props.get("原幣金額") else 0
-                fx = props.get("匯率", {}).get("number") if props.get("匯率") else 1.0
                 fee = props.get("手續費", {}).get("number") if props.get("手續費") else 0
                 
-                # Ensure they are not None (in case property exists but number is null)
+                # Ensure they are not None
                 amount = amount if amount is not None else 0
-                fx = fx if fx is not None else 1.0
                 fee = fee if fee is not None else 0
+                
+                # Get FX with fallback
+                fx = props.get("匯率", {}).get("number") if props.get("匯率") else None
+                
+                if fx is None or fx == 0:
+                    if currency == "TWD":
+                        fx = 1.0
+                    else:
+                        # Try to fetch from API
+                        fx = exchange_rate_service.get_rate(currency)
+                        if fx is None:
+                            logger.warning(f"Missing exchange rate for {currency} in Notion and API. Skipping item.")
+                            continue
                 
                 # Calculate TWD amount with rounding per item (matches Notion View v2.9)
                 twd_amount = round(amount * fx + fee)
                 
                 total_spent += twd_amount
                 
+                # Get Status with safe access
+                status = props.get("代墊狀態", {}).get("select", {}).get("name") if props.get("代墊狀態") and props.get("代墊狀態").get("select") else "無"
+                
+                # Filter out empty or "無" status counterparties from the summary
+                if status == "無":
+                    continue
+
                 # Get Counterparty with safe access
-                counterparty_rich_text = props.get("收款／支付對象", {}).get("rich_text", [])
+                cp_prop = props.get("收款／支付對象")
+                counterparty_rich_text = cp_prop.get("rich_text", []) if cp_prop else []
                 counterparty = "未知"
                 if counterparty_rich_text:
                     text_obj = counterparty_rich_text[0].get("text")
                     if text_obj:
-                        counterparty = text_obj.get("content", "未知")
-                
-                # Get Status with safe access
-                status = props.get("代墊狀態", {}).get("select", {}).get("name") if props.get("代墊狀態") and props.get("代墊狀態").get("select") else "無"
+                        content = text_obj.get("content", "").strip()
+                        if content:
+                            counterparty = content
                 
                 if counterparty not in settlement_data:
                     settlement_data[counterparty] = {}

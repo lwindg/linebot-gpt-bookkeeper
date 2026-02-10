@@ -88,6 +88,7 @@ aliases:
   # 日圓現金
   # ==========================================================================
   日幣現金: 日圓現金
+  日元現金: 日圓現金
   日圓現金: 日圓現金
   円現金: 日圓現金
 
@@ -153,6 +154,8 @@ detection_priority:
   - alias: costco
     canonical: 富邦 Costco
   - alias: 日圓現金
+    canonical: 日圓現金
+  - alias: 日元現金
     canonical: 日圓現金
   - alias: 日幣現金
     canonical: 日圓現金
