@@ -262,7 +262,10 @@ class NotionService:
                 # Get Amount and FX
                 amount = props.get("原幣金額", {}).get("number") or 0
                 fx = props.get("匯率", {}).get("number") or 1.0
-                twd_amount = amount * fx
+                fee = props.get("手續費", {}).get("number") or 0
+                
+                # Calculate TWD amount with rounding per item (matches Notion View v2.9)
+                twd_amount = round(amount * fx + fee)
                 
                 total_spent += twd_amount
                 
