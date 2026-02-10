@@ -292,7 +292,7 @@ class NotionService:
                 # Get Status with safe access
                 status = props.get("代墊狀態", {}).get("select", {}).get("name") if props.get("代墊狀態") and props.get("代墊狀態").get("select") else "無"
                 
-                # Filter out empty or "無" status counterparties from the summary
+                # Only include in settlement grouping if status is not "無"
                 if status == "無":
                     continue
 
@@ -306,6 +306,10 @@ class NotionService:
                         content = text_obj.get("content", "").strip()
                         if content:
                             counterparty = content
+                
+                # Skip if counterparty is unknown and it's not a status that requires settlement
+                if counterparty == "未知" and status not in ("代墊", "需支付"):
+                    continue
                 
                 if counterparty not in settlement_data:
                     settlement_data[counterparty] = {}

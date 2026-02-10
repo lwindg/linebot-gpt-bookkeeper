@@ -98,6 +98,12 @@ class LockService:
         # 3. Fuzzy matching with options
         options, error = get_project_options(self.kv)
         if options:
+            # Exact match check
+            name_lower = name.lower()
+            for opt in options:
+                if opt.lower().strip() == name_lower:
+                    return opt, None
+
             resolved, candidates = match_short_term_project(name, options)
             if resolved:
                 return resolved, None
