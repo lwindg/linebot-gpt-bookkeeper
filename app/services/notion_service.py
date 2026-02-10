@@ -31,6 +31,28 @@ class NotionService:
             return transaction_id.rsplit("-", 1)[0]
         return None
 
+    def _get_prop_number(self, prop: Optional[Dict[str, Any]]) -> Optional[float]:
+        """Safely extract number value from Notion property."""
+        if prop and isinstance(prop, dict):
+            return prop.get("number")
+        return None
+
+    def _get_prop_select(self, prop: Optional[Dict[str, Any]]) -> Optional[str]:
+        """Safely extract select name from Notion property."""
+        if prop and isinstance(prop, dict) and prop.get("select"):
+            return prop.get("select", {}).get("name")
+        return None
+
+    def _get_prop_rich_text(self, prop: Optional[Dict[str, Any]]) -> str:
+        """Safely extract plain text from Notion rich_text property."""
+        if prop and isinstance(prop, dict) and prop.get("rich_text"):
+            rich_text = prop.get("rich_text", [])
+            if rich_text:
+                text_obj = rich_text[0].get("text")
+                if text_obj:
+                    return text_obj.get("content", "").strip()
+        return ""
+
     def _build_properties(self, entry: BookkeepingEntry) -> Dict[str, Any]:
         """
         Map BookkeepingEntry to Notion properties.
@@ -198,11 +220,13 @@ class NotionService:
                     return []
                 
                 if prop.get("type") == "select":
-                    options = prop.get("select", {}).get("options", [])
-                    return [opt["name"] for opt in options]
+                    select_data = prop.get("select")
+                    options = select_data.get("options", []) if isinstance(select_data, dict) else []
+                    return [opt["name"] for opt in options if isinstance(opt, dict) and "name" in opt]
                 elif prop.get("type") == "multi_select":
-                    options = prop.get("multi_select", {}).get("options", [])
-                    return [opt["name"] for opt in options]
+                    ms_data = prop.get("multi_select")
+                    options = ms_data.get("options", []) if isinstance(ms_data, dict) else []
+                    return [opt["name"] for opt in options if isinstance(opt, dict) and "name" in opt]
                 else:
                     logger.error(f"Property '{property_name}' is not a select or multi_select type")
                     return []
@@ -262,17 +286,13 @@ class NotionService:
             for page in all_results:
                 props = page.get("properties", {})
                 
-                # Get basic info
-                currency = props.get("原幣別", {}).get("select", {}).get("name") or "TWD"
-                amount = props.get("原幣金額", {}).get("number") if props.get("原幣金額") else 0
-                fee = props.get("手續費", {}).get("number") if props.get("手續費") else 0
-                
-                # Ensure they are not None
-                amount = amount if amount is not None else 0
-                fee = fee if fee is not None else 0
+                # Get basic info with hardened access
+                currency = self._get_prop_select(props.get("原幣別")) or "TWD"
+                amount = self._get_prop_number(props.get("原幣金額")) or 0
+                fee = self._get_prop_number(props.get("手續費")) or 0
                 
                 # Get FX with fallback
-                fx = props.get("匯率", {}).get("number") if props.get("匯率") else None
+                fx = self._get_prop_number(props.get("匯率"))
                 
                 if fx is None or fx == 0:
                     if currency == "TWD":
@@ -289,23 +309,15 @@ class NotionService:
                 
                 total_spent += twd_amount
                 
-                # Get Status with safe access
-                status = props.get("代墊狀態", {}).get("select", {}).get("name") if props.get("代墊狀態") and props.get("代墊狀態").get("select") else "無"
+                # Get Status with hardened access
+                status = self._get_prop_select(props.get("代墊狀態")) or "無"
                 
                 # Only include in settlement grouping if status is not "無"
                 if status == "無":
                     continue
 
-                # Get Counterparty with safe access
-                cp_prop = props.get("收款／支付對象")
-                counterparty_rich_text = cp_prop.get("rich_text", []) if cp_prop else []
-                counterparty = "未知"
-                if counterparty_rich_text:
-                    text_obj = counterparty_rich_text[0].get("text")
-                    if text_obj:
-                        content = text_obj.get("content", "").strip()
-                        if content:
-                            counterparty = content
+                # Get Counterparty with hardened access
+                counterparty = self._get_prop_rich_text(props.get("收款／支付對象")) or "未知"
                 
                 # Skip if counterparty is unknown and it's not a status that requires settlement
                 if counterparty == "未知" and status not in ("代墊", "需支付"):
