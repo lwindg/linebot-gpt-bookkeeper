@@ -57,6 +57,7 @@ _ACCOUNT_ALIASES: tuple[tuple[str, str], ...] = (
     ("灰狗", "FlyGo 信用卡"),
     ("flygo", "FlyGo 信用卡"),
     ("fly go", "FlyGo 信用卡"),
+    ("suica", "Suica"),
     ("日圓現金", "日圓現金"),
     ("日幣現金", "日圓現金"),
     ("円現金", "日圓現金"),

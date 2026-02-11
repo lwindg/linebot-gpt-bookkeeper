@@ -63,15 +63,31 @@ def _enriched_tx_to_entry(
     elif tx.type == TransactionType.WITHDRAWAL:
         tx_type = "提款"
     elif tx.type == TransactionType.TRANSFER:
-        tx_type = "轉帳" if tx.accounts_to else "支出"
+        tx_type = "支出" # 轉帳的第一筆(來源)視為支出 (由來源帳戶支出)
     elif tx.type == TransactionType.CARD_PAYMENT:
-        tx_type = "轉帳"
+        tx_type = "支出"
     else:
         tx_type = "支出"
 
+    # 決定付款方式 (來自 Parser 或共用)
+    final_payment = tx.payment_method if tx.payment_method != "NA" else shared_payment or "NA"
+
+    # 特殊處理：轉帳 (TRANSFER) 產生雙分錄
+    # 邏輯：Entry 1 (轉出/來源帳戶) + Entry 2 (轉入/收入)
+    if tx.type == TransactionType.TRANSFER:
+        outgoing_account = getattr(tx, "accounts_from", None)
+        if outgoing_account:
+            final_payment = outgoing_account
+
+    # 特殊處理：繳卡費 (CARD_PAYMENT) 產生雙分錄
+    if tx.type == TransactionType.CARD_PAYMENT:
+        outgoing_account = getattr(tx, "accounts_from", None)
+        if outgoing_account:
+            final_payment = outgoing_account
+
     # --- Session Lock logic (v2.2.0) ---
     final_project = tx.專案
-    final_payment = tx.payment_method if tx.payment_method != "NA" else shared_payment or "NA"
+    # final_payment 已在上方決定
     final_currency = tx.currency
     final_fx_rate = tx.fx_rate
 
