@@ -28,6 +28,8 @@ _ACCOUNT_ALIASES: tuple[tuple[str, str], ...] = (
     ("line pay", "Line Pay"),
     ("linepay", "Line Pay"),
     ("line", "Line Pay"),
+    ("台新 Richart-日圓", "台新 Richart-日圓"),
+    ("richart-日圓", "台新 Richart-日圓"),
     ("台新 Richart", "台新 Richart"),
     ("台新richart", "台新 Richart"),
     ("richart", "台新 Richart"),

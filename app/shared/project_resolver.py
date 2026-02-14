@@ -19,12 +19,14 @@ _LONG_TERM_PROJECTS = [
 ]
 
 _PROJECT_DATE_PREFIX_RE = re.compile(
-    r"^(?P<start>\d{8})(?:-(?P<end>\d{8}|\d{4}|\d{2}))?(?P<name>.*)$"
+    r"^(?P<start>\d{8})(?:[-–—](?P<end>\d{8}|\d{4}|\d{2}))?(?P<name>.*)$"
 )
 
 
 def normalize_project_name(value: str) -> str:
-    text = (value or "").strip().replace("／", "/")
+    text = (value or "").strip().replace("／", "/").replace("　", " ")
+    # Replace various dashes with standard hyphen
+    text = text.replace("–", "-").replace("—", "-")
     text = re.sub(r"\s+", "", text)
     return text.lower()
 

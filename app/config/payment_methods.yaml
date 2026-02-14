@@ -38,6 +38,8 @@ aliases:
   # ==========================================================================
   # 台新 Richart
   # ==========================================================================
+  "richart-日圓": 台新 Richart-日圓
+  "台新 richart-日圓": 台新 Richart-日圓
   richart: 台新 Richart
   台新richart: 台新 Richart
   "台新 richart": 台新 Richart
@@ -108,6 +110,10 @@ aliases:
 # 順序重要：較長/更具體的優先
 # ==========================================================================
 detection_priority:
+  - alias: richart-日圓
+    canonical: 台新 Richart-日圓
+  - alias: 台新 richart-日圓
+    canonical: 台新 Richart-日圓
   - alias: suica
     canonical: Suica
   - alias: 灰狗卡
@@ -180,6 +186,7 @@ canonical_methods:
   - 合庫
   - 台新狗卡
   - 台新 Richart
+  - 台新 Richart-日圓
   - FlyGo 信用卡
   - 大戶信用卡
   - 聯邦綠卡

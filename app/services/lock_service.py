@@ -14,6 +14,7 @@ from app.shared.project_resolver import (
     get_long_term_project,
     match_short_term_project,
     extract_project_date_range,
+    normalize_project_name,
 )
 from app.services.project_options import get_project_options
 from app.parser.extract_amount import _CURRENCY_MAP
@@ -98,10 +99,10 @@ class LockService:
         # 3. Fuzzy matching with options
         options, error = get_project_options(self.kv)
         if options:
-            # Exact match check
-            name_lower = name.lower()
+            # Exact match check with normalization
+            name_norm = normalize_project_name(name)
             for opt in options:
-                if opt.lower().strip() == name_lower:
+                if normalize_project_name(opt) == name_norm:
                     return opt, None
 
             resolved, candidates = match_short_term_project(name, options)
