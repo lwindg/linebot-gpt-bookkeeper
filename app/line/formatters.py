@@ -149,7 +149,13 @@ def format_cashflow_confirmation_message(entries: list[BookkeepingEntry], succes
     if "提款" in grouped:
         withdrawal = grouped["提款"]
         amount = withdrawal.原幣金額 * withdrawal.匯率
-        summary = f"🏧 提款：{withdrawal.付款方式} → 現金 {amount:.0f}"
+        
+        # 動態決定提款目標名稱（原本硬編碼為「現金」）
+        target_name = "現金"
+        if "收入" in grouped:
+            target_name = grouped["收入"].付款方式
+            
+        summary = f"🏧 提款：{withdrawal.付款方式} → {target_name} {amount:.0f}"
         message += f"\n{summary}"
         message += f"\n📅 日期：{entries[0].日期}"
         message += f"\n🔖 批次ID：{batch_id}"

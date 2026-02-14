@@ -38,6 +38,14 @@ def apply_exchange_rates(transactions: list[EnrichedTransaction]) -> None:
         if currency == "TWD":
             tx.fx_rate = 1.0
             continue
+        
+        # 特殊處理：現金流項目（轉帳、提款）且為日圓時，若使用者要求匯率為 1 (同幣別移動)
+        # 這裡判斷 TransactionType.is_cashflow
+        if TransactionType.is_cashflow(tx.type) and currency == "JPY":
+            # 根據使用者指示，日圓帳戶提款到日圓現金，匯率視為 1
+            tx.fx_rate = 1.0
+            continue
+
         rate = exchange_rate_service.get_rate(currency)
         if rate is None:
             raise ExchangeRateUnavailableError(currency)
