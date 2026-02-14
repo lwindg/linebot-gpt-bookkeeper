@@ -232,7 +232,11 @@ def process_cashflow_items(cashflow_items: list[dict], user_message: str, user_i
 
         entry_specs: list[tuple[str, str]] = []
         if intent_type == "withdrawal":
-            entry_specs = [("提款", payment_method), ("收入", "現金")]
+            # 判斷提款目標：若來源是日圓帳戶，則提到「日圓現金」；否則提到「現金」
+            target_cash = "現金"
+            if "日圓" in payment_method or "日幣" in payment_method:
+                target_cash = "日圓現金"
+            entry_specs = [("提款", payment_method), ("收入", target_cash)]
         elif intent_type == "transfer":
             if transfer_mode == "account":
                 source = transfer_source or payment_method

@@ -186,6 +186,11 @@ def enriched_to_multi_result(
         # 特殊處理：提款 (WITHDRAWAL) 產生雙分錄
         # 邏輯：Entry 1 (提款/來源帳戶) + Entry 2 (收入/現金)
         if tx.type == TransactionType.WITHDRAWAL:
+            # 判斷提款目標：若來源是日圓帳戶，則提到「日圓現金」；否則提到「現金」
+            target_cash = "現金"
+            if "日圓" in entry.付款方式 or "日幣" in entry.付款方式:
+                target_cash = "日圓現金"
+            
             # 複製第一筆，修改為現金收入
             cash_entry = BookkeepingEntry(
                 intent="bookkeeping",
@@ -196,7 +201,7 @@ def enriched_to_multi_result(
                 原幣金額=entry.原幣金額,
                 匯率=entry.匯率,
                 明細說明=entry.明細說明,
-                付款方式="現金",  # 固定為現金
+                付款方式=target_cash,
                 分類=entry.分類,
                 專案=entry.專案,
                 必要性=entry.必要性,
