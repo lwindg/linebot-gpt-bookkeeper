@@ -307,10 +307,14 @@ class NotionService:
                 # Calculate TWD amount with rounding per item (matches Notion View v2.9)
                 twd_amount = round(amount * fx + fee)
                 
-                total_spent += twd_amount
-                
-                # Get Status with hardened access
+                # Get Status and Type with hardened access
                 status = self._get_prop_select(props.get("代墊狀態")) or "無"
+                tx_type = self._get_prop_select(props.get("交易類型")) or "支出"
+                
+                # Only include "Spending" types in total_spent
+                # (Ignore Withdrawal, Transfer, Income)
+                if tx_type in ("支出", "代墊", "需支付"):
+                    total_spent += twd_amount
                 
                 # Only include in settlement grouping if status is not "無"
                 if status == "無":
