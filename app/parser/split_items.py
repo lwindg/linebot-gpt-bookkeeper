@@ -37,8 +37,9 @@ def split_items(text: str) -> list[str]:
     # 這也能幫助後續金額解析
     normalized = re.sub(r"(\d),(\d{3})", r"\1\2", text)
     
-    # 2. 避免切斷月份範圍 (e.g. "1、2月")
-    normalized = re.sub(r"(\d{1,2})、(\d{1,2})(?=月)", r"\1@@\2", normalized)
+    # 2. 避免切斷數字列表 (e.g. "1、2月", "2、3 航廈")
+    # 保護 "數字、數字" 與 "數字,數字" (不帶千分位的逗號)
+    normalized = re.sub(r"(\d+)\s*[、,]\s*(\d+)", r"\1@@\2", normalized)
 
     # 3. 進行分割
     parts = _SPLIT_PATTERN.split(normalized)

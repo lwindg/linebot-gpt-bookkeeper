@@ -18,8 +18,11 @@ from typing import Tuple
 _CURRENCY_SYMBOLS = r"\$|USD|JPY|EUR|CNY|TWD|¥|円"
 _CURRENCY_WORDS = r"美金|美元|日幣|日圓|日元|歐元|人民幣|台幣"
 _CURRENCY_ALL = rf"{_CURRENCY_SYMBOLS}|{_CURRENCY_WORDS}"
+# 金額 Pattern
+# 支援負號、整數、浮點數、千分位逗號
+# 注意：為了避免誤抓 "2、3 航廈" 的 "2"，金額後方通常應有貨幣符號、空格或結尾
 _AMOUNT_PATTERN = re.compile(
-    rf"({_CURRENCY_ALL})?\s*(-?\d+(?:\.\d+)?)\s*({_CURRENCY_ALL})?",
+    rf"({_CURRENCY_ALL})?\s*(-?(?:\d{{1,3}}(?:,\d{{3}})+|\d+)(?:\.\d+)?)\s*({_CURRENCY_ALL})?",
     re.IGNORECASE
 )
 # 日期格式 Pattern（需排除，避免將日期當作金額）
@@ -131,8 +134,9 @@ def extract_amount_and_currency(text: str) -> Tuple[float, str, str]:
 
     # 3. 解析金額
     prefix = best_match.group(1)
-    amount_str = best_match.group(2)
+    amount_str = best_match.group(2).replace(",", "")  # 移除千分位逗號
     suffix = best_match.group(3)
+    
     try:
         amount = float(amount_str)
     except ValueError:

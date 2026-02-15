@@ -138,13 +138,17 @@ rules:
     食品類: "家庭"  # 預設所有食品類消費為「家庭」類別
     個人情境: ["公司聚餐", "同事下午茶"]  # 明確個人情境才判定為「個人」
 
-  # 飲品與點心規則
-  beverages_snacks:
+  # 飲品、點心與水果規則
+  food_beverages:
     - pattern: "咖啡|茶飲|果汁|冰沙"
       category: "家庭/飲品"
     - pattern: "點心|甜點|蛋糕|零食"
       category: "家庭/點心"
       exception: "明確提到「公司」、「同事」→ 工作/聚餐"
+    - pattern: "水果|草莓|蜜柑|蘋果|香蕉|葡萄|梨|桃|瓜"
+      category: "家庭/水果"
+    - pattern: "肉|魚|菜|蛋|米|油|鹽|鮮乳|鮮奶|牛奶"
+      category: "家庭/食材"
 
   # 工作聚餐規則
   work_meals:

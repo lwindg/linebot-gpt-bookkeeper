@@ -110,22 +110,22 @@ def get_classification_rules_description() -> str:
                     descriptions.append(f"- 遇到「{pattern}」時，必須分類為 `{category}`")
         descriptions.append("")
 
-    # 2. 飲品與點心規則
-    if "beverages_snacks" in rules:
-        items = rules.get("beverages_snacks") or []
-        if items:
-            descriptions.append("### 飲品與點心規則")
-            for r in items:
-                pattern = r.get("pattern")
-                category = r.get("category")
-                if not pattern or not category:
-                    continue
-                desc = f"- 遇到「{pattern}」時，分類為 `{category}`"
-                exception = r.get("exception")
-                if exception:
-                    desc += f" (例外：{exception})"
-                descriptions.append(desc)
-            descriptions.append("")
+    # 2. 食物、飲品與水果規則
+    # 支援舊稱 beverages_snacks 與新稱 food_beverages
+    food_rules = rules.get("food_beverages") or rules.get("beverages_snacks")
+    if food_rules:
+        descriptions.append("### 食物、飲品與水果規則")
+        for r in food_rules:
+            pattern = r.get("pattern")
+            category = r.get("category")
+            if not pattern or not category:
+                continue
+            desc = f"- 遇到「{pattern}」時，分類為 `{category}`"
+            exception = r.get("exception")
+            if exception:
+                desc += f" (例外：{exception})"
+            descriptions.append(desc)
+        descriptions.append("")
 
     # 3. 特殊關鍵字規則
     if "special_cases" in rules:
@@ -182,12 +182,14 @@ def _load_categories_from_notion() -> set[str]:
     if isinstance(cached, dict):
         options = cached.get("options")
         if isinstance(options, list):
-            return {str(opt).strip() for opt in options if opt}
+            # 排除「未分類」與「無」，強制 AI 尋找具體分類
+            return {str(opt).strip() for opt in options if opt and str(opt).strip() not in ("未分類", "無")}
 
     try:
         options = NotionService().get_database_options("分類")
         if options:
-            cleaned = [str(option).strip() for option in options if str(option).strip()]
+            # 排除「未分類」與「無」
+            cleaned = [str(option).strip() for option in options if str(option).strip() and str(option).strip() not in ("未分類", "無")]
             kv_store.set(_CATEGORY_OPTIONS_CACHE_KEY, {"options": cleaned}, ttl=21600)  # 6 hours
             return set(cleaned)
     except Exception as e:
