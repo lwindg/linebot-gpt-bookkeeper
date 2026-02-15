@@ -163,7 +163,7 @@ rules:
   # 健康/醫療規則
   health_medical:
     description: "健康/醫療分類規則"
-    medical_patterns: "掛號費|門診|診所|看診|就醫|中醫|西醫|醫院|醫療"
+    medical_patterns: "掛號費|門診|診所|看診|就醫|中醫|西醫|醫院|醫療|諮商|治療|診斷"
     family_keywords: "家人|家庭|爸|媽|爸爸|媽媽|父母|先生|太太|老公|老婆|小孩|孩子|兒子|女兒|妹|弟|妹妹|弟弟"
     category_self: "健康/醫療/本人"
     category_family: "健康/醫療/家庭成員"
