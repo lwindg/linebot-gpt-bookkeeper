@@ -100,6 +100,7 @@ aliases:
   # Suica
   # ==========================================================================
   suica: Suica
+  西瓜卡: Suica
 
   # ==========================================================================
   # N/A（未提供）
@@ -120,6 +121,8 @@ detection_priority:
     canonical: 台新 Richart-日圓
   - alias: 台新 richart-日圓
     canonical: 台新 Richart-日圓
+  - alias: 西瓜卡
+    canonical: Suica
   - alias: suica
     canonical: Suica
   - alias: 灰狗卡
