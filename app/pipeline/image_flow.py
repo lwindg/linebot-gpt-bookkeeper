@@ -112,7 +112,7 @@ def process_image_envelope(
                 )
             fx_rate = rate
 
-        payment_method = envelope.payment_method or "NA"
+        payment_method = envelope.payment_method or "N/A"
         item_date = item.date or envelope.receipt_date
         item_time = item.time
 

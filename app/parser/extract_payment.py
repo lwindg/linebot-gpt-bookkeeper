@@ -22,7 +22,7 @@ def extract_payment_method(text: str) -> str:
         text: 要解析的文字
     
     Returns:
-        canonical_payment_method: 標準化後的付款方式名稱，若無則回傳 "NA"
+        canonical_payment_method: 標準化後的付款方式名稱，若無則回傳 "N/A"
     """
     # 使用 payment_resolver 的偵測邏輯（已包含優先序與別名對照）
     detected = detect_payment_method(text)
@@ -30,7 +30,7 @@ def extract_payment_method(text: str) -> str:
     if detected:
         return detected # detect_payment_method 已經回傳 canonical name
         
-    return "NA"
+    return "N/A"
 
 
 def clean_item_text(text: str, payment_method: str) -> str:
@@ -68,7 +68,7 @@ def clean_item_text(text: str, payment_method: str) -> str:
     cleaned = re.sub(r'\s*元\s*$', '', cleaned)  # 移除結尾的「元」
     cleaned = re.sub(r'^\s*元\s*', '', cleaned)  # 移除開頭的「元」
     
-    if payment_method == "NA":
+    if payment_method == "N/A":
         return cleaned.strip()
     
     # 僅移除與偵測到的付款方式相關的關鍵字

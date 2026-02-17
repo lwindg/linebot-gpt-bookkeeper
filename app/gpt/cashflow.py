@@ -125,8 +125,8 @@ def fallback_cashflow_items_from_message(message: str, intent_type: str) -> list
     item_text = item_text or text.strip()
 
     payment = normalize_cashflow_payment_method(infer_transfer_accounts(text)[0] or "")
-    if intent_type == "withdrawal" and payment == "NA":
-        payment = "NA"
+    if intent_type == "withdrawal" and payment == "N/A":
+        payment = "N/A"
 
     return [
         {
@@ -193,7 +193,7 @@ def process_cashflow_items(cashflow_items: list[dict], user_message: str, user_i
             # to preserve the parsed accounts/currencies.
 
         date_str = item_data.get("日期")
-        if isinstance(date_str, str) and date_str.strip().upper() == "NA":
+        if isinstance(date_str, str) and date_str.strip().upper() == "N/A":
             date_str = None
         explicit_date = extract_explicit_date(user_message)
         semantic_token = extract_semantic_date_token(user_message)
@@ -240,7 +240,7 @@ def process_cashflow_items(cashflow_items: list[dict], user_message: str, user_i
         elif intent_type == "transfer":
             if transfer_mode == "account":
                 source = transfer_source or payment_method
-                target = transfer_target or "NA"
+                target = transfer_target or "N/A"
                 entry_specs = [("轉帳", source), ("收入", target)]
             else:
                 entry_specs = [("支出", payment_method)]

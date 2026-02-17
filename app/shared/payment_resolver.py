@@ -84,9 +84,22 @@ _PAYMENT_ALIASES_LEGACY: dict[str, str] = {
     "日幣現金": "日圓現金",
     "日圓現金": "日圓現金",
     "円現金": "日圓現金",
-    "na": "NA",
-    "n/a": "NA",
+    "na": "N/A",
+    "n/a": "N/A",
 }
+
+
+@lru_cache(maxsize=1)
+def _get_canonical_methods() -> list[str]:
+    """Get list of canonical payment methods."""
+    config_path = Path(__file__).resolve().parents[1] / "config" / "payment_methods.yaml"
+    if not config_path.exists():
+        return list(set(_PAYMENT_ALIASES_LEGACY.values()))
+    
+    with open(config_path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    
+    return data.get("canonical_methods", [])
 
 
 def normalize_payment_method(value: str) -> str:
@@ -95,10 +108,25 @@ def normalize_payment_method(value: str) -> str:
     if not raw:
         return raw
 
+    # 1. Try exact match first
     key = raw.lower().replace("　", " ").strip()
     key = " ".join(key.split())
     aliases = _load_payment_aliases_from_yaml()
-    return aliases.get(key, raw)
+    if key in aliases:
+        return aliases[key]
+
+    # 2. Try partial match using detection logic (conservative)
+    detected = detect_payment_method(raw)
+    if detected:
+        return detected
+
+    # 3. Super aggressive check: Is any canonical name inside the raw string?
+    # e.g. "信用卡-富邦 Costco" -> contains "富邦 Costco"
+    for canonical in _get_canonical_methods():
+        if canonical.lower() in raw.lower():
+            return canonical
+
+    return raw
 
 
 _DETECT_ALIASES_LEGACY: tuple[tuple[str, str], ...] = (

@@ -431,7 +431,7 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False, user_
                             project = p_lock
                     
                     # 2. Payment Lock
-                    if final_payment in ("NA", "") and not cashflow_hint:
+                    if final_payment in ("N/A", "") and not cashflow_hint:
                         pay_lock = lock_service.get_payment_lock()
                         if pay_lock:
                             final_payment = pay_lock

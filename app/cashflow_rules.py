@@ -69,7 +69,7 @@ _ACCOUNT_ALIASES: tuple[tuple[str, str], ...] = (
 
 def normalize_cashflow_payment_method(value: str) -> str:
     normalized = normalize_payment_method(value or "")
-    return normalized or "NA"
+    return normalized or "N/A"
 
 
 def _detect_accounts(message: str) -> list[str]:

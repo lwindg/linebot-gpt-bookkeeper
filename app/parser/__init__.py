@@ -31,7 +31,7 @@ class Transaction:
     raw_item: str                          # 原始品項文字
     amount: float                          # 金額
     currency: str = "TWD"                  # 幣別
-    payment_method: str = "NA"             # 付款方式
+    payment_method: str = "N/A"             # 付款方式
     counterparty: str = ""                 # 收款/支付對象
     date: Optional[str] = None             # 日期
     time: Optional[str] = None             # 時間 (Task 5)
@@ -179,7 +179,7 @@ def parse(message: str, *, context_date: Optional[datetime] = None) -> Authorita
 
     # 4. 多項目付款方式一致性檢查（僅一般支出）
     if not cashflow_intent and len(transactions) > 1:
-        payments = {tx.payment_method for tx in transactions if tx.payment_method != "NA"}
+        payments = {tx.payment_method for tx in transactions if tx.payment_method != "N/A"}
         if len(payments) > 1:
             raise ParserError.from_code(ParserErrorCode.MIXED_PAYMENT_METHOD)
     

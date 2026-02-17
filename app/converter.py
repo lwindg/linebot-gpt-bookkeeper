@@ -70,7 +70,7 @@ def _enriched_tx_to_entry(
         tx_type = "支出"
 
     # 決定付款方式 (來自 Parser 或共用)
-    final_payment = tx.payment_method if tx.payment_method != "NA" else shared_payment or "NA"
+    final_payment = tx.payment_method if tx.payment_method != "N/A" else shared_payment or "N/A"
 
     # 特殊處理：轉帳 (TRANSFER) 產生雙分錄
     # 邏輯：Entry 1 (轉出/來源帳戶) + Entry 2 (轉入/收入)
@@ -105,8 +105,8 @@ def _enriched_tx_to_entry(
         # Only apply to non-cashflow transactions (EXPENSE, ADVANCE)
         if not TransactionType.is_cashflow(tx.type):
             # 2. Payment Method Lock
-            # Only apply if current payment is "NA" or empty
-            if final_payment in ("NA", ""):
+            # Only apply if current payment is "N/A" or empty
+            if final_payment in ("N/A", ""):
                 payment_lock = lock_service.get_payment_lock()
                 if payment_lock:
                     final_payment = payment_lock
@@ -243,7 +243,7 @@ def enriched_to_multi_result(
         # 邏輯：Entry 1 (轉出/付款帳戶) + Entry 2 (轉入/卡片入帳)
         if tx.type == TransactionType.CARD_PAYMENT:
             incoming_account = getattr(tx, "accounts_to", None)
-            incoming_payment = incoming_account or "NA"
+            incoming_payment = incoming_account or "N/A"
             incoming_entry = BookkeepingEntry(
                 intent="bookkeeping",
                 日期=entry.日期,

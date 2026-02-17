@@ -63,15 +63,15 @@ class NotionService:
             "原幣別": {"select": {"name": entry.原幣別 or "TWD"}},
             "原幣金額": {"number": entry.原幣金額 or 0},
             "匯率": {"number": entry.匯率 or 1.0},
-            "分類": {"select": {"name": entry.分類}} if entry.分類 and entry.分類 != "NA" else None,
+            "分類": {"select": {"name": entry.分類}} if entry.分類 and entry.分類 != "N/A" else None,
             "專案": {"select": {"name": entry.專案 or "日常"}},
             "交易ID": {"rich_text": [{"text": {"content": entry.交易ID or ""}}]},
             "明細說明": {"rich_text": [{"text": {"content": entry.明細說明 or ""}}]},
             "代墊狀態": {"select": {"name": entry.代墊狀態 or "無"}},
             "收款／支付對象": {"rich_text": [{"text": {"content": entry.收款支付對象 or ""}}]},
             "交易類型": {"select": {"name": entry.交易類型 or "支出"}},
-            "付款方式": {"select": {"name": entry.付款方式}} if entry.付款方式 and entry.付款方式 != "NA" else None,
-            "必要性": {"select": {"name": entry.必要性}} if entry.必要性 and entry.必要性 != "NA" else None,
+            "付款方式": {"select": {"name": entry.付款方式}} if entry.付款方式 and entry.付款方式 != "N/A" else None,
+            "必要性": {"select": {"name": entry.必要性}} if entry.必要性 and entry.必要性 != "N/A" else None,
             "附註": {"rich_text": [{"text": {"content": entry.附註 or ""}}]},
         }
 
@@ -142,7 +142,7 @@ class NotionService:
             elif key in ["原幣金額", "匯率", "手續費"]:
                 notion_properties[key] = {"number": value}
             elif key in ["分類", "專案", "原幣別", "代墊狀態", "交易類型", "付款方式", "必要性"]:
-                if value and value != "NA":
+                if value and value != "N/A":
                     notion_properties[key] = {"select": {"name": value}}
             elif key in ["明細說明", "交易ID", "批次ID", "附註"]:
                 notion_properties[key] = {"rich_text": [{"text": {"content": value}}]}
