@@ -615,8 +615,10 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False, user_
         )
 
     except Exception as e:
+        import traceback
         logger.error(f"GPT API error in process_multi_expense: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return MultiExpenseResult(
             intent="error",
-            error_message="系統處理訊息時發生錯誤，請重試"
+            error_message=f"系統處理訊息時發生錯誤：{str(e)}"
         )

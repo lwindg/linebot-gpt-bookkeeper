@@ -139,8 +139,10 @@ rules:
       category: "交通/罰鍰"
 
   trip_simplification:
-    - pattern: "乾燥飯|能量棒|登山糧食"
+    - pattern: "乾燥飯|能量棒|登山糧食|能量飲|補給品|鹽錠"
       category: "行程/食材"
+    - pattern: "B群|維他命|益生菌|止痛藥|葡萄糖胺"
+      category: "健康/保健藥品"
     - pattern: "入園費|入山費|森林遊樂區"
       category: "行程/雜項"
 
