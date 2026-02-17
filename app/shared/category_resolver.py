@@ -150,10 +150,10 @@ def get_classification_rules_description() -> str:
         category_family = r.get("category_family") or "健康/醫療/家庭成員"
         descriptions.append(f"### {title}")
         if medical_patterns:
-            descriptions.append(f"- 遇到「{medical_patterns}」時，分類為 `{category_self}`")
+            descriptions.append(f"- 遇到「{medical_patterns}」相關內容時，應優先分類為 `{category_self}` 或 `{category_family}`")
         if family_keywords:
             keyword_text = str(family_keywords).replace("|", "、")
-            descriptions.append(f"- 若同時包含家人關鍵字（{keyword_text}）→ `{category_family}`")
+            descriptions.append(f"- 若內容包含家人關鍵字（{keyword_text}）→ 分類為 `{category_family}`，否則為 `{category_self}`")
         descriptions.append("")
         
     return "\n".join(descriptions)
@@ -224,11 +224,19 @@ def allowed_categories() -> set[str]:
     return expanded
 
 
+@lru_cache(maxsize=1)
+def _load_mappings_from_yaml() -> dict[str, str]:
+    """Load category mappings from YAML config file."""
+    data = _load_config_from_yaml()
+    return data.get("mappings", {})
+
+
 def resolve_category_input(value: str, *, original_category: str | None = None) -> str:
     """
     Resolve a user-provided category input to an allowed category path.
 
     - Accepts both "/" and "／" separators.
+    - Applies mappings from YAML (e.g. "交通/接駁" -> "交通/車資").
     - If the input is a short label (e.g. "水果"), tries to map it to the most
       suitable existing category path (e.g. "家庭/水果").
     - Rejects unknown categories to avoid creating new categories.
@@ -239,6 +247,12 @@ def resolve_category_input(value: str, *, original_category: str | None = None) 
         raise ValueError("empty category")
 
     normalized = _normalize_separators(raw)
+    
+    # 1. Apply mappings first (Forward compatibility)
+    mappings = _load_mappings_from_yaml()
+    if normalized in mappings:
+        normalized = mappings[normalized]
+    
     allowed = allowed_categories()
 
     if normalized in allowed:
@@ -267,20 +281,49 @@ def apply_health_medical_default(category: str, *, context_text: str | None = No
     """
     Normalize health medical categories to a third-level path when needed.
 
-    Only applies when category is exactly "健康/醫療" and context_text is provided.
+    Only applies when category is exactly "健康/醫療" or similar short labels,
+    or if context_text contains medical keywords.
     """
     if not category:
         return category
+    
     normalized = _normalize_separators(str(category).strip())
-    if normalized != "健康/醫療":
-        return category
-    if not context_text:
-        return category
-    family_pattern = _health_family_keyword_pattern()
+    rules = _load_health_medical_rules()
+    medical_patterns = rules.get("medical_patterns")
+    
+    # 情況 1: AI 已經給了具體的三層分類
     category_self, category_family = _health_medical_categories()
+    if normalized in (category_self, category_family):
+        # 即使 AI 給了具體分類，如果 context_text 包含家人關鍵字且分類是「本人」，則強制修正為「家庭成員」
+        if normalized == category_self and context_text:
+            family_pattern = _health_family_keyword_pattern()
+            if family_pattern and family_pattern.search(str(context_text)):
+                return category_family
+        return normalized
+
+    # 情況 2: AI 給了二層分類 "健康/醫療"，根據 context_text 決定
+    should_process = (normalized == "健康/醫療")
+    
+    # 情況 3: 如果 context_text 包含醫療關鍵字且分類目前是 "家庭支出" (fallback)，也嘗試轉換
+    if not should_process and normalized == "家庭支出" and context_text and medical_patterns:
+        if re.search(medical_patterns, context_text):
+            should_process = True
+
+    if not should_process:
+        return category
+
+    if not context_text:
+        return category_self
+
+    family_pattern = _health_family_keyword_pattern()
     if family_pattern and family_pattern.search(str(context_text)):
         return category_family
-    return category_self
+    
+    # 檢查 context_text 是否真的包含醫療關鍵字，才進行轉換（避免誤殺）
+    if medical_patterns and re.search(medical_patterns, context_text):
+        return category_self
+        
+    return category
 
 
 def resolve_category_autocorrect(
@@ -329,7 +372,7 @@ def resolve_category_autocorrect(
         return apply_health_medical_default(_normalize_separators(fallback), context_text=context_text)
 
 _TOP_LEVEL_DEFAULTS: dict[str, str] = {
-    "交通": "交通/接駁",
+    "交通": "交通/車資",
 }
 
 

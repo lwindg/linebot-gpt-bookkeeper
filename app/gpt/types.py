@@ -12,6 +12,7 @@ class BookkeepingEntry:
     原幣金額: Optional[float] = None
     匯率: Optional[float] = 1.0
     付款方式: Optional[str] = None
+    手續費: Optional[float] = 0.0
     交易ID: Optional[str] = None
     明細說明: Optional[str] = ""
     分類: Optional[str] = None
