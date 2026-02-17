@@ -205,6 +205,8 @@ rules:
       category: "家庭/雜項"
     - pattern: "電腦維修|修電腦"
       category: "家庭/家電"
+    - pattern: "綜合所得稅|所得稅|扣繳"
+      category: "其他/稅費支出"
 
   # 健康/醫療規則
   health_medical:
