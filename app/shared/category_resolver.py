@@ -373,6 +373,7 @@ def resolve_category_autocorrect(
 
 _TOP_LEVEL_DEFAULTS: dict[str, str] = {
     "交通": "交通/車資",
+    "折扣": "折扣/優惠",
 }
 
 
