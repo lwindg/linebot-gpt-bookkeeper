@@ -35,7 +35,7 @@ class TestEndToEndIntegration:
         # Check authoritative fields
         assert entry.原幣金額 == 120.0
         assert entry.付款方式 == "現金"
-        assert entry.日期 == "12/14"  # Explicit date should be extracted
+        assert entry.日期 == "2025-12-14"  # Explicit date should be extracted (normalized)
         assert "午餐" in entry.品項
         
         # Check enriched fields (skip_gpt uses defaults)
@@ -78,18 +78,30 @@ class TestEndToEndIntegration:
         assert entry.匯率 == 0.21
 
     def test_e2e_cashflow_transfer(self, mock_parser_context):
-        """Test cashflow intent handling (Withdrawal)."""
+        """Test cashflow intent handling (Withdrawal).
+        
+        Withdrawal produces dual-entry bookkeeping:
+        Entry 1: 提款 (source account)
+        Entry 2: 收入 (cash received)
+        """
         # "從richart提款5000" -> withdrawal intent, source=Richart
         result = process_with_parser("從richart提款5000", skip_gpt=True)
         
         assert result.intent == "cashflow_intents"
-        assert len(result.entries) == 1
-        entry = result.entries[0]
+        assert len(result.entries) == 2
         
-        assert entry.原幣金額 == 5000.0
-        assert entry.付款方式 == "台新 Richart"
-        assert entry.交易類型 == "提款"
-        assert "提款" in entry.品項
+        # Entry 1: withdrawal from source account
+        entry1 = result.entries[0]
+        assert entry1.原幣金額 == 5000.0
+        assert entry1.付款方式 == "台新 Richart"
+        assert entry1.交易類型 == "提款"
+        assert "提款" in entry1.品項
+        
+        # Entry 2: cash income (counter-entry)
+        entry2 = result.entries[1]
+        assert entry2.原幣金額 == 5000.0
+        assert entry2.付款方式 == "現金"
+        assert entry2.交易類型 == "收入"
 
     def test_e2e_error_handling(self, mock_parser_context):
         """Test error handling for invalid input (no amount)."""

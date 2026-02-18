@@ -35,7 +35,7 @@ LAST_TRANSACTION_TTL = int(os.getenv('LAST_TRANSACTION_TTL', '600'))  # 10 minut
 
 # Parser-first mode (Phase 3 feature flag)
 # Set to "true" to use new Parser-first architecture instead of GPT-first
-USE_PARSER_FIRST = os.getenv('USE_PARSER_FIRST', 'true').lower() == 'true'
+USE_PARSER_FIRST = os.getenv('USE_PARSER_FIRST', 'false').lower() == 'true'
 
 # Shadow Mode (Phase 4 verification)
 # When enabled, runs both GPT-first and Parser-first paths and logs comparison

@@ -15,6 +15,8 @@ from tests.test_utils import set_openai_mock_content
 class TestSingleForeignCurrencyE2E:
     """Test single foreign currency expense end-to-end (T027)"""
 
+    @patch('app.services.webhook_sender.NOTION_TOKEN', '')
+    @patch('app.services.webhook_sender.USE_NOTION_API', False)
     @patch('app.services.webhook_sender.requests.post')
     @patch('app.services.exchange_rate.requests.get')
     @patch('app.gpt_processor.OpenAI')

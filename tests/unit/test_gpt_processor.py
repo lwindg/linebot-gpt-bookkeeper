@@ -6,6 +6,8 @@ from app.gpt_processor import process_multi_expense
 from tests.test_utils import set_openai_mock_content
 
 
+# These tests mock OpenAI and test the GPT-first path; disable parser-first.
+@patch('app.config.USE_PARSER_FIRST', False)
 class TestForeignCurrencyParsing:
     """Test foreign currency parsing (v003-multi-currency)"""
 
@@ -51,6 +53,7 @@ class TestForeignCurrencyParsing:
         mock_rate_service.get_rate.assert_called_once_with("USD")
 
 
+@patch('app.config.USE_PARSER_FIRST', False)
 class TestCategoryAutocorrect:
     """Test category normalization and allow-list autocorrect"""
 
@@ -130,6 +133,7 @@ class TestCategoryAutocorrect:
         assert result.entries[0].分類 == "家庭支出"
 
 
+@patch('app.config.USE_PARSER_FIRST', False)
 class TestPaymentNormalization:
     """Test payment method normalization"""
 
@@ -159,6 +163,7 @@ class TestPaymentNormalization:
         assert result.entries[0].付款方式 == "FlyGo 信用卡"
 
 
+@patch('app.config.USE_PARSER_FIRST', False)
 class TestProjectInference:
     """Test project inference from category or explicit project field"""
 

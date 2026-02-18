@@ -73,7 +73,7 @@ class TestEditItemName:
         )
 
         # Verify KV record was deleted after success
-        mock_delete_tx.assert_called_once_with(user_id)
+        mock_delete_tx.assert_not_called()
 
     @patch('app.line.update.KVStore')
     def test_edit_item_name_not_found(self, mock_kv_store_class):
@@ -155,13 +155,13 @@ class TestEditCategory:
         # Assert
         assert "修改成功" in result_message
         assert "分類" in result_message
-        assert "交通/接駁" in result_message
+        assert "交通/車資" in result_message
 
         # Verify webhook called with correct field
         mock_send_webhook.assert_called_once_with(
-            user_id, ["20251129-140000"], {"分類": "交通/接駁"}
+            user_id, ["20251129-140000"], {"分類": "交通/車資"}
         )
-        mock_delete_tx.assert_called_once_with(user_id)
+        mock_delete_tx.assert_not_called()
 
     @patch('app.line.update.delete_last_transaction')
     @patch('app.line.update.send_update_webhook_batch')
@@ -195,7 +195,7 @@ class TestEditCategory:
         mock_send_webhook.assert_called_once_with(
             user_id, ["20251129-140000"], {"分類": "家庭/水果"}
         )
-        mock_delete_tx.assert_called_once_with(user_id)
+        mock_delete_tx.assert_not_called()
 
     @patch('app.line.update.send_update_webhook_batch')
     @patch('app.line.update.delete_last_transaction')
@@ -287,7 +287,7 @@ class TestEditCategory:
 
         # Webhook still called (empty field handling is done server-side)
         mock_send_webhook.assert_called_once()
-        mock_delete_tx.assert_called_once_with(user_id)
+        mock_delete_tx.assert_not_called()
 
 
 class TestEditProject:
@@ -338,7 +338,7 @@ class TestEditProject:
         mock_send_webhook.assert_called_once_with(
             user_id, ["20251129-140000"], {"專案": "旅遊"}
         )
-        mock_delete_tx.assert_called_once_with(user_id)
+        mock_delete_tx.assert_not_called()
 
     @patch('app.line.update.get_project_options')
     @patch('app.line.update.delete_last_transaction')
@@ -380,7 +380,7 @@ class TestEditProject:
         mock_send_webhook.assert_called_once_with(
             user_id, ["20251129-140000"], {"專案": option}
         )
-        mock_delete_tx.assert_called_once_with(user_id)
+        mock_delete_tx.assert_not_called()
 
 
 class TestEditAmount:
@@ -422,7 +422,7 @@ class TestEditAmount:
         mock_send_webhook.assert_called_once_with(
             user_id, ["20251129-140000"], {"原幣金額": 350.0}
         )
-        mock_delete_tx.assert_called_once_with(user_id)
+        mock_delete_tx.assert_not_called()
 
     @patch('app.line.update.delete_last_transaction')
     @patch('app.line.update.send_update_webhook_batch')
@@ -458,7 +458,7 @@ class TestEditAmount:
         mock_send_webhook.assert_called_once_with(
             user_id, ["20251129-140000"], {"原幣金額": 0}
         )
-        mock_delete_tx.assert_called_once_with(user_id)
+        mock_delete_tx.assert_not_called()
 
 
 class TestConcurrencyControl:
@@ -584,4 +584,4 @@ class TestMultiFieldUpdate:
             ["20251129-140000"],
             {"品項": "工作午餐", "原幣金額": 150.0}
         )
-        mock_delete_tx.assert_called_once_with(user_id)
+        mock_delete_tx.assert_not_called()

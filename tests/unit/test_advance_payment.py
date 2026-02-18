@@ -15,6 +15,8 @@ from app.gpt_processor import process_multi_expense
 from tests.test_utils import set_openai_mock_content
 
 
+# These tests mock OpenAI and test the GPT-first path; disable parser-first.
+@patch('app.config.USE_PARSER_FIRST', False)
 class TestAdvancePayment:
     """測試代墊功能（v1.7 新增）"""
 
@@ -153,6 +155,7 @@ class TestAdvancePayment:
         assert result.entries[0].付款方式 == "Line Pay"
 
 
+@patch('app.config.USE_PARSER_FIRST', False)
 class TestNeedToPay:
     """測試需支付功能（v1.7 新增）"""
 
@@ -164,7 +167,7 @@ class TestNeedToPay:
             """
 {
   "intent": "multi_bookkeeping",
-  "payment_method": "NA",
+  "payment_method": "N/A",
   "items": [
     {
       "品項": "日本白馬房間",
@@ -189,7 +192,7 @@ class TestNeedToPay:
         assert result.entries[0].原幣金額 == 10000
         assert result.entries[0].代墊狀態 == "需支付"
         assert result.entries[0].收款支付對象 == "弟"
-        assert result.entries[0].付款方式 == "NA"
+        assert result.entries[0].付款方式 == "N/A"
 
     @patch("app.gpt_processor.OpenAI")
     def test_need_to_pay_friend_ticket(self, mock_openai):
@@ -199,7 +202,7 @@ class TestNeedToPay:
             """
 {
   "intent": "multi_bookkeeping",
-  "payment_method": "NA",
+  "payment_method": "N/A",
   "items": [
     {
       "品項": "演唱會門票",
@@ -222,7 +225,7 @@ class TestNeedToPay:
         assert len(result.entries) == 1
         assert result.entries[0].代墊狀態 == "需支付"
         assert result.entries[0].收款支付對象 == "朋友"
-        assert result.entries[0].付款方式 == "NA"
+        assert result.entries[0].付款方式 == "N/A"
 
     @patch("app.gpt_processor.OpenAI")
     def test_need_to_pay_colleague_lunch(self, mock_openai):
@@ -232,7 +235,7 @@ class TestNeedToPay:
             """
 {
   "intent": "multi_bookkeeping",
-  "payment_method": "NA",
+  "payment_method": "N/A",
   "items": [
     {
       "品項": "午餐",

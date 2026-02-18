@@ -401,6 +401,7 @@ class TestCashflowTransactionIds:
         batch_id_2 = result.entries[1].交易ID.rsplit("-", 1)[0]
         assert batch_id_1 == batch_id_2
 
+@patch('app.config.USE_PARSER_FIRST', False)
 class TestMultiExpenseErrorHandling:
     """測試錯誤處理與邊界案例"""
 
