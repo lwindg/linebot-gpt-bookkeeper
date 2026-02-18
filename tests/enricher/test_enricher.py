@@ -108,7 +108,7 @@ class TestEnrichWithMock:
         tx = result.transactions[0]
         assert isinstance(tx, EnrichedTransaction)
         assert tx.type == TransactionType.WITHDRAWAL
-        assert tx.分類 == "提款"
+        assert tx.分類 == "系統/提款"
 
 
 class TestCategoryValidation:

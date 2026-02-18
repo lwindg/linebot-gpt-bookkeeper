@@ -33,7 +33,7 @@ class TestParserIntegration:
         """午餐 80 -> payment_method = NA"""
         envelope = parse("午餐 80", context_date=taipei_now)
         tx = envelope.transactions[0]
-        assert tx.payment_method == "NA"
+        assert tx.payment_method == "N/A"
 
     # === Multi-item splitting ===
 
