@@ -69,15 +69,20 @@ def _transaction_to_dict(tx: Transaction) -> dict:
 
 
 def _cashflow_category(tx_type: TransactionType) -> str:
-    """Return fixed category for cashflow types."""
+    """Return fixed category for cashflow types.
+
+    Cashflow categories should be *valid* classification paths and should NOT be
+    delegated to GPT.
+    """
     if tx_type == TransactionType.WITHDRAWAL:
-        return "提款"
+        return "系統/提款"
     if tx_type == TransactionType.TRANSFER:
-        return "轉帳"
+        return "系統/轉帳"
     if tx_type == TransactionType.CARD_PAYMENT:
-        return "繳卡費"
+        return "系統/繳卡費"
     if tx_type == TransactionType.INCOME:
-        return "收入"
+        # Generic income bucket (valid category path)
+        return "收入/其他"
     return "未分類"
 
 

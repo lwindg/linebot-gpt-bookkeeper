@@ -24,10 +24,11 @@ _CASHFLOW_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 _CASHFLOW_CATEGORIES = {
-    "withdrawal": "提款",
-    "transfer": "轉帳",
-    "income": "收入",
-    "card_payment": "繳卡費",
+    # Keep cashflow categories as valid classification paths.
+    "withdrawal": "系統/提款",
+    "transfer": "系統/轉帳",
+    "income": "收入/其他",
+    "card_payment": "系統/繳卡費",
 }
 
 _CASHFLOW_AMOUNT_PATTERN = re.compile(r"-?\d+(?:\.\d+)?")
@@ -108,7 +109,7 @@ def normalize_cashflow_category(intent_type: str, raw_category: str) -> str:
     allowed = set(_CASHFLOW_CATEGORIES.values())
     if category in allowed:
         return category
-    return _CASHFLOW_CATEGORIES.get(intent_type, category or "收入")
+    return _CASHFLOW_CATEGORIES.get(intent_type, category or "收入/其他")
 
 
 def fallback_cashflow_items_from_message(message: str, intent_type: str) -> list[dict]:
@@ -134,7 +135,7 @@ def fallback_cashflow_items_from_message(message: str, intent_type: str) -> list
             "品項": item_text,
             "原幣金額": amount,
             "付款方式": payment,
-            "分類": _CASHFLOW_CATEGORIES.get(intent_type, "收入"),
+            "分類": _CASHFLOW_CATEGORIES.get(intent_type, "收入/其他"),
         }
     ]
 
