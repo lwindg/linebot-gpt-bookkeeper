@@ -91,3 +91,13 @@ IMG_*.jpg
 .codex/sessions/
 .codex/tmp/
 .codex/version.json
+
+# Local-only / POC artifacts (do not commit)
+.env.production
+reports/
+
+# Keep repo clean: ignore local helper scripts by default
+scripts/*
+!scripts/run_shadow_mode.py
+
+docs/local-scripts.md
