@@ -263,41 +263,9 @@ def parse_taishin_statement_ocr_text(text: str, *, statement_month: str) -> list
     return lines
 
 
-def preprocess_statement_table_image(image_data: bytes) -> bytes:
-    """Preprocess statement screenshot for OCR.
-
-    Goal: reduce line/column drift by cropping to the table area and boosting contrast.
-    This runs only in credit card reconciliation flow.
-    """
-
-    img = Image.open(io.BytesIO(image_data))
-    if img.mode != "RGB":
-        img = img.convert("RGB")
-
-    w, h = img.size
-
-    # Heuristic crop: remove top/bottom margins; keep the table region.
-    # Works well for typical statement screenshots with header/status bars.
-    left = int(w * 0.02)
-    right = int(w * 0.98)
-    top = int(h * 0.10)
-    bottom = int(h * 0.98)
-    if right > left and bottom > top:
-        img = img.crop((left, top, right, bottom))
-
-    # Upscale moderately to help OCR on small text
-    w2, h2 = img.size
-    scale = 2
-    img = img.resize((w2 * scale, h2 * scale), Image.Resampling.LANCZOS)
-
-    # Boost contrast and sharpness
-    img = ImageEnhance.Contrast(img).enhance(1.8)
-    img = ImageEnhance.Sharpness(img).enhance(1.5)
-
-    out = io.BytesIO()
-    img.save(out, format="JPEG", quality=90, optimize=True)
-    return out.getvalue()
-
+# NOTE: We previously tried aggressive table cropping/upscaling to improve OCR.
+# It caused systematic ROC-year misreads (e.g. 114xxxx -> 2014xxxx) on some screenshots.
+# Keep OCR preprocessing minimal and rely on multi-pass OCR voting instead.
 
 def extract_taishin_statement_text(
     image_data: bytes,
@@ -310,7 +278,7 @@ def extract_taishin_statement_text(
         openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
     if enable_compression:
-        image_data = preprocess_statement_table_image(image_data)
+        image_data = compress_image(image_data)
 
     base64_image = encode_image_base64(image_data)
 
@@ -478,13 +446,26 @@ def extract_taishin_statement_lines(
 
     # Primary: OCR text -> deterministic parse
     if statement_month:
-        # Single-pass OCR (token-saving). We rely on table preprocessing for stability.
-        ocr_text = extract_taishin_statement_text(
-            image_data,
-            openai_client=openai_client,
-            enable_compression=True,
-        )
-        parsed = parse_taishin_statement_ocr_text(ocr_text, statement_month=statement_month)
+        # Multi-pass OCR voting (more robust to single-character OCR errors).
+        ocr_texts = [
+            extract_taishin_statement_text(
+                image_data,
+                openai_client=openai_client,
+                enable_compression=True,
+            ),
+            extract_taishin_statement_text(
+                image_data,
+                openai_client=openai_client,
+                enable_compression=False,
+            ),
+            extract_taishin_statement_text(
+                image_data,
+                openai_client=openai_client,
+                enable_compression=True,
+            ),
+        ]
+        parses = [parse_taishin_statement_ocr_text(t, statement_month=statement_month) for t in ocr_texts]
+        parsed = reconcile_ocr_parses(parses, statement_month=statement_month)
 
         if not parsed:
             raise StatementVisionError("not_statement: no parseable statement rows found")
@@ -569,6 +550,14 @@ def _normalize_statement_date(statement_month: str, mmdd_or_iso: Optional[str]) 
 
     # Already ISO
     if len(s) >= 10 and s[4] == "-" and s[7] == "-":
+        try:
+            year = int(s[:4])
+            stmt_year = int(statement_month.split("-", 1)[0])
+            # Sanity-check: reject years far from statement period to avoid OCR hallucinations.
+            if abs(year - stmt_year) > 2:
+                return None
+        except Exception:
+            return None
         return s[:10]
 
     # ROC date formats from Taishin statement, e.g. 1141202 (YYYMMDD)
@@ -579,6 +568,10 @@ def _normalize_statement_date(statement_month: str, mmdd_or_iso: Optional[str]) 
                 year = int(s[:4])
                 mm = int(s[4:6])
                 dd = int(s[6:8])
+                stmt_year = int(statement_month.split("-", 1)[0])
+                # Sanity-check: if OCR misread ROC 114xxxx as 2014xxxx, reject.
+                if abs(year - stmt_year) > 2:
+                    return None
                 return f"{year:04d}-{mm:02d}-{dd:02d}"
             except Exception:
                 return None
