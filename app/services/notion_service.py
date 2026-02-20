@@ -117,6 +117,39 @@ class NotionService:
             logger.error(f"Unexpected error creating Notion page: {e}")
             return False
 
+    def archive_page(self, page_id: str) -> bool:
+        """Archive a Notion page by page_id (soft delete)."""
+        if not self.token:
+            logger.warning("Notion token not configured")
+            return False
+
+        url = f"https://api.notion.com/v1/pages/{page_id}"
+        try:
+            response = requests.patch(url, json={"archived": True}, headers=self.headers, timeout=10)
+            if response.status_code == 200:
+                return True
+            logger.error(f"Notion API archive failed with status {response.status_code}: {response.text}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error archiving Notion page: {e}")
+            return False
+
+    def archive_by_transaction_id(self, transaction_id: str, *, ignore_missing: bool = False) -> bool:
+        """Archive the first page found for a given 交易ID.
+
+        Args:
+            transaction_id: Target transaction id.
+            ignore_missing: If True, treat missing pages as success.
+        """
+        page_id = self._find_page_by_transaction_id(transaction_id)
+        if not page_id:
+            if ignore_missing:
+                logger.info(f"No Notion page found for 交易ID: {transaction_id}, skipping archive")
+                return True
+            logger.error(f"Could not find Notion page with 交易ID: {transaction_id}")
+            return False
+        return self.archive_page(page_id)
+
     def update_page(self, transaction_id: str, fields_to_update: Dict[str, Any]) -> bool:
         """
         Update an existing page in Notion by finding it with 交易ID.
