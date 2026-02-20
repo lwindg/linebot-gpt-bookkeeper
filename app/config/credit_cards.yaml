@@ -1,0 +1,25 @@
+# Credit card reconciliation configuration
+# NOTE: This file is source-controlled and should contain non-secret, deterministic mappings.
+# For dynamic payment method options, consider syncing from Notion in a later phase.
+
+banks:
+  taishin:
+    # Default allowed payment methods for reconciliation lock.
+    # Names MUST match the ledger (新帳目) payment method vocabulary.
+    reconcile:
+      payment_methods_default:
+        - 台新狗卡
+        - FlyGo 信用卡
+
+    # Statement parsing: map section headers/keywords to payment methods.
+    # The first matched rule wins.
+    statement_section_map:
+      - match:
+          contains_any:
+            - "@GoGoicash"
+            - "GoGo"
+        payment_method: "台新狗卡"
+      - match:
+          contains_any:
+            - "FlyGo"
+        payment_method: "FlyGo 信用卡"

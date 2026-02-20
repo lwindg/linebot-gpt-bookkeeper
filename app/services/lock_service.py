@@ -8,6 +8,8 @@ Handles per-user session locks for Project and Payment Method.
 import logging
 import re
 from typing import Optional, Tuple, List
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from app.services.kv_store import KVStore
 from app.shared.payment_resolver import normalize_payment_method
 from app.shared.project_resolver import (
@@ -18,12 +20,15 @@ from app.shared.project_resolver import (
 )
 from app.services.project_options import get_project_options
 from app.parser.extract_amount import _CURRENCY_MAP
+from app.shared.credit_card_config import get_bank_config
+from app.services.reconcile_taishin import reconcile_taishin_statement, format_reconcile_summary
 
 logger = logging.getLogger(__name__)
 
 LOCK_PROJECT_KEY = "lock:project:{user_id}"
 LOCK_PAYMENT_KEY = "lock:payment:{user_id}"
 LOCK_CURRENCY_KEY = "lock:currency:{user_id}"
+LOCK_RECONCILE_KEY = "lock:reconcile:{user_id}"
 
 # Command Patterns
 _RE_LOCK_PROJECT = re.compile(r"鎖定專案\s*(?:名稱)?\s*(?P<name>.+)?")
@@ -34,6 +39,12 @@ _RE_LOCK_CURRENCY = re.compile(r"鎖定幣別\s*(?:名稱)?\s*(?P<name>.+)?")
 _RE_UNLOCK_CURRENCY = re.compile(r"解鎖幣別\s*(?:名稱)?")
 _RE_UNLOCK_ALL = re.compile(r"(?:解鎖全部|全部解鎖)")
 _RE_LOCK_STATUS = re.compile(r"鎖定狀態")
+
+# Credit card reconcile lock (MVP: Taishin)
+_RE_LOCK_RECONCILE = re.compile(r"鎖定對帳\s*(?P<bank>\S+)?\s*(?P<period>\d{4}-\d{2})?\s*$")
+_RE_UNLOCK_RECONCILE = re.compile(r"(?:解除對帳|解鎖對帳)")
+_RE_RECONCILE_STATUS = re.compile(r"對帳狀態")
+_RE_RECONCILE_RUN = re.compile(r"執行對帳")
 
 
 class LockService:
@@ -73,11 +84,42 @@ class LockService:
         if self.kv.client:
             self.kv.client.delete(LOCK_CURRENCY_KEY.format(user_id=self.user_id))
 
+    def get_reconcile_lock(self) -> Optional[dict]:
+        return self.kv.get(LOCK_RECONCILE_KEY.format(user_id=self.user_id))
+
+    def set_reconcile_lock(self, *, bank: str, period: str, payment_methods: Optional[List[str]] = None):
+        # NOTE: payment method options must match ledger vocabulary.
+        if payment_methods is None:
+            cfg = get_bank_config(bank)
+            payment_methods = cfg.payment_methods_default if cfg else []
+
+        tz = ZoneInfo("Asia/Taipei")
+        now = datetime.now(tz)
+        statement_id = f"taishin-{period}-{now.strftime('%Y%m%d-%H%M%S')}"
+
+        self.kv.set(
+            LOCK_RECONCILE_KEY.format(user_id=self.user_id),
+            {
+                "bank": bank,
+                "period": period,
+                "payment_methods": payment_methods,
+                "statement_id": statement_id,
+                "uploaded_images": 0,
+                "created_at": now.isoformat(),
+            },
+            ttl=86400 * 7,
+        )
+
+    def remove_reconcile_lock(self):
+        if self.kv.client:
+            self.kv.client.delete(LOCK_RECONCILE_KEY.format(user_id=self.user_id))
+
     def remove_all_locks(self):
         if self.kv.client:
             self.kv.client.delete(LOCK_PROJECT_KEY.format(user_id=self.user_id))
             self.kv.client.delete(LOCK_PAYMENT_KEY.format(user_id=self.user_id))
             self.kv.client.delete(LOCK_CURRENCY_KEY.format(user_id=self.user_id))
+            self.kv.client.delete(LOCK_RECONCILE_KEY.format(user_id=self.user_id))
 
     def resolve_project_name(self, name: str) -> Tuple[Optional[str], Optional[str]]:
         """
@@ -120,10 +162,17 @@ class LockService:
                 return None, "❌ 無法取得專案清單，請稍後再試或提供完整名稱（含日期）。"
 
     def handle_command(self, text: str) -> Optional[str]:
-        """
-        Check if text is a lock command. 
+        """Check if text is a lock command.
+
         Returns reply text if it's a command, else None.
+
+        Note:
+        - Provide optional `/` prefix compatibility (e.g. `/鎖定狀態`).
         """
+        text = (text or "").strip()
+        if text.startswith("/"):
+            text = text[1:].strip()
+
         # Unlock Project
         if _RE_UNLOCK_PROJECT.search(text):
             self.remove_project_lock()
@@ -162,7 +211,85 @@ class LockService:
         # Unlock All
         if _RE_UNLOCK_ALL.search(text):
             self.remove_all_locks()
-            return "🔓 已解除所有鎖定設定（專案、付款方式、幣別）。"
+            return "🔓 已解除所有鎖定設定（專案、付款方式、幣別、對帳）。"
+
+        # Unlock Reconcile
+        if _RE_UNLOCK_RECONCILE.search(text):
+            self.remove_reconcile_lock()
+            return "🔓 已解除對帳鎖定。"
+
+        # Lock Reconcile
+        m = _RE_LOCK_RECONCILE.search(text)
+        if m:
+            bank = (m.group("bank") or "").strip()
+            period = (m.group("period") or "").strip()
+
+            if not bank:
+                return "❌ 請提供銀行名稱。\n範例：鎖定對帳 台新 2026-01"
+            if not period:
+                return "❌ 請提供對帳月份（YYYY-MM）。\n範例：鎖定對帳 台新 2026-01"
+
+            # MVP: only Taishin
+            if bank not in ("台新", "Taishin", "taishin"):
+                return "❌ 目前僅支援台新帳單對帳。"
+
+            self.set_reconcile_lock(bank="台新", period=period)
+            lock_val = self.get_reconcile_lock() or {}
+            methods = lock_val.get("payment_methods") or []
+            methods_text = "、".join(methods) if methods else "(未設定)"
+            statement_id = lock_val.get("statement_id")
+            return (
+                f"🔒 已進入信用卡對帳模式\n"
+                f"• 銀行：台新\n"
+                f"• 期別：{period}\n"
+                f"• 付款方式：{methods_text}\n"
+                f"• 帳單ID：{statement_id}\n\n"
+                "請直接上傳帳單截圖（可多張）。完成後輸入：執行對帳"
+            )
+
+        # Reconcile Status
+        if _RE_RECONCILE_STATUS.search(text):
+            r = self.get_reconcile_lock()
+            if not r:
+                return "ℹ️ 目前沒有鎖定對帳模式。"
+            methods = r.get("payment_methods") or []
+            methods_text = "、".join(methods) if methods else "(未設定)"
+            return (
+                "📌 目前對帳鎖定："
+                f"\n• 銀行：{r.get('bank')}"
+                f"\n• 期別：{r.get('period')}"
+                f"\n• 付款方式：{methods_text}"
+                f"\n• 帳單ID：{r.get('statement_id')}"
+                f"\n• 已上傳：{r.get('uploaded_images', 0)} 張"
+            )
+
+        # Reconcile Run
+        if _RE_RECONCILE_RUN.search(text):
+            r = self.get_reconcile_lock()
+            if not r:
+                return "❌ 尚未鎖定對帳模式。請先輸入：鎖定對帳 台新 YYYY-MM"
+
+            bank = r.get("bank")
+            if bank not in ("台新", "Taishin", "taishin"):
+                return "❌ 目前僅支援台新帳單對帳。"
+
+            statement_id = r.get("statement_id")
+            period = r.get("period")
+            methods = r.get("payment_methods") or []
+
+            if not statement_id or not period:
+                return "❌ 對帳鎖定資訊不完整，請先解除對帳後重新鎖定。"
+
+            try:
+                summary = reconcile_taishin_statement(
+                    statement_id=statement_id,
+                    period=period,
+                    payment_methods=list(methods),
+                )
+                return format_reconcile_summary(summary)
+            except Exception as e:
+                logger.error(f"Reconcile failed: {e}")
+                return "❌ 執行對帳時發生錯誤，請稍後再試。"
 
         # Lock Currency
         m = _RE_LOCK_CURRENCY.search(text)
@@ -179,12 +306,27 @@ class LockService:
             p = self.get_project_lock()
             pay = self.get_payment_lock()
             curr = self.get_currency_lock()
-            if not p and not pay and not curr:
+            rec = self.get_reconcile_lock()
+
+            if not p and not pay and not curr and not rec:
                 return "ℹ️ 目前沒有任何鎖定中的設定。"
+
             res = "📌 目前鎖定設定："
-            if p: res += f"\n• 專案：{p}"
-            if pay: res += f"\n• 付款方式：{pay}"
-            if curr: res += f"\n• 幣別：{curr}"
+            if p:
+                res += f"\n• 專案：{p}"
+            if pay:
+                res += f"\n• 付款方式：{pay}"
+            if curr:
+                res += f"\n• 幣別：{curr}"
+            if rec:
+                methods = rec.get("payment_methods") or []
+                methods_text = "、".join(methods) if methods else "(未設定)"
+                res += (
+                    "\n• 對帳：ON"
+                    f"\n  - 銀行：{rec.get('bank')}"
+                    f"\n  - 期別：{rec.get('period')}"
+                    f"\n  - 付款方式：{methods_text}"
+                )
             return res
 
         return None

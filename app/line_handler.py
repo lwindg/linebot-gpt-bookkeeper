@@ -20,6 +20,11 @@ from app.services.image_handler import (
     ImageTooLargeError,
     VisionAPIError,
 )
+from app.services.statement_image_handler import (
+    extract_taishin_statement_lines,
+    notion_create_cc_statement_lines,
+    StatementVisionError,
+)
 from app.pipeline.image_flow import process_image_envelope
 from app.line.formatters import (
     format_confirmation_message,
@@ -63,7 +68,24 @@ def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
         if user_message in ("功能", "選單"):
             lock_service = LockService(user_id)
             current_project = lock_service.get_project_lock()
-            flex_contents = create_flex_menu(current_project)
+            payment_lock = lock_service.get_payment_lock()
+            currency_lock = lock_service.get_currency_lock()
+            reconcile_lock = lock_service.get_reconcile_lock()
+
+            parts = []
+            if current_project:
+                parts.append(f"🔒 專案：{current_project}")
+            if payment_lock:
+                parts.append(f"🔒 付款：{payment_lock}")
+            if currency_lock:
+                parts.append(f"🔒 幣別：{currency_lock}")
+            if reconcile_lock:
+                period = reconcile_lock.get("period")
+                parts.append(f"💳 對帳：ON ({period})")
+
+            lock_summary = "\n".join(parts) if parts else "目前沒有鎖定設定。"
+
+            flex_contents = create_flex_menu(current_project, lock_summary=lock_summary)
             line_bot_api.reply_message(
                 reply_token,
                 FlexSendMessage(alt_text="功能選單", contents=flex_contents)
@@ -259,45 +281,92 @@ def handle_image_message(event: MessageEvent, messaging_api_blob: MessagingApiBl
         image_data = download_image(message_id, messaging_api_blob)
         logger.info(f"圖片下載成功，大小={len(image_data)} bytes")
 
-        # 2. 使用 Vision API 分析收據
-        logger.info("開始分析收據圖片")
-        receipt_items, error_code, error_message = process_receipt_image(image_data)
+        # 2. Routing: reconcile lock => statement import; else receipt flow
+        lock_service = LockService(user_id)
+        reconcile_lock = lock_service.get_reconcile_lock()
 
-        # 3. 檢查處理結果
-        if error_code:
-            # 識別失敗：根據錯誤碼回覆不同訊息
-            if error_code == "not_receipt":
-                reply_text = f"❌ 無法辨識收據資訊\n\n{error_message}\n\n💡 請提供文字描述進行記帳，格式如：\n「午餐花了150元，用現金」"
-            elif error_code == "unclear":
-                reply_text = f"❌ 收據圖片不清晰\n\n{error_message}\n\n💡 請提供文字描述，格式如：\n「品項、金額、付款方式」\n範例：「午餐花了150元，用現金」"
-            elif error_code == "incomplete":
-                reply_text = f"❌ 收據資訊不完整\n\n{error_message}\n\n💡 請提供文字描述補充完整資訊，格式如：\n「品項、金額、付款方式」"
+        if reconcile_lock:
+            # Statement import mode
+            period = reconcile_lock.get("period")
+            statement_id = reconcile_lock.get("statement_id")
+            bank = reconcile_lock.get("bank")
+
+            if bank not in ("台新", "Taishin", "taishin"):
+                reply_text = "❌ 目前僅支援台新帳單對帳。"
             else:
-                reply_text = f"❌ 無法處理收據圖片\n\n{error_message}\n\n💡 請改用文字描述進行記帳"
+                try:
+                    logger.info("開始分析台新帳單圖片")
+                    lines = extract_taishin_statement_lines(image_data)
+                    created_ids = notion_create_cc_statement_lines(
+                        statement_month=period,
+                        statement_id=statement_id,
+                        lines=lines,
+                    )
 
-            logger.warning(f"收據識別失敗: {error_code} - {error_message}")
+                    # increment uploaded count (best-effort)
+                    try:
+                        reconcile_lock["uploaded_images"] = int(reconcile_lock.get("uploaded_images", 0)) + 1
+                        lock_service.kv.set(
+                            f"lock:reconcile:{user_id}",
+                            reconcile_lock,
+                            ttl=86400 * 7,
+                        )
+                    except Exception:
+                        pass
+
+                    reply_text = (
+                        "✅ 已匯入台新帳單明細"
+                        f"\n• 期別：{period}"
+                        f"\n• 帳單ID：{statement_id}"
+                        f"\n• 新增明細：{len(created_ids)} 筆"
+                        "\n\n接著可輸入：執行對帳"
+                    )
+                except StatementVisionError as e:
+                    reply_text = f"❌ 無法辨識台新帳單\n\n{str(e)}\n\n💡 請確認圖片是帳單明細截圖（非 Notion/聊天截圖），或重拍清晰一點。"
+                except Exception as e:
+                    logger.error(f"台新帳單匯入失敗: {e}")
+                    reply_text = "❌ 匯入台新帳單時發生錯誤，請稍後再試。"
 
         else:
-            # 識別成功：走 Parser-first image pipeline
-            logger.info(f"收據識別成功，共 {len(receipt_items)} 個項目")
+            # Receipt flow (existing)
+            logger.info("開始分析收據圖片")
+            receipt_items, error_code, error_message = process_receipt_image(image_data)
 
-            image_envelope = build_image_authoritative_envelope(receipt_items)
-            result = process_image_envelope(image_envelope, user_id=user_id)
+            # 檢查處理結果
+            if error_code:
+                # 識別失敗：根據錯誤碼回覆不同訊息
+                if error_code == "not_receipt":
+                    reply_text = f"❌ 無法辨識收據資訊\n\n{error_message}\n\n💡 請提供文字描述進行記帳，格式如：\n「午餐花了150元，用現金」"
+                elif error_code == "unclear":
+                    reply_text = f"❌ 收據圖片不清晰\n\n{error_message}\n\n💡 請提供文字描述，格式如：\n「品項、金額、付款方式」\n範例：「午餐花了150元，用現金」"
+                elif error_code == "incomplete":
+                    reply_text = f"❌ 收據資訊不完整\n\n{error_message}\n\n💡 請提供文字描述補充完整資訊，格式如：\n「品項、金額、付款方式」"
+                else:
+                    reply_text = f"❌ 無法處理收據圖片\n\n{error_message}\n\n💡 請改用文字描述進行記帳"
 
-            if result.intent in ("multi_bookkeeping", "cashflow_intents"):
-                entries = result.entries
-                total_items = len(entries)
-                logger.info(f"轉換為 {total_items} 筆記帳項目")
-
-                success_count, failure_count = send_multiple_webhooks(entries, user_id)
-                reply_text = format_multi_confirmation_message(result, success_count, failure_count)
-
-            elif result.intent == "error":
-                reply_text = f"❌ 處理收據資料時發生錯誤\n\n{result.error_message}"
-                logger.error(f"處理收據資料失敗: {result.error_message}")
+                logger.warning(f"收據識別失敗: {error_code} - {error_message}")
 
             else:
-                reply_text = "無法處理收據資料，請重試"
+                # 識別成功：走 Parser-first image pipeline
+                logger.info(f"收據識別成功，共 {len(receipt_items)} 個項目")
+
+                image_envelope = build_image_authoritative_envelope(receipt_items)
+                result = process_image_envelope(image_envelope, user_id=user_id)
+
+                if result.intent in ("multi_bookkeeping", "cashflow_intents"):
+                    entries = result.entries
+                    total_items = len(entries)
+                    logger.info(f"轉換為 {total_items} 筆記帳項目")
+
+                    success_count, failure_count = send_multiple_webhooks(entries, user_id)
+                    reply_text = format_multi_confirmation_message(result, success_count, failure_count)
+
+                elif result.intent == "error":
+                    reply_text = f"❌ 處理收據資料時發生錯誤\n\n{result.error_message}"
+                    logger.error(f"處理收據資料失敗: {result.error_message}")
+
+                else:
+                    reply_text = "無法處理收據資料，請重試"
 
         # 回覆 LINE 使用者
         logger.info(f"回覆 LINE 訊息: {reply_text[:100]}")

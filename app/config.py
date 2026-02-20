@@ -25,6 +25,12 @@ PROJECT_OPTIONS_TTL = int(os.getenv('PROJECT_OPTIONS_TTL', '21600'))
 # Notion configuration
 NOTION_TOKEN = os.getenv('NOTION_TOKEN', '')
 NOTION_DATABASE_ID = os.getenv('NOTION_DATABASE_ID', '')
+
+# Credit card reconciliation (Notion DB ids)
+# NOTE: These are Notion *database_id* (not data_source_id).
+NOTION_CC_STATEMENTS_DB_ID = os.getenv('NOTION_CC_STATEMENTS_DB_ID', '')
+NOTION_CC_STATEMENT_LINES_DB_ID = os.getenv('NOTION_CC_STATEMENT_LINES_DB_ID', '')
+
 USE_NOTION_API = os.getenv('USE_NOTION_API', 'false').lower() == 'true'
 
 # Vercel Redis configuration (optional, for update-last-entry feature)

@@ -239,9 +239,16 @@ def format_settlement_report(project_name: str, data: dict) -> str:
     return "\n".join(report).strip()
 
 
-def create_flex_menu(current_project_lock: str = None) -> dict:
-    """
-    Create a JSON structure for a LINE Flex Message menu (v2.7 新增)
+def create_flex_menu(
+    current_project_lock: str = None,
+    *,
+    lock_summary: str | None = None,
+) -> dict:
+    """Create a JSON structure for a LINE Flex Message menu (v2.7+).
+
+    Args:
+        current_project_lock: Used to show the settlement shortcut.
+        lock_summary: Optional short status text shown at the top of the menu.
     """
     # Base buttons
     buttons = [
@@ -255,6 +262,12 @@ def create_flex_menu(current_project_lock: str = None) -> dict:
         {
             "type": "button",
             "action": {"type": "message", "label": "🔐 鎖定狀態", "text": "鎖定狀態"},
+            "style": "secondary",
+            "margin": "sm"
+        },
+        {
+            "type": "button",
+            "action": {"type": "message", "label": "💳 鎖定對帳", "text": "鎖定對帳"},
             "style": "secondary",
             "margin": "sm"
         },
@@ -288,6 +301,28 @@ def create_flex_menu(current_project_lock: str = None) -> dict:
         }
         buttons.insert(0, settlement_button)
 
+    body_contents = []
+
+    if lock_summary:
+        body_contents.append(
+            {
+                "type": "box",
+                "layout": "vertical",
+                "margin": "md",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": lock_summary,
+                        "wrap": True,
+                        "size": "sm",
+                        "color": "#666666",
+                    }
+                ],
+            }
+        )
+
+    body_contents.extend(buttons)
+
     flex_contents = {
         "type": "bubble",
         "header": {
@@ -300,7 +335,7 @@ def create_flex_menu(current_project_lock: str = None) -> dict:
         "body": {
             "type": "box",
             "layout": "vertical",
-            "contents": buttons
+            "contents": body_contents
         },
         "footer": {
             "type": "box",
