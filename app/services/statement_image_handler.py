@@ -34,6 +34,7 @@ from app.config import (
     NOTION_TOKEN,
     NOTION_CC_STATEMENT_LINES_DB_ID,
     NOTION_CC_STATEMENTS_DB_ID,
+    NOTION_ACCOUNT_DS_ID,
 )
 from app.gpt.prompts import TAISHIN_STATEMENT_VISION_PROMPT, TAISHIN_STATEMENT_OCR_PROMPT
 from app.services.image_handler import compress_image, encode_image_base64
@@ -42,6 +43,7 @@ logger = logging.getLogger(__name__)
 
 NOTION_PAGE_VERSION = "2025-09-03"
 NOTION_DB_VERSION = "2022-06-28"  # for /v1/databases/* endpoints
+NOTION_DS_VERSION = "2025-09-03"  # for /v1/data_sources/* endpoints
 
 
 @dataclass
@@ -703,6 +705,43 @@ def ensure_cc_statement_page(
     return resp2.json()["id"]
 
 
+def fetch_account_page_id_map(payment_methods: list[str]) -> dict[str, str]:
+    """Fetch Account page ids by payment method name.
+
+    Uses Notion data_sources query (Account DS) and matches by Name.
+    """
+
+    if not NOTION_TOKEN or not NOTION_ACCOUNT_DS_ID:
+        return {}
+
+    headers = {
+        "Authorization": f"Bearer {NOTION_TOKEN}",
+        "Content-Type": "application/json",
+        "Notion-Version": NOTION_DS_VERSION,
+    }
+
+    out: dict[str, str] = {}
+    for name in payment_methods:
+        if not name or name in out:
+            continue
+        resp = requests.post(
+            f"https://api.notion.com/v1/data_sources/{NOTION_ACCOUNT_DS_ID}/query",
+            headers=headers,
+            json={
+                "page_size": 5,
+                "filter": {"property": "Name", "title": {"equals": name}},
+            },
+            timeout=30,
+        )
+        if resp.status_code != 200:
+            continue
+        results = resp.json().get("results") or []
+        if results:
+            out[name] = results[0]["id"]
+
+    return out
+
+
 def notion_create_cc_statement_lines(
     *,
     database_id: Optional[str] = None,
@@ -731,6 +770,12 @@ def notion_create_cc_statement_lines(
         "Content-Type": "application/json",
         "Notion-Version": NOTION_PAGE_VERSION,
     }
+
+    if account_page_id_by_card_hint is None:
+        # Auto-resolve from Notion Account DS by payment method name.
+        # This makes `連結帳戶` meaningful without requiring callers to pass a mapping.
+        methods = sorted({ln.card_hint for ln in lines if ln.card_hint})
+        account_page_id_by_card_hint = fetch_account_page_id_map(methods)
 
     created: list[str] = []
     for line in lines:

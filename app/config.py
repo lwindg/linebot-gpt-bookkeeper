@@ -31,6 +31,10 @@ NOTION_DATABASE_ID = os.getenv('NOTION_DATABASE_ID', '')
 NOTION_CC_STATEMENTS_DB_ID = os.getenv('NOTION_CC_STATEMENTS_DB_ID', '')
 NOTION_CC_STATEMENT_LINES_DB_ID = os.getenv('NOTION_CC_STATEMENT_LINES_DB_ID', '')
 
+# Notion Account data source (for linking statement lines to accounts)
+# NOTE: this is a *data_source_id*.
+NOTION_ACCOUNT_DS_ID = os.getenv('NOTION_ACCOUNT_DS_ID', '2c832f7d-281a-80ae-b648-000b933b7c92')
+
 USE_NOTION_API = os.getenv('USE_NOTION_API', 'false').lower() == 'true'
 
 # Vercel Redis configuration (optional, for update-last-entry feature)
