@@ -130,6 +130,44 @@ def extract_taishin_statement_lines(
     return lines
 
 
+def _normalize_statement_date(statement_month: str, mmdd_or_iso: Optional[str]) -> Optional[str]:
+    """Normalize statement date.
+
+    Vision output may omit year (e.g. "12/22"). We infer year from statement_month (YYYY-MM).
+
+    Rules:
+    - If input already looks like YYYY-MM-DD, keep it.
+    - If input is MM/DD or MM-DD:
+      - year defaults to statement_month.year
+      - if month < statement_month.month: assume it belongs to next year (cross-year cycle)
+    """
+    if not mmdd_or_iso:
+        return None
+
+    s = str(mmdd_or_iso).strip()
+    if not s:
+        return None
+
+    # Already ISO
+    if len(s) >= 10 and s[4] == "-" and s[7] == "-":
+        return s[:10]
+
+    # Try MM/DD or MM-DD
+    sep = "/" if "/" in s else ("-" if "-" in s else None)
+    if not sep:
+        return None
+
+    try:
+        mm_s, dd_s = [x.strip() for x in s.split(sep, 1)]
+        mm = int(mm_s)
+        dd = int(dd_s)
+        y, m = [int(x) for x in statement_month.split("-", 1)]
+        year = y + (1 if mm < m else 0)
+        return f"{year:04d}-{mm:02d}-{dd:02d}"
+    except Exception:
+        return None
+
+
 def notion_create_cc_statement_lines(
     *,
     database_id: Optional[str] = None,
@@ -172,10 +210,16 @@ def notion_create_cc_statement_lines(
             "帳單ID": {"rich_text": [{"text": {"content": statement_id}}]},
             "付款方式": {"select": {"name": line.card_hint}} if line.card_hint else None,
             "連結帳戶": account_rel,
-            "消費日": {"date": {"start": line.trans_date}} if line.trans_date else None,
-            "入帳起息日": {"date": {"start": line.post_date}} if line.post_date else None,
+            "消費日": {"date": {"start": _normalize_statement_date(statement_month, line.trans_date)}}
+            if line.trans_date
+            else None,
+            "入帳起息日": {"date": {"start": _normalize_statement_date(statement_month, line.post_date)}}
+            if line.post_date
+            else None,
             "新臺幣金額": {"number": line.twd_amount},
-            "外幣折算日": {"date": {"start": line.fx_date}} if line.fx_date else None,
+            "外幣折算日": {"date": {"start": _normalize_statement_date(statement_month, line.fx_date)}}
+            if line.fx_date
+            else None,
             "消費地": {"select": {"name": line.country}} if line.country else None,
             "幣別": {"select": {"name": line.currency}} if line.currency else None,
             "外幣金額": {"number": line.foreign_amount} if line.foreign_amount is not None else None,
