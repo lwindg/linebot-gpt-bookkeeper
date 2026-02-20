@@ -35,7 +35,11 @@ from app.config import (
 
 logger = logging.getLogger(__name__)
 
-NOTION_VERSION = "2025-09-03"
+# Notion API versions:
+# - Use legacy version for /v1/databases/* endpoints (query still supported)
+# - Use new version for /v1/data_sources/* endpoints
+NOTION_DB_VERSION = "2022-06-28"
+NOTION_DS_VERSION = "2025-09-03"
 
 
 @dataclass(frozen=True)
@@ -49,11 +53,11 @@ class ReconcileSummary:
     statement_page_id: str
 
 
-def _headers() -> dict[str, str]:
+def _headers(version: str) -> dict[str, str]:
     return {
         "Authorization": f"Bearer {NOTION_TOKEN}",
         "Content-Type": "application/json",
-        "Notion-Version": NOTION_VERSION,
+        "Notion-Version": version,
     }
 
 
@@ -69,13 +73,13 @@ def _notion_query(container_id: str, payload: dict[str, Any]) -> dict[str, Any]:
 
     # 1) Try databases
     url_db = f"https://api.notion.com/v1/databases/{container_id}/query"
-    resp = requests.post(url_db, headers=_headers(), json=payload, timeout=30)
+    resp = requests.post(url_db, headers=_headers(NOTION_DB_VERSION), json=payload, timeout=30)
     if resp.status_code == 200:
         return resp.json()
 
     # 2) Fallback to data_sources
     url_ds = f"https://api.notion.com/v1/data_sources/{container_id}/query"
-    resp2 = requests.post(url_ds, headers=_headers(), json=payload, timeout=30)
+    resp2 = requests.post(url_ds, headers=_headers(NOTION_DS_VERSION), json=payload, timeout=30)
     if resp2.status_code == 200:
         return resp2.json()
 
@@ -89,7 +93,7 @@ def _notion_query(container_id: str, payload: dict[str, Any]) -> dict[str, Any]:
 def _notion_create_page(database_id: str, properties: dict[str, Any]) -> str:
     url = "https://api.notion.com/v1/pages"
     payload = {"parent": {"database_id": database_id}, "properties": properties}
-    resp = requests.post(url, headers=_headers(), json=payload, timeout=30)
+    resp = requests.post(url, headers=_headers(NOTION_DB_VERSION), json=payload, timeout=30)
     if resp.status_code != 200:
         raise RuntimeError(f"Notion create failed: {resp.status_code} {resp.text}")
     return resp.json()["id"]
@@ -97,7 +101,7 @@ def _notion_create_page(database_id: str, properties: dict[str, Any]) -> str:
 
 def _notion_patch_page(page_id: str, properties: dict[str, Any]) -> None:
     url = f"https://api.notion.com/v1/pages/{page_id}"
-    resp = requests.patch(url, headers=_headers(), json={"properties": properties}, timeout=30)
+    resp = requests.patch(url, headers=_headers(NOTION_DB_VERSION), json={"properties": properties}, timeout=30)
     if resp.status_code != 200:
         raise RuntimeError(f"Notion patch failed: {resp.status_code} {resp.text}")
 
