@@ -170,8 +170,6 @@ class LockService:
         - Provide optional `/` prefix compatibility (e.g. `/鎖定狀態`).
         """
         text = (text or "").strip()
-        if text.startswith("/"):
-            text = text[1:].strip()
 
         # Unlock Project
         if _RE_UNLOCK_PROJECT.search(text):

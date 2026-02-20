@@ -66,8 +66,12 @@ def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
     logger.info(f"Received message from user {user_id}: {user_message}")
 
     try:
+        # Phase B: commands must start with '/'
+        is_command = user_message.startswith("/")
+        command_text = user_message[1:].strip() if is_command else ""
+
         # Step 2a: Menu Command (v2.7)
-        if user_message in ("功能", "選單"):
+        if is_command and command_text in ("功能", "選單"):
             lock_service = LockService(user_id)
             current_project = lock_service.get_project_lock()
             payment_lock = lock_service.get_payment_lock()
@@ -95,7 +99,7 @@ def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
             return
 
         # Step 2b: Project List Command
-        if is_project_list_command(user_message):
+        if is_command and is_project_list_command(command_text):
             reply_text = handle_project_list_request()
             line_bot_api.reply_message(
                 reply_token,
@@ -104,9 +108,9 @@ def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
             return
 
         # Step 2c: Settlement Command (v2.7)
-        if user_message == "結算" or user_message.startswith("結算 "):
+        if is_command and (command_text == "結算" or command_text.startswith("結算 ")):
             lock_service = LockService(user_id)
-            raw_name = user_message[3:].strip() if user_message.startswith("結算 ") else None
+            raw_name = command_text[3:].strip() if command_text.startswith("結算 ") else None
             
             project_name = None
             if raw_name:
@@ -136,7 +140,7 @@ def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
             return
 
         # Step 2d: Help Command (v2.7)
-        if user_message == "記帳教學":
+        if is_command and command_text == "記帳教學":
             reply_text = """📖 記帳教學
 
 您可以直接輸入文字或上傳照片來記帳：
@@ -181,14 +185,15 @@ def handle_text_message(event: MessageEvent, line_bot_api: LineBotApi) -> None:
             return
 
         # Step 2e: Lock Commands (v2.2.0)
-        lock_service = LockService(user_id)
-        lock_reply = lock_service.handle_command(user_message)
-        if lock_reply:
-            line_bot_api.reply_message(
-                reply_token,
-                TextSendMessage(text=lock_reply)
-            )
-            return
+        if is_command:
+            lock_service = LockService(user_id)
+            lock_reply = lock_service.handle_command(command_text)
+            if lock_reply:
+                line_bot_api.reply_message(
+                    reply_token,
+                    TextSendMessage(text=lock_reply)
+                )
+                return
 
         # Process message via Router (v2.2.0: pass user_id for locks)
         result = process_message(user_message, user_id=user_id)

@@ -254,32 +254,32 @@ def create_flex_menu(
     buttons = [
         {
             "type": "button",
-            "action": {"type": "message", "label": "🔍 專案清單", "text": "專案清單"},
+            "action": {"type": "message", "label": "🔍 專案清單", "text": "/專案清單"},
             "style": "primary",
             "color": "#4285F4",
             "margin": "sm"
         },
         {
             "type": "button",
-            "action": {"type": "message", "label": "🔐 鎖定狀態", "text": "鎖定狀態"},
+            "action": {"type": "message", "label": "🔐 鎖定狀態", "text": "/鎖定狀態"},
             "style": "secondary",
             "margin": "sm"
         },
         {
             "type": "button",
-            "action": {"type": "message", "label": "💳 鎖定對帳", "text": "鎖定對帳"},
+            "action": {"type": "message", "label": "💳 鎖定對帳", "text": "/鎖定對帳"},
             "style": "secondary",
             "margin": "sm"
         },
         {
             "type": "button",
-            "action": {"type": "message", "label": "🔓 全部解鎖", "text": "全部解鎖"},
+            "action": {"type": "message", "label": "🔓 全部解鎖", "text": "/全部解鎖"},
             "style": "secondary",
             "margin": "sm"
         },
         {
             "type": "button",
-            "action": {"type": "message", "label": "📖 記帳教學", "text": "記帳教學"},
+            "action": {"type": "message", "label": "📖 記帳教學", "text": "/記帳教學"},
             "style": "link",
             "margin": "sm"
         }
@@ -292,7 +292,7 @@ def create_flex_menu(
             "action": {
                 "type": "message",
                 "label": f"💰 結算 {current_project_lock}",
-                "text": f"結算 {current_project_lock}"
+                "text": f"/結算 {current_project_lock}"
             },
             "style": "primary",
             "color": "#34A853",
