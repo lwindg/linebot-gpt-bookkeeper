@@ -26,6 +26,18 @@ from app.processor import process_with_parser
 from app.services.webhook_sender import send_multiple_webhooks, send_to_webhook
 from app.services.kv_store import KVStore
 from app.services.notion_service import NotionService
+from app.services.lock_service import LockService
+from app.services.statement_image_handler import (
+    StatementVisionError,
+    extract_taishin_statement_lines,
+    extract_taishin_statement_text,
+    build_ocr_preview,
+    append_statement_note,
+    ensure_cc_statement_page,
+    notion_create_cc_statement_lines,
+    detect_statement_date_anomaly,
+)
+from app.services.reconcile_taishin import reconcile_taishin_statement, format_reconcile_summary
 from app.shared.category_resolver import resolve_category_input
 
 
@@ -273,6 +285,143 @@ def cmd_undo(args: argparse.Namespace) -> int:
     return 0 if not failed else 1
 
 
+def _normalize_bank_name(value: str) -> str:
+    raw = (value or "").strip()
+    if raw in ("台新", "Taishin", "taishin"):
+        return "台新"
+    return raw
+
+
+def cmd_cc_lock(args: argparse.Namespace) -> int:
+    user_id = args.user_id
+    bank = _normalize_bank_name(args.bank)
+    period = args.period
+
+    if bank != "台新":
+        _print_json({"status": "error", "error": {"message": "only taishin supported", "reason": "unsupported_bank"}})
+        return 1
+
+    LockService(user_id).set_reconcile_lock(bank=bank, period=period)
+    lock_val = LockService(user_id).get_reconcile_lock() or {}
+    _print_json({"status": "ok", "result": lock_val})
+    return 0
+
+
+def cmd_cc_status(args: argparse.Namespace) -> int:
+    user_id = args.user_id
+    lock_val = LockService(user_id).get_reconcile_lock()
+    _print_json({"status": "ok", "result": lock_val or {}})
+    return 0
+
+
+def cmd_cc_unlock(args: argparse.Namespace) -> int:
+    user_id = args.user_id
+    LockService(user_id).remove_reconcile_lock()
+    _print_json({"status": "ok"})
+    return 0
+
+
+def cmd_cc_import(args: argparse.Namespace) -> int:
+    user_id = args.user_id
+    image_path = args.image_path
+    message_id = args.message_id
+
+    lock_service = LockService(user_id)
+    lock_val = lock_service.get_reconcile_lock() or {}
+    bank = _normalize_bank_name(lock_val.get("bank") or "")
+    period = lock_val.get("period")
+    statement_id = lock_val.get("statement_id")
+
+    if not period or not statement_id or bank != "台新":
+        _print_json({"status": "error", "error": {"message": "reconcile lock not set", "reason": "missing_lock"}})
+        return 1
+
+    try:
+        with open(image_path, "rb") as f:
+            image_data = f.read()
+
+        lines = extract_taishin_statement_lines(image_data, statement_month=period)
+        statement_page_id = ensure_cc_statement_page(
+            statement_id=statement_id,
+            period=period,
+            bank="台新",
+            source_note=f"assistant_cli image_path={image_path}" + (f" message_id={message_id}" if message_id else ""),
+        )
+
+        # OCR preview for audit
+        try:
+            ocr_text = extract_taishin_statement_text(image_data, enable_compression=False)
+            preview = build_ocr_preview(ocr_text)
+            append_statement_note(statement_page_id=statement_page_id, note=f"[OCR preview]\n{preview}")
+        except Exception:
+            pass
+
+        created_ids = notion_create_cc_statement_lines(
+            statement_month=period,
+            statement_id=statement_id,
+            lines=lines,
+            statement_page_id=statement_page_id,
+        )
+
+        warning = detect_statement_date_anomaly(period, lines)
+
+        # increment uploaded count (best-effort)
+        try:
+            lock_val["uploaded_images"] = int(lock_val.get("uploaded_images", 0)) + 1
+            lock_service.kv.set(
+                f"lock:reconcile:{user_id}",
+                lock_val,
+                ttl=86400 * 7,
+            )
+        except Exception:
+            pass
+
+        _print_json(
+            {
+                "status": "ok",
+                "result": {
+                    "bank": bank,
+                    "period": period,
+                    "statement_id": statement_id,
+                    "statement_page_id": statement_page_id,
+                    "created_count": len(created_ids),
+                    "warning": warning,
+                },
+            }
+        )
+        return 0
+
+    except StatementVisionError as e:
+        _print_json({"status": "error", "error": {"message": str(e), "reason": "vision_error"}})
+        return 1
+    except Exception as e:
+        _print_json({"status": "error", "error": {"message": str(e), "reason": "unexpected"}})
+        return 1
+
+
+def cmd_cc_run(args: argparse.Namespace) -> int:
+    user_id = args.user_id
+
+    lock_service = LockService(user_id)
+    lock_val = lock_service.get_reconcile_lock() or {}
+    bank = _normalize_bank_name(lock_val.get("bank") or "")
+    period = lock_val.get("period")
+    statement_id = lock_val.get("statement_id")
+
+    if not period or not statement_id or bank != "台新":
+        _print_json({"status": "error", "error": {"message": "reconcile lock not set", "reason": "missing_lock"}})
+        return 1
+
+    try:
+        summary = reconcile_taishin_statement(statement_id=statement_id, period=period, user_id=user_id)
+        text = format_reconcile_summary(summary)
+        _print_json({"status": "ok", "result": summary, "summary_text": text})
+        return 0
+    except Exception as e:
+        _print_json({"status": "error", "error": {"message": str(e), "reason": "unexpected"}})
+        return 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="assistant_cli", description="OpenClaw local assistant CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -293,6 +442,33 @@ def build_parser() -> argparse.ArgumentParser:
     undo = sub.add_parser("undo", help="Archive the last created entries for this user")
     undo.add_argument("--user-id", required=True)
     undo.set_defaults(func=cmd_undo)
+
+    cc = sub.add_parser("cc", help="Credit card statement import/reconcile helpers")
+    cc_sub = cc.add_subparsers(dest="cc_command", required=True)
+
+    cc_lock = cc_sub.add_parser("lock", help="Lock reconcile mode")
+    cc_lock.add_argument("--user-id", required=True)
+    cc_lock.add_argument("--bank", required=True)
+    cc_lock.add_argument("--period", required=True)
+    cc_lock.set_defaults(func=cmd_cc_lock)
+
+    cc_status = cc_sub.add_parser("status", help="Show current reconcile lock")
+    cc_status.add_argument("--user-id", required=True)
+    cc_status.set_defaults(func=cmd_cc_status)
+
+    cc_unlock = cc_sub.add_parser("unlock", help="Unlock reconcile mode")
+    cc_unlock.add_argument("--user-id", required=True)
+    cc_unlock.set_defaults(func=cmd_cc_unlock)
+
+    cc_import = cc_sub.add_parser("import", help="Import Taishin statement image")
+    cc_import.add_argument("--user-id", required=True)
+    cc_import.add_argument("--image-path", required=True)
+    cc_import.add_argument("--message-id", required=False)
+    cc_import.set_defaults(func=cmd_cc_import)
+
+    cc_run = cc_sub.add_parser("run", help="Run reconcile for current statement")
+    cc_run.add_argument("--user-id", required=True)
+    cc_run.set_defaults(func=cmd_cc_run)
 
     return parser
 
