@@ -23,6 +23,7 @@ import logging
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
+from collections import defaultdict
 
 import requests
 
@@ -112,6 +113,18 @@ def _rt_plain(prop: dict[str, Any]) -> str:
         return ""
     t = rt[0].get("plain_text")
     return (t or "").strip()
+
+
+def _batch_id_from_ledger_props(props: dict[str, Any]) -> Optional[str]:
+    # Prefer explicit 批次ID rich_text. Otherwise derive from 交易ID like YYYYMMDD-HHMMSS-XX.
+    bid = _rt_plain(props.get("批次ID") or {})
+    if bid:
+        return bid
+
+    tid = _rt_plain(props.get("交易ID") or {})
+    if tid and "-" in tid and len(tid) >= 3 and tid[-3] == "-":
+        return tid.rsplit("-", 1)[0]
+    return None
 
 
 def _title_plain(prop: dict[str, Any]) -> str:
@@ -223,6 +236,9 @@ def reconcile_taishin_statement(*, statement_id: str, period: str, payment_metho
     matched = 0
     ambiguous = 0
 
+    consumed_ledger_ids: set[str] = set()
+    consumed_batch_ids: set[str] = set()
+
     for row in lines:
         pid = row["id"]
         props = row.get("properties") or {}
@@ -233,6 +249,7 @@ def reconcile_taishin_statement(*, statement_id: str, period: str, payment_metho
             continue
 
         pay = _select_name(props.get("付款方式") or {})
+        # If payment method is present, keep it within allowlist.
         if payment_methods and pay and pay not in payment_methods:
             continue
 
@@ -247,64 +264,142 @@ def reconcile_taishin_statement(*, statement_id: str, period: str, payment_metho
         if twd is None:
             continue
 
-        candidates: list[tuple[str, dict[str, Any]]] = []
+        # Collect ledger candidates in date window (by payment method allowlist)
+        candidate_ledgers: dict[str, dict[str, Any]] = {}
         for m in (payment_methods or ([pay] if pay else [])):
             if not m:
                 continue
             for led in _fetch_ledger_candidates(payment_method=m, day=trans_day):
-                lp = led.get("properties") or {}
-                cur = _select_name(lp.get("原幣別") or {})
-                amt = _number(lp.get("原幣金額") or {})
-                if cur != "TWD" or amt is None:
+                lid = led["id"]
+                if lid in consumed_ledger_ids:
                     continue
-                if _eq_amount(amt, twd):
-                    candidates.append((led["id"], led))
+                candidate_ledgers[lid] = led
 
-        # de-dup
-        cand_ids = sorted(set([c[0] for c in candidates]))
+        # Partition into:
+        # - exact single matches (amount match)
+        # - batch groups (sum match)
+        exact_single_ids: list[str] = []
+        batch_groups: dict[str, list[str]] = defaultdict(list)
 
-        if len(cand_ids) == 1:
-            ledger_id = cand_ids[0]
+        for lid, led in candidate_ledgers.items():
+            lp = led.get("properties") or {}
+            cur = _select_name(lp.get("原幣別") or {})
+            amt = _number(lp.get("原幣金額") or {})
+            if cur != "TWD" or amt is None:
+                continue
 
-            # Patch statement line
+            bid = _batch_id_from_ledger_props(lp)
+            if bid:
+                batch_groups[bid].append(lid)
+            if _eq_amount(amt, twd):
+                exact_single_ids.append(lid)
+
+        # Evaluate batch matches
+        batch_match_ids: list[str] = []
+        batch_match_bid: Optional[str] = None
+        for bid, lids in batch_groups.items():
+            if bid in consumed_batch_ids:
+                continue
+            if len(lids) < 2:
+                continue
+            total_amt = 0.0
+            ok = True
+            for lid in lids:
+                lp = candidate_ledgers[lid].get("properties") or {}
+                amt = _number(lp.get("原幣金額") or {})
+                if amt is None:
+                    ok = False
+                    break
+                total_amt += float(amt)
+            if ok and _eq_amount(total_amt, twd):
+                if batch_match_bid is not None:
+                    # multiple batch candidates -> ambiguous
+                    batch_match_bid = "__multiple__"
+                    break
+                batch_match_bid = bid
+                batch_match_ids = sorted(set(lids))
+
+        if batch_match_bid == "__multiple__":
+            ambiguous += 1
             _notion_patch_page(
                 pid,
                 {
                     "所屬帳單": {"relation": [{"id": statement_page_id}]},
-                    "對應帳目": {"relation": [{"id": ledger_id}]},
+                    "對帳狀態": {"select": {"name": "unmatched"}},
+                },
+            )
+            continue
+
+        # Decision priority:
+        # 1) Unique batch sum match
+        # 2) Unique single exact amount match
+        # Otherwise: unmatched/ambiguous
+        if batch_match_bid and batch_match_ids:
+            # Apply batch match
+            ledger_ids = batch_match_ids
+
+            _notion_patch_page(
+                pid,
+                {
+                    "所屬帳單": {"relation": [{"id": statement_page_id}]},
+                    "對應帳目": {"relation": [{"id": x} for x in ledger_ids]},
                     "對帳狀態": {"select": {"name": "matched"}},
                 },
             )
 
-            # Patch ledger
-            _notion_patch_page(
-                ledger_id,
-                {
-                    "對應帳單明細": {"relation": [{"id": pid}]},
-                    "對應帳單": {"relation": [{"id": statement_page_id}]},
-                },
-            )
+            for ledger_id in ledger_ids:
+                _notion_patch_page(
+                    ledger_id,
+                    {
+                        "對應帳單明細": {"relation": [{"id": pid}]},
+                        "對應帳單": {"relation": [{"id": statement_page_id}]},
+                    },
+                )
+                consumed_ledger_ids.add(ledger_id)
 
+            consumed_batch_ids.add(batch_match_bid)
             matched += 1
-        elif len(cand_ids) >= 2:
-            ambiguous += 1
-            # record statement page relation even if ambiguous
-            _notion_patch_page(
-                pid,
-                {
-                    "所屬帳單": {"relation": [{"id": statement_page_id}]},
-                    "對帳狀態": {"select": {"name": "unmatched"}},
-                },
-            )
+
         else:
-            # no match; still attach statement page
-            _notion_patch_page(
-                pid,
-                {
-                    "所屬帳單": {"relation": [{"id": statement_page_id}]},
-                    "對帳狀態": {"select": {"name": "unmatched"}},
-                },
-            )
+            unique_exact = sorted(set(exact_single_ids))
+            if len(unique_exact) == 1:
+                ledger_id = unique_exact[0]
+
+                _notion_patch_page(
+                    pid,
+                    {
+                        "所屬帳單": {"relation": [{"id": statement_page_id}]},
+                        "對應帳目": {"relation": [{"id": ledger_id}]},
+                        "對帳狀態": {"select": {"name": "matched"}},
+                    },
+                )
+                _notion_patch_page(
+                    ledger_id,
+                    {
+                        "對應帳單明細": {"relation": [{"id": pid}]},
+                        "對應帳單": {"relation": [{"id": statement_page_id}]},
+                    },
+                )
+                consumed_ledger_ids.add(ledger_id)
+                matched += 1
+
+            elif len(unique_exact) >= 2:
+                ambiguous += 1
+                _notion_patch_page(
+                    pid,
+                    {
+                        "所屬帳單": {"relation": [{"id": statement_page_id}]},
+                        "對帳狀態": {"select": {"name": "unmatched"}},
+                    },
+                )
+            else:
+                _notion_patch_page(
+                    pid,
+                    {
+                        "所屬帳單": {"relation": [{"id": statement_page_id}]},
+                        "對帳狀態": {"select": {"name": "unmatched"}},
+                    },
+                )
 
     total = len(lines)
     unmatched = max(total - matched - ambiguous, 0)
