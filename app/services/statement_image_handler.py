@@ -317,19 +317,22 @@ def extract_taishin_statement_lines(
 
     # Primary: OCR text -> deterministic parse
     if statement_month:
-        try:
-            ocr_text = extract_taishin_statement_text(
-                image_data,
-                openai_client=openai_client,
-                enable_compression=enable_compression,
-            )
-            parsed = parse_taishin_statement_ocr_text(ocr_text, statement_month=statement_month)
-            if parsed:
-                return parsed
-        except Exception as e:
-            logger.warning(f"OCR parse failed, fallback to legacy JSON extraction: {e}")
+        ocr_text = extract_taishin_statement_text(
+            image_data,
+            openai_client=openai_client,
+            enable_compression=enable_compression,
+        )
+        parsed = parse_taishin_statement_ocr_text(ocr_text, statement_month=statement_month)
 
-    # Fallback: legacy JSON extraction
+        # If we are in reconcile mode (statement_month provided) and nothing was parsed,
+        # treat it as not-a-statement instead of falling back to legacy JSON extraction.
+        # Legacy JSON extraction is less stable and may hallucinate dates/rows.
+        if not parsed:
+            raise StatementVisionError("not_statement: no parseable statement rows found")
+
+        return parsed
+
+    # Fallback (only when statement_month is not provided): legacy JSON extraction
     if enable_compression:
         image_data = compress_image(image_data)
 

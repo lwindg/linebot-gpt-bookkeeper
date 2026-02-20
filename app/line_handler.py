@@ -313,6 +313,9 @@ def handle_image_message(event: MessageEvent, messaging_api_blob: MessagingApiBl
                         statement_page_id=statement_page_id,
                     )
 
+                    if not created_ids:
+                        raise StatementVisionError("no_statement_lines")
+
                     warning = detect_statement_date_anomaly(period, lines)
 
                     # increment uploaded count (best-effort)
