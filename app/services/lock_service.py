@@ -288,8 +288,12 @@ class LockService:
                 )
                 return format_reconcile_summary(summary)
             except Exception as e:
-                logger.error(f"Reconcile failed: {e}")
-                return "❌ 執行對帳時發生錯誤，請稍後再試。"
+                logger.exception("Reconcile failed")
+                # Keep user message safe but informative.
+                msg = str(e)
+                if len(msg) > 200:
+                    msg = msg[:200] + "…"
+                return f"❌ 執行對帳時發生錯誤，請稍後再試。\n\n({msg})"
 
         # Lock Currency
         m = _RE_LOCK_CURRENCY.search(text)

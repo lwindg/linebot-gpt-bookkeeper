@@ -57,12 +57,33 @@ def _headers() -> dict[str, str]:
     }
 
 
-def _notion_db_query(database_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-    url = f"https://api.notion.com/v1/databases/{database_id}/query"
-    resp = requests.post(url, headers=_headers(), json=payload, timeout=30)
-    if resp.status_code != 200:
-        raise RuntimeError(f"Notion query failed: {resp.status_code} {resp.text}")
-    return resp.json()
+def _notion_query(container_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Query a Notion database or data source.
+
+    NOTE:
+    - Legacy Notion API uses /v1/databases/{id}/query.
+    - Newer data_sources feature uses /v1/data_sources/{id}/query.
+
+    We try databases first, then fall back to data_sources for compatibility.
+    """
+
+    # 1) Try databases
+    url_db = f"https://api.notion.com/v1/databases/{container_id}/query"
+    resp = requests.post(url_db, headers=_headers(), json=payload, timeout=30)
+    if resp.status_code == 200:
+        return resp.json()
+
+    # 2) Fallback to data_sources
+    url_ds = f"https://api.notion.com/v1/data_sources/{container_id}/query"
+    resp2 = requests.post(url_ds, headers=_headers(), json=payload, timeout=30)
+    if resp2.status_code == 200:
+        return resp2.json()
+
+    raise RuntimeError(
+        "Notion query failed: "
+        f"db={resp.status_code} {resp.text} | "
+        f"ds={resp2.status_code} {resp2.text}"
+    )
 
 
 def _notion_create_page(database_id: str, properties: dict[str, Any]) -> str:
@@ -123,7 +144,7 @@ def _ensure_statement_page(*, statement_id: str, period: str, bank: str = "台�
         raise RuntimeError("NOTION_CC_STATEMENTS_DB_ID not configured")
 
     # Find existing by 帳單ID
-    q = _notion_db_query(
+    q = _notion_query(
         NOTION_CC_STATEMENTS_DB_ID,
         {
             "page_size": 5,
@@ -156,7 +177,7 @@ def _fetch_statement_lines(statement_id: str) -> list[dict[str, Any]]:
         }
         if cursor:
             payload["start_cursor"] = cursor
-        data = _notion_db_query(NOTION_CC_STATEMENT_LINES_DB_ID, payload)
+        data = _notion_query(NOTION_CC_STATEMENT_LINES_DB_ID, payload)
         all_rows.extend(data.get("results") or [])
         if not data.get("has_more"):
             break
@@ -172,7 +193,7 @@ def _fetch_ledger_candidates(*, payment_method: str, day: date) -> list[dict[str
     end = (day + timedelta(days=2)).isoformat()
 
     # Query by payment method and date window; we'll filter amounts client-side.
-    data = _notion_db_query(
+    data = _notion_query(
         NOTION_DATABASE_ID,
         {
             "page_size": 100,
