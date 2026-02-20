@@ -16,6 +16,7 @@ import json
 import logging
 from dataclasses import dataclass
 from typing import Optional, Any
+from collections import Counter
 
 import requests
 from openai import OpenAI
@@ -46,6 +47,66 @@ class TaishinStatementLine:
 
 class StatementVisionError(Exception):
     pass
+
+
+def build_statement_raw_text(statement_month: str, line: TaishinStatementLine) -> str:
+    trans = _normalize_statement_date(statement_month, line.trans_date) if line.trans_date else None
+    post = _normalize_statement_date(statement_month, line.post_date) if line.post_date else None
+    fx = _normalize_statement_date(statement_month, line.fx_date) if line.fx_date else None
+
+    parts = [
+        f"card_hint={line.card_hint or ''}",
+        f"trans_date={trans or ''}",
+        f"post_date={post or ''}",
+        f"twd_amount={line.twd_amount}",
+        f"currency={line.currency or ''}",
+        f"foreign_amount={line.foreign_amount if line.foreign_amount is not None else ''}",
+        f"fx_date={fx or ''}",
+        f"country={line.country or ''}",
+        f"is_fee={line.is_fee}",
+        f"fee_reference_amount={line.fee_reference_amount if line.fee_reference_amount is not None else ''}",
+        f"description={line.description}",
+    ]
+    return " | ".join(parts)
+
+
+def detect_statement_date_anomaly(statement_month: str, lines: list[TaishinStatementLine]) -> Optional[str]:
+    """Detect suspicious date distribution (warning only).
+
+    Heuristic: if many lines share the same trans_date, but post_date varies,
+    it often indicates the model latched onto a header date.
+    """
+
+    trans_dates = []
+    post_dates = []
+    for ln in lines:
+        td = _normalize_statement_date(statement_month, ln.trans_date) if ln.trans_date else None
+        pd = _normalize_statement_date(statement_month, ln.post_date) if ln.post_date else None
+        if td:
+            trans_dates.append(td)
+        if pd:
+            post_dates.append(pd)
+
+    if len(trans_dates) < 6:
+        return None
+
+    c = Counter(trans_dates)
+    top_date, top_count = c.most_common(1)[0]
+
+    # Warn if >= 50% of lines share the same trans_date.
+    if top_count / max(len(trans_dates), 1) >= 0.5:
+        # Only warn if post_date distribution is not similarly collapsed.
+        pc = Counter(post_dates)
+        if not pc:
+            return "⚠️ 偵測到消費日分布異常（大量集中同一天）。建議檢查消費日欄位是否有錯讀。"
+        p_top = pc.most_common(1)[0][1]
+        if p_top / max(len(post_dates), 1) < 0.5:
+            return (
+                f"⚠️ 偵測到消費日分布異常（{top_count} 筆集中在 {top_date}）。"
+                "\n這常見於帳單表格欄位錯讀；建議到 Notion 檢查『消費日』是否正確。"
+            )
+
+    return None
 
 
 def _parse_float(value: Any) -> Optional[float]:
@@ -224,6 +285,15 @@ def notion_create_cc_statement_lines(
             "幣別": {"select": {"name": line.currency}} if line.currency else None,
             "外幣金額": {"number": line.foreign_amount} if line.foreign_amount is not None else None,
             "消費明細": {"rich_text": [{"text": {"content": line.description}}]},
+            "raw_text": {
+                "rich_text": [
+                    {
+                        "text": {
+                            "content": build_statement_raw_text(statement_month, line)[:2000]
+                        }
+                    }
+                ]
+            },
             "是否手續費": {"checkbox": line.is_fee},
             "手續費參考金額": {"number": line.fee_reference_amount}
             if line.fee_reference_amount is not None

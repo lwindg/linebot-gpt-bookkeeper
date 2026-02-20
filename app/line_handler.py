@@ -23,6 +23,7 @@ from app.services.image_handler import (
 from app.services.statement_image_handler import (
     extract_taishin_statement_lines,
     notion_create_cc_statement_lines,
+    detect_statement_date_anomaly,
     StatementVisionError,
 )
 from app.pipeline.image_flow import process_image_envelope
@@ -303,6 +304,8 @@ def handle_image_message(event: MessageEvent, messaging_api_blob: MessagingApiBl
                         lines=lines,
                     )
 
+                    warning = detect_statement_date_anomaly(period, lines)
+
                     # increment uploaded count (best-effort)
                     try:
                         reconcile_lock["uploaded_images"] = int(reconcile_lock.get("uploaded_images", 0)) + 1
@@ -319,8 +322,10 @@ def handle_image_message(event: MessageEvent, messaging_api_blob: MessagingApiBl
                         f"\n• 期別：{period}"
                         f"\n• 帳單ID：{statement_id}"
                         f"\n• 新增明細：{len(created_ids)} 筆"
-                        "\n\n接著可輸入：執行對帳"
                     )
+                    if warning:
+                        reply_text += f"\n\n{warning}"
+                    reply_text += "\n\n接著可輸入：執行對帳"
                 except StatementVisionError as e:
                     reply_text = f"❌ 無法辨識台新帳單\n\n{str(e)}\n\n💡 請確認圖片是帳單明細截圖（非 Notion/聊天截圖），或重拍清晰一點。"
                 except Exception as e:

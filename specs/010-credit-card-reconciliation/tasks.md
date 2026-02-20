@@ -58,6 +58,16 @@
   - [ ] payment_records（上一期扣繳）只提醒
   - [ ] 手續費 reference 匹配 + 分攤（外幣）
 
+## Known Issues / Improvements (record)
+
+- [ ] K1 Statement import: 消費日偶發錯讀（多筆被吸到同一天，如 12/27 → 12/31），導致 unmatched。
+  - [ ] K1a 匯入時填入 `raw_text`（每列原始行文字/欄位拼接）以便稽核與修正。
+  - [ ] K1b 匯入後日期合理性檢查（離群/大量同日偵測）→ 先警告，暫不自動改。
+
+- [ ] K2 Notion relation should be paired (雙向自動關聯)
+  - Decision: use **original names**, and make **statement lines** side the primary editing surface.
+  - Plan: create a new paired relation in Notion UI, migrate data, then rename back to original property names.
+
 ## Phase 6 — 擴充（非 MVP）
 
 - [ ] 6.1 永豐模板
