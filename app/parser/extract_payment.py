@@ -26,10 +26,16 @@ def extract_payment_method(text: str) -> str:
     """
     # 使用 payment_resolver 的偵測邏輯（已包含優先序與別名對照）
     detected = detect_payment_method(text)
-    
+
     if detected:
-        return detected # detect_payment_method 已經回傳 canonical name
-        
+        return detected  # detect_payment_method already returns canonical name
+
+    # Special-case: cashflow withdrawals from Taishin.
+    # Users often type "台新提款" meaning withdrawing from the Taishin Richart account.
+    # We intentionally do NOT add "台新提款" as a payment keyword to avoid cleaning the entire item.
+    if "提款" in (text or "") and "台新" in (text or ""):
+        return "台新 Richart"
+
     return "N/A"
 
 
