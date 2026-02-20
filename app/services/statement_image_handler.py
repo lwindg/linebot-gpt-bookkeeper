@@ -14,10 +14,13 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import io
 from dataclasses import dataclass
 from typing import Optional, Any
 from collections import Counter
 import re
+
+from PIL import Image, ImageEnhance
 
 import requests
 from openai import OpenAI
@@ -260,6 +263,42 @@ def parse_taishin_statement_ocr_text(text: str, *, statement_month: str) -> list
     return lines
 
 
+def preprocess_statement_table_image(image_data: bytes) -> bytes:
+    """Preprocess statement screenshot for OCR.
+
+    Goal: reduce line/column drift by cropping to the table area and boosting contrast.
+    This runs only in credit card reconciliation flow.
+    """
+
+    img = Image.open(io.BytesIO(image_data))
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+
+    w, h = img.size
+
+    # Heuristic crop: remove top/bottom margins; keep the table region.
+    # Works well for typical statement screenshots with header/status bars.
+    left = int(w * 0.02)
+    right = int(w * 0.98)
+    top = int(h * 0.10)
+    bottom = int(h * 0.98)
+    if right > left and bottom > top:
+        img = img.crop((left, top, right, bottom))
+
+    # Upscale moderately to help OCR on small text
+    w2, h2 = img.size
+    scale = 2
+    img = img.resize((w2 * scale, h2 * scale), Image.Resampling.LANCZOS)
+
+    # Boost contrast and sharpness
+    img = ImageEnhance.Contrast(img).enhance(1.8)
+    img = ImageEnhance.Sharpness(img).enhance(1.5)
+
+    out = io.BytesIO()
+    img.save(out, format="JPEG", quality=90, optimize=True)
+    return out.getvalue()
+
+
 def extract_taishin_statement_text(
     image_data: bytes,
     openai_client: Optional[OpenAI] = None,
@@ -271,7 +310,7 @@ def extract_taishin_statement_text(
         openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
     if enable_compression:
-        image_data = compress_image(image_data)
+        image_data = preprocess_statement_table_image(image_data)
 
     base64_image = encode_image_base64(image_data)
 
@@ -439,27 +478,13 @@ def extract_taishin_statement_lines(
 
     # Primary: OCR text -> deterministic parse
     if statement_month:
-        # Run OCR multiple times (with/without compression) and vote to reduce single-character OCR errors.
-        ocr_texts = [
-            extract_taishin_statement_text(
-                image_data,
-                openai_client=openai_client,
-                enable_compression=True,
-            ),
-            extract_taishin_statement_text(
-                image_data,
-                openai_client=openai_client,
-                enable_compression=False,
-            ),
-            extract_taishin_statement_text(
-                image_data,
-                openai_client=openai_client,
-                enable_compression=True,
-            ),
-        ]
-
-        parses = [parse_taishin_statement_ocr_text(t, statement_month=statement_month) for t in ocr_texts]
-        parsed = reconcile_ocr_parses(parses, statement_month=statement_month)
+        # Single-pass OCR (token-saving). We rely on table preprocessing for stability.
+        ocr_text = extract_taishin_statement_text(
+            image_data,
+            openai_client=openai_client,
+            enable_compression=True,
+        )
+        parsed = parse_taishin_statement_ocr_text(ocr_text, statement_month=statement_month)
 
         if not parsed:
             raise StatementVisionError("not_statement: no parseable statement rows found")
