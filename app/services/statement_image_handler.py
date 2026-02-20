@@ -17,6 +17,7 @@ import logging
 from dataclasses import dataclass
 from typing import Optional, Any
 from collections import Counter
+import re
 
 import requests
 from openai import OpenAI
@@ -31,7 +32,7 @@ from app.config import (
     NOTION_CC_STATEMENT_LINES_DB_ID,
     NOTION_CC_STATEMENTS_DB_ID,
 )
-from app.gpt.prompts import TAISHIN_STATEMENT_VISION_PROMPT
+from app.gpt.prompts import TAISHIN_STATEMENT_VISION_PROMPT, TAISHIN_STATEMENT_OCR_PROMPT
 from app.services.image_handler import compress_image, encode_image_base64
 
 logger = logging.getLogger(__name__)
@@ -133,16 +134,202 @@ def _parse_float(value: Any) -> Optional[float]:
         return None
 
 
-def extract_taishin_statement_lines(
+def _token_is_amount(tok: str) -> bool:
+    t = tok.replace(",", "")
+    return bool(re.fullmatch(r"-?\d+(?:\.\d+)?", t))
+
+
+def _parse_amount(tok: str) -> Optional[float]:
+    try:
+        return float(tok.replace(",", ""))
+    except Exception:
+        return None
+
+
+def parse_taishin_statement_ocr_text(text: str, *, statement_month: str) -> list[TaishinStatementLine]:
+    """Parse Taishin statement rows from OCR text.
+
+    Strategy:
+    - Walk line-by-line.
+    - Track current card section by keywords.
+    - For each row that starts with two date tokens, parse columns from right-to-left.
+
+    Expected row start:
+      <trans_date> <post_date> <description...> <twd_amount> [fx_date] [country] [currency] [foreign_amount]
+
+    Dates may be ROC(YYYMMDD), Gregorian(YYYYMMDD), YYMMDD, MM/DD, or MMDD.
+    """
+
+    lines: list[TaishinStatementLine] = []
+    current_card: Optional[str] = None
+
+    for raw_line in (text or "").splitlines():
+        s = raw_line.strip()
+        if not s:
+            continue
+
+        # Section detection
+        s_norm = s.replace(" ", "")
+        if "GoGo" in s or "@GoGo" in s or "@GoGoicash" in s_norm:
+            current_card = "台新狗卡"
+        if "FlyGo" in s:
+            current_card = "FlyGo 信用卡"
+
+        parts = s.split()
+        if len(parts) < 4:
+            continue
+
+        # Row detection: must start with two date-ish tokens (digits or with / or -)
+        t0, t1 = parts[0], parts[1]
+        if not (re.fullmatch(r"[0-9/\-]+", t0) and re.fullmatch(r"[0-9/\-]+", t1)):
+            continue
+
+        trans_date = t0
+        post_date = t1
+
+        # Parse from right-to-left
+        rest = parts[2:]
+
+        foreign_amount = None
+        currency = None
+        country = None
+        fx_date = None
+
+        # foreign amount at end
+        if rest and _token_is_amount(rest[-1]):
+            # only treat it as foreign amount if there is a currency code before it
+            if len(rest) >= 2 and re.fullmatch(r"[A-Z]{3}", rest[-2]):
+                foreign_amount = _parse_amount(rest[-1])
+                currency = rest[-2]
+                rest = rest[:-2]
+
+        # country code
+        if rest and re.fullmatch(r"[A-Z]{2}", rest[-1]):
+            country = rest[-1]
+            rest = rest[:-1]
+
+        # fx date as MMDD or date-like
+        if rest and re.fullmatch(r"\d{4}", rest[-1]):
+            fx_date = rest[-1]
+            rest = rest[:-1]
+
+        # TWD amount should be the last numeric in rest
+        if not rest:
+            continue
+
+        twd_amount = None
+        twd_idx = None
+        for i in range(len(rest) - 1, -1, -1):
+            if _token_is_amount(rest[i]):
+                twd_amount = _parse_amount(rest[i])
+                twd_idx = i
+                break
+
+        if twd_amount is None or twd_idx is None:
+            continue
+
+        desc_tokens = rest[:twd_idx]
+        description = " ".join(desc_tokens).strip()
+        if not description:
+            description = "(statement line)"
+
+        # Fee line detection
+        is_fee = description.startswith("國外交易服務費")
+        fee_reference_amount = None
+        if is_fee:
+            m = re.search(r"服務費[—\-](\d+(?:\.\d+)?)", description)
+            if m:
+                fee_reference_amount = _parse_float(m.group(1))
+
+        lines.append(
+            TaishinStatementLine(
+                card_hint=current_card,
+                trans_date=trans_date,
+                post_date=post_date,
+                description=description,
+                twd_amount=float(twd_amount),
+                fx_date=fx_date,
+                country=country,
+                currency=currency,
+                foreign_amount=foreign_amount,
+                is_fee=is_fee,
+                fee_reference_amount=fee_reference_amount,
+            )
+        )
+
+    return lines
+
+
+def extract_taishin_statement_text(
     image_data: bytes,
     openai_client: Optional[OpenAI] = None,
     enable_compression: bool = True,
-) -> list[TaishinStatementLine]:
-    """Extract statement lines from an image using OpenAI Vision."""
+) -> str:
+    """Extract raw text from a statement image using OpenAI Vision (OCR-like)."""
 
     if openai_client is None:
         openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
+    if enable_compression:
+        image_data = compress_image(image_data)
+
+    base64_image = encode_image_base64(image_data)
+
+    response = openai_client.chat.completions.create(
+        model=GPT_VISION_MODEL,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": TAISHIN_STATEMENT_OCR_PROMPT},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
+                    },
+                ],
+            }
+        ],
+        max_tokens=3000,
+    )
+
+    text = response.choices[0].message.content
+    if not text:
+        raise StatementVisionError("Empty OCR response")
+
+    return text
+
+
+def extract_taishin_statement_lines(
+    image_data: bytes,
+    openai_client: Optional[OpenAI] = None,
+    enable_compression: bool = True,
+    *,
+    statement_month: Optional[str] = None,
+) -> list[TaishinStatementLine]:
+    """Extract statement lines from an image.
+
+    Primary: OCR text extraction + deterministic parsing (more stable than direct JSON extraction).
+    Fallback: legacy JSON extraction prompt.
+    """
+
+    if openai_client is None:
+        openai_client = OpenAI(api_key=OPENAI_API_KEY)
+
+    # Primary: OCR text -> deterministic parse
+    if statement_month:
+        try:
+            ocr_text = extract_taishin_statement_text(
+                image_data,
+                openai_client=openai_client,
+                enable_compression=enable_compression,
+            )
+            parsed = parse_taishin_statement_ocr_text(ocr_text, statement_month=statement_month)
+            if parsed:
+                return parsed
+        except Exception as e:
+            logger.warning(f"OCR parse failed, fallback to legacy JSON extraction: {e}")
+
+    # Fallback: legacy JSON extraction
     if enable_compression:
         image_data = compress_image(image_data)
 
@@ -180,7 +367,6 @@ def extract_taishin_statement_lines(
     for raw in data.get("lines", []):
         twd = _parse_float(raw.get("twd_amount"))
         if twd is None:
-            # skip incomplete
             continue
         lines.append(
             TaishinStatementLine(

@@ -298,7 +298,7 @@ def handle_image_message(event: MessageEvent, messaging_api_blob: MessagingApiBl
             else:
                 try:
                     logger.info("開始分析台新帳單圖片")
-                    lines = extract_taishin_statement_lines(image_data)
+                    lines = extract_taishin_statement_lines(image_data, statement_month=period)
                     statement_page_id = ensure_cc_statement_page(
                         statement_id=statement_id,
                         period=period,

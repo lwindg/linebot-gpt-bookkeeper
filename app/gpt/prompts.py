@@ -559,6 +559,18 @@ MULTI_EXPENSE_PROMPT = f"""你是專業的記帳助手，協助使用者記錄�
 # GPT Vision 台新信用卡帳單（消費明細）識別 Prompt（v1.11.0 新增）
 # ============================================================================
 
+TAISHIN_STATEMENT_OCR_PROMPT = """You are an OCR engine.
+
+Extract ALL visible text from this Taishin credit card statement screenshot.
+
+Rules:
+- Return plain text only.
+- Preserve line breaks as seen (one logical row per line if possible).
+- Do not summarize.
+- Do not hallucinate missing characters.
+- Keep numbers exactly as shown.
+"""
+
 TAISHIN_STATEMENT_VISION_PROMPT = """
 你是專門解析「台新銀行信用卡帳單（消費明細表格）」的資訊抽取器。
 
