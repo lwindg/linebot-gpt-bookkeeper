@@ -354,8 +354,11 @@ def handle_image_message(event: MessageEvent, messaging_api_blob: MessagingApiBl
                 except StatementVisionError as e:
                     reply_text = f"❌ 無法辨識台新帳單\n\n{str(e)}\n\n💡 請確認圖片是帳單明細截圖（非 Notion/聊天截圖），或重拍清晰一點。"
                 except Exception as e:
-                    logger.error(f"台新帳單匯入失敗: {e}")
-                    reply_text = "❌ 匯入台新帳單時發生錯誤，請稍後再試。"
+                    logger.exception("台新帳單匯入失敗")
+                    msg = str(e)
+                    if len(msg) > 200:
+                        msg = msg[:200] + "…"
+                    reply_text = f"❌ 匯入台新帳單時發生錯誤，請稍後再試。\n\n({msg})"
 
         else:
             # Receipt flow (existing)
