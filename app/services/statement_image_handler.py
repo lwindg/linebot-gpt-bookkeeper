@@ -21,13 +21,23 @@ from collections import Counter
 import requests
 from openai import OpenAI
 
-from app.config import OPENAI_API_KEY, GPT_VISION_MODEL, NOTION_TOKEN, NOTION_CC_STATEMENT_LINES_DB_ID
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from app.config import (
+    OPENAI_API_KEY,
+    GPT_VISION_MODEL,
+    NOTION_TOKEN,
+    NOTION_CC_STATEMENT_LINES_DB_ID,
+    NOTION_CC_STATEMENTS_DB_ID,
+)
 from app.gpt.prompts import TAISHIN_STATEMENT_VISION_PROMPT
 from app.services.image_handler import compress_image, encode_image_base64
 
 logger = logging.getLogger(__name__)
 
-NOTION_VERSION = "2025-09-03"
+NOTION_PAGE_VERSION = "2025-09-03"
+NOTION_DB_VERSION = "2022-06-28"  # for /v1/databases/* endpoints
 
 
 @dataclass
@@ -229,12 +239,85 @@ def _normalize_statement_date(statement_month: str, mmdd_or_iso: Optional[str]) 
         return None
 
 
+def ensure_cc_statement_page(
+    *,
+    statement_id: str,
+    period: str,
+    bank: str = "台新",
+    source_note: Optional[str] = None,
+) -> str:
+    """Create/find a statement page.
+
+    Uses 帳單ID as the unique key.
+
+    We intentionally keep the required metadata minimal in MVP.
+    """
+
+    if not NOTION_TOKEN:
+        raise RuntimeError("NOTION_TOKEN not configured")
+    if not NOTION_CC_STATEMENTS_DB_ID:
+        raise RuntimeError("NOTION_CC_STATEMENTS_DB_ID not configured")
+
+    headers_db = {
+        "Authorization": f"Bearer {NOTION_TOKEN}",
+        "Content-Type": "application/json",
+        "Notion-Version": NOTION_DB_VERSION,
+    }
+
+    # 1) Find existing
+    resp = requests.post(
+        f"https://api.notion.com/v1/databases/{NOTION_CC_STATEMENTS_DB_ID}/query",
+        headers=headers_db,
+        json={
+            "page_size": 5,
+            "filter": {"property": "帳單ID", "rich_text": {"equals": statement_id}},
+        },
+        timeout=30,
+    )
+    if resp.status_code == 200:
+        results = resp.json().get("results") or []
+        if results:
+            return results[0]["id"]
+    else:
+        raise RuntimeError(f"Notion query(statement) failed: {resp.status_code} {resp.text}")
+
+    # 2) Create
+    tz = ZoneInfo("Asia/Taipei")
+    now = datetime.now(tz).isoformat()
+
+    props: dict[str, Any] = {
+        "Name": {"title": [{"text": {"content": f"{bank} {period}"}}]},
+        "帳單ID": {"rich_text": [{"text": {"content": statement_id}}]},
+        "銀行": {"select": {"name": bank}},
+        "匯入時間": {"date": {"start": now}},
+    }
+    if source_note:
+        props["備註"] = {"rich_text": [{"text": {"content": source_note[:2000]}}]}
+
+    headers_page = {
+        "Authorization": f"Bearer {NOTION_TOKEN}",
+        "Content-Type": "application/json",
+        "Notion-Version": NOTION_PAGE_VERSION,
+    }
+
+    resp2 = requests.post(
+        "https://api.notion.com/v1/pages",
+        headers=headers_page,
+        json={"parent": {"database_id": NOTION_CC_STATEMENTS_DB_ID}, "properties": props},
+        timeout=30,
+    )
+    if resp2.status_code != 200:
+        raise RuntimeError(f"Notion create(statement) failed: {resp2.status_code} {resp2.text}")
+    return resp2.json()["id"]
+
+
 def notion_create_cc_statement_lines(
     *,
     database_id: Optional[str] = None,
     statement_month: str,
     statement_id: str,
     lines: list[TaishinStatementLine],
+    statement_page_id: Optional[str] = None,
     account_page_id_by_card_hint: Optional[dict[str, str]] = None,
 ) -> list[str]:
     """Insert statement lines into Notion cc_statement_lines database.
@@ -254,7 +337,7 @@ def notion_create_cc_statement_lines(
     headers = {
         "Authorization": f"Bearer {NOTION_TOKEN}",
         "Content-Type": "application/json",
-        "Notion-Version": NOTION_VERSION,
+        "Notion-Version": NOTION_PAGE_VERSION,
     }
 
     created: list[str] = []
@@ -267,8 +350,8 @@ def notion_create_cc_statement_lines(
 
         props: dict[str, Any] = {
             "Name": {"title": [{"text": {"content": line.description[:80] or "(statement line)"}}]},
-            "帳單月份": {"select": {"name": statement_month}},
             "帳單ID": {"rich_text": [{"text": {"content": statement_id}}]},
+            "所屬帳單": {"relation": [{"id": statement_page_id}]} if statement_page_id else None,
             "付款方式": {"select": {"name": line.card_hint}} if line.card_hint else None,
             "連結帳戶": account_rel,
             "消費日": {"date": {"start": _normalize_statement_date(statement_month, line.trans_date)}}

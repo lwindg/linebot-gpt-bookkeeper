@@ -22,6 +22,7 @@ from app.services.image_handler import (
 )
 from app.services.statement_image_handler import (
     extract_taishin_statement_lines,
+    ensure_cc_statement_page,
     notion_create_cc_statement_lines,
     detect_statement_date_anomaly,
     StatementVisionError,
@@ -298,10 +299,18 @@ def handle_image_message(event: MessageEvent, messaging_api_blob: MessagingApiBl
                 try:
                     logger.info("開始分析台新帳單圖片")
                     lines = extract_taishin_statement_lines(image_data)
+                    statement_page_id = ensure_cc_statement_page(
+                        statement_id=statement_id,
+                        period=period,
+                        bank="台新",
+                        source_note=f"LINE image message_id={message_id}",
+                    )
+
                     created_ids = notion_create_cc_statement_lines(
                         statement_month=period,
                         statement_id=statement_id,
                         lines=lines,
+                        statement_page_id=statement_page_id,
                     )
 
                     warning = detect_statement_date_anomaly(period, lines)
