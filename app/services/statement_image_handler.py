@@ -225,13 +225,40 @@ def _normalize_statement_date(statement_month: str, mmdd_or_iso: Optional[str]) 
 
     # ROC date formats from Taishin statement, e.g. 1141202 (YYYMMDD)
     if s.isdigit():
-        # YYYMMDD (7 digits)
+        # YYYYMMDD (8 digits) - Gregorian year
+        if len(s) == 8:
+            try:
+                year = int(s[:4])
+                mm = int(s[4:6])
+                dd = int(s[6:8])
+                return f"{year:04d}-{mm:02d}-{dd:02d}"
+            except Exception:
+                return None
+
+        # YYYMMDD (7 digits) - ROC year
         if len(s) == 7:
             try:
                 roc_y = int(s[:3])
                 mm = int(s[3:5])
                 dd = int(s[5:7])
                 year = roc_y + 1911
+                return f"{year:04d}-{mm:02d}-{dd:02d}"
+            except Exception:
+                return None
+
+        # YYMMDD (6 digits) - Gregorian short year (assume 2000+YY, then sanity-check by statement period)
+        if len(s) == 6:
+            try:
+                yy = int(s[:2])
+                mm = int(s[2:4])
+                dd = int(s[4:6])
+                year = 2000 + yy
+
+                # If far from statement period year, shift to 1900s as a fallback.
+                y, _m = [int(x) for x in statement_month.split("-", 1)]
+                if abs(year - y) >= 50:
+                    year = 1900 + yy
+
                 return f"{year:04d}-{mm:02d}-{dd:02d}"
             except Exception:
                 return None
