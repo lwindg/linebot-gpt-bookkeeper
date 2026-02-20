@@ -223,6 +223,30 @@ def _normalize_statement_date(statement_month: str, mmdd_or_iso: Optional[str]) 
     if len(s) >= 10 and s[4] == "-" and s[7] == "-":
         return s[:10]
 
+    # ROC date formats from Taishin statement, e.g. 1141202 (YYYMMDD)
+    if s.isdigit():
+        # YYYMMDD (7 digits)
+        if len(s) == 7:
+            try:
+                roc_y = int(s[:3])
+                mm = int(s[3:5])
+                dd = int(s[5:7])
+                year = roc_y + 1911
+                return f"{year:04d}-{mm:02d}-{dd:02d}"
+            except Exception:
+                return None
+
+        # MMDD (4 digits), often used in FX date column (e.g. 1208)
+        if len(s) == 4:
+            try:
+                mm = int(s[:2])
+                dd = int(s[2:4])
+                y, m = [int(x) for x in statement_month.split("-", 1)]
+                year = y + (1 if mm < m else 0)
+                return f"{year:04d}-{mm:02d}-{dd:02d}"
+            except Exception:
+                return None
+
     # Try MM/DD or MM-DD
     sep = "/" if "/" in s else ("-" if "-" in s else None)
     if not sep:
