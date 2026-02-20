@@ -33,7 +33,8 @@ _CASHFLOW_CATEGORIES = {
 
 _CASHFLOW_AMOUNT_PATTERN = re.compile(r"-?\d+(?:\.\d+)?")
 _SEMANTIC_DATE_TOKENS = ("今天", "昨日", "昨天", "前天", "大前天", "明天", "後天", "大後天")
-_EXPLICIT_DATE_PATTERN = re.compile(r"(20\d{2})[/-](\d{1,2})[/-](\d{1,2})")
+# NOTE: For explicit date parsing, we reuse parser's extract_date() which is
+# anchored to the start of each item and validates ranges.
 
 
 def parse_semantic_date(date_str: str, taipei_tz: ZoneInfo) -> str:
@@ -97,11 +98,25 @@ def extract_semantic_date_token(message: str) -> Optional[str]:
 
 
 def extract_explicit_date(message: str) -> Optional[str]:
-    match = _EXPLICIT_DATE_PATTERN.search(message or "")
-    if not match:
+    """Extract an explicit date token from the beginning of the message.
+
+    Reuses parser's date extractor to support:
+    - YYYY/MM/DD, YYYY-MM-DD
+    - ROC YYY/MM/DD
+    - MM/DD, MM-DD
+    """
+
+    if not message:
         return None
-    year, month, day = (int(match.group(1)), int(match.group(2)), int(match.group(3)))
-    return f"{year:04d}-{month:02d}-{day:02d}"
+
+    try:
+        from app.parser.extract_date import extract_date as parser_extract_date
+
+        taipei_tz = ZoneInfo("Asia/Taipei")
+        now = datetime.now(taipei_tz)
+        return parser_extract_date(message, now)
+    except Exception:
+        return None
 
 
 def normalize_cashflow_category(intent_type: str, raw_category: str) -> str:
@@ -114,7 +129,17 @@ def normalize_cashflow_category(intent_type: str, raw_category: str) -> str:
 
 def fallback_cashflow_items_from_message(message: str, intent_type: str) -> list[dict]:
     text = message or ""
-    amount_match = _CASHFLOW_AMOUNT_PATTERN.search(text)
+
+    # If the message starts with a short date token (e.g. "2/5"), remove it from
+    # the text before amount extraction to avoid capturing the month/day as amount.
+    # We still keep the date separately via extract_explicit_date().
+    text_for_amount = text
+    text_for_amount = re.sub(r"^\s*\d{1,2}[/-]\d{1,2}\s+", "", text_for_amount)
+
+    # Prefer the LAST numeric token as amount (cashflow statements often include
+    # dates or other numbers earlier in the message).
+    matches = list(_CASHFLOW_AMOUNT_PATTERN.finditer(text_for_amount))
+    amount_match = matches[-1] if matches else None
     amount = float(amount_match.group(0)) if amount_match else None
     if not amount or amount <= 0:
         return []
