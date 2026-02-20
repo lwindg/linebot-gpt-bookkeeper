@@ -299,6 +299,128 @@ def extract_taishin_statement_text(
     return text
 
 
+def _majority(values: list[Optional[str]]) -> Optional[str]:
+    vals = [v for v in values if v]
+    if not vals:
+        return None
+    c = Counter(vals)
+    top, cnt = c.most_common(1)[0]
+    if cnt >= 2:
+        return top
+    return vals[0]
+
+
+def reconcile_ocr_parses(
+    parses: list[list[TaishinStatementLine]],
+    *,
+    statement_month: str,
+) -> list[TaishinStatementLine]:
+    """Combine multiple OCR parses to reduce single-character OCR errors.
+
+    - Choose a baseline parse (most lines).
+    - For each baseline line, find matching lines in other parses by (twd_amount, normalized post_date).
+    - Vote on trans_date/post_date/fx_date tokens.
+
+    This is best-effort and intentionally conservative.
+    """
+
+    if not parses:
+        return []
+
+    baseline = max(parses, key=lambda x: len(x))
+
+    # Build lookup for other parses
+    lookups = []
+    for p in parses:
+        d = {}
+        for ln in p:
+            post_norm = _normalize_statement_date(statement_month, ln.post_date) if ln.post_date else None
+            key = (round(float(ln.twd_amount), 2), post_norm)
+            # keep first
+            d.setdefault(key, ln)
+        lookups.append(d)
+
+    merged: list[TaishinStatementLine] = []
+    for base in baseline:
+        post_norm = _normalize_statement_date(statement_month, base.post_date) if base.post_date else None
+        key = (round(float(base.twd_amount), 2), post_norm)
+
+        candidates: list[TaishinStatementLine] = []
+        for d in lookups:
+            if key in d:
+                candidates.append(d[key])
+
+        trans_vote = _majority([c.trans_date for c in candidates])
+        post_vote = _majority([c.post_date for c in candidates])
+        fx_vote = _majority([c.fx_date for c in candidates])
+
+        # Prefer non-empty card_hint/desc/currency from baseline
+        merged.append(
+            TaishinStatementLine(
+                card_hint=base.card_hint,
+                trans_date=trans_vote or base.trans_date,
+                post_date=post_vote or base.post_date,
+                description=base.description,
+                twd_amount=base.twd_amount,
+                fx_date=fx_vote or base.fx_date,
+                country=base.country,
+                currency=base.currency,
+                foreign_amount=base.foreign_amount,
+                is_fee=base.is_fee,
+                fee_reference_amount=base.fee_reference_amount,
+            )
+        )
+
+    return merged
+
+
+def build_ocr_preview(text: str, *, max_lines: int = 30, max_chars: int = 1800) -> str:
+    lines = (text or "").splitlines()
+    chunk = "\n".join(lines[:max_lines]).strip()
+    if len(chunk) > max_chars:
+        chunk = chunk[:max_chars] + "…"
+    return chunk
+
+
+def append_statement_note(*, statement_page_id: str, note: str) -> None:
+    """Append note text into statement page 備註 (best-effort)."""
+
+    if not note:
+        return
+
+    headers = {
+        "Authorization": f"Bearer {NOTION_TOKEN}",
+        "Content-Type": "application/json",
+        "Notion-Version": NOTION_PAGE_VERSION,
+    }
+
+    # Fetch existing note
+    resp = requests.get(f"https://api.notion.com/v1/pages/{statement_page_id}", headers=headers, timeout=30)
+    if resp.status_code != 200:
+        return
+
+    props = (resp.json().get("properties") or {})
+    rt = (props.get("備註") or {}).get("rich_text") or []
+    existing = rt[0].get("plain_text") if rt else ""
+
+    combined = (existing + "\n\n" + note).strip() if existing else note.strip()
+    if len(combined) > 2000:
+        combined = combined[-2000:]
+
+    payload = {
+        "properties": {
+            "備註": {"rich_text": [{"text": {"content": combined}}]},
+        }
+    }
+
+    requests.patch(
+        f"https://api.notion.com/v1/pages/{statement_page_id}",
+        headers=headers,
+        json=payload,
+        timeout=30,
+    )
+
+
 def extract_taishin_statement_lines(
     image_data: bytes,
     openai_client: Optional[OpenAI] = None,
@@ -317,16 +439,28 @@ def extract_taishin_statement_lines(
 
     # Primary: OCR text -> deterministic parse
     if statement_month:
-        ocr_text = extract_taishin_statement_text(
-            image_data,
-            openai_client=openai_client,
-            enable_compression=enable_compression,
-        )
-        parsed = parse_taishin_statement_ocr_text(ocr_text, statement_month=statement_month)
+        # Run OCR multiple times (with/without compression) and vote to reduce single-character OCR errors.
+        ocr_texts = [
+            extract_taishin_statement_text(
+                image_data,
+                openai_client=openai_client,
+                enable_compression=True,
+            ),
+            extract_taishin_statement_text(
+                image_data,
+                openai_client=openai_client,
+                enable_compression=False,
+            ),
+            extract_taishin_statement_text(
+                image_data,
+                openai_client=openai_client,
+                enable_compression=True,
+            ),
+        ]
 
-        # If we are in reconcile mode (statement_month provided) and nothing was parsed,
-        # treat it as not-a-statement instead of falling back to legacy JSON extraction.
-        # Legacy JSON extraction is less stable and may hallucinate dates/rows.
+        parses = [parse_taishin_statement_ocr_text(t, statement_month=statement_month) for t in ocr_texts]
+        parsed = reconcile_ocr_parses(parses, statement_month=statement_month)
+
         if not parsed:
             raise StatementVisionError("not_statement: no parseable statement rows found")
 

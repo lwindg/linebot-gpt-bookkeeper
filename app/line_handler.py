@@ -306,6 +306,19 @@ def handle_image_message(event: MessageEvent, messaging_api_blob: MessagingApiBl
                         source_note=f"LINE image message_id={message_id}",
                     )
 
+                    # Attach OCR preview for audit (best-effort)
+                    try:
+                        from app.services.statement_image_handler import extract_taishin_statement_text, build_ocr_preview, append_statement_note
+
+                        ocr_text = extract_taishin_statement_text(image_data, enable_compression=False)
+                        preview = build_ocr_preview(ocr_text)
+                        append_statement_note(
+                            statement_page_id=statement_page_id,
+                            note=f"[OCR preview]\n{preview}",
+                        )
+                    except Exception:
+                        pass
+
                     created_ids = notion_create_cc_statement_lines(
                         statement_month=period,
                         statement_id=statement_id,
