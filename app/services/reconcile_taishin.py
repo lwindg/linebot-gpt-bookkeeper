@@ -156,6 +156,25 @@ def _eq_amount(a: float, b: float) -> bool:
     return round(a, 2) == round(b, 2)
 
 
+def _foreign_amount_tolerance(currency: str) -> float:
+    cur = (currency or "").upper().strip()
+    # Common integer currencies
+    if cur in ("JPY",):
+        return 1.0
+    return 0.05
+
+
+def _eq_foreign_amount(a: float, b: float, *, currency: str) -> bool:
+    tol = _foreign_amount_tolerance(currency)
+    return abs(float(a) - float(b)) <= tol
+
+
+def _rate_close(ledger_rate: float, implied_rate: float, *, tol_ratio: float = 0.03) -> bool:
+    if implied_rate <= 0:
+        return False
+    return abs(float(ledger_rate) - float(implied_rate)) / float(implied_rate) <= tol_ratio
+
+
 def _ensure_statement_page(*, statement_id: str, period: str, bank: str = "台新") -> str:
     if not NOTION_CC_STATEMENTS_DB_ID:
         raise RuntimeError("NOTION_CC_STATEMENTS_DB_ID not configured")
@@ -264,6 +283,15 @@ def reconcile_taishin_statement(*, statement_id: str, period: str, payment_metho
         if twd is None:
             continue
 
+        stmt_currency = _select_name(props.get("幣別") or {})
+        stmt_foreign = _number(props.get("外幣金額") or {})
+        implied_rate = None
+        if stmt_currency and stmt_foreign and stmt_foreign != 0:
+            try:
+                implied_rate = float(twd) / float(stmt_foreign)
+            except Exception:
+                implied_rate = None
+
         # Collect ledger candidates in date window (by payment method allowlist)
         candidate_ledgers: dict[str, dict[str, Any]] = {}
         for m in (payment_methods or ([pay] if pay else [])):
@@ -276,8 +304,10 @@ def reconcile_taishin_statement(*, statement_id: str, period: str, payment_metho
                 candidate_ledgers[lid] = led
 
         # Partition into:
-        # - exact single matches (amount match)
-        # - batch groups (sum match)
+        # - foreign exact matches (original currency)
+        # - TWD exact matches
+        # - batch groups (TWD sum match)
+        foreign_single_ids: list[str] = []
         exact_single_ids: list[str] = []
         batch_groups: dict[str, list[str]] = defaultdict(list)
 
@@ -285,13 +315,31 @@ def reconcile_taishin_statement(*, statement_id: str, period: str, payment_metho
             lp = led.get("properties") or {}
             cur = _select_name(lp.get("原幣別") or {})
             amt = _number(lp.get("原幣金額") or {})
-            if cur != "TWD" or amt is None:
+            if amt is None:
+                continue
+
+            # Foreign match path: statement has currency + foreign amount
+            if stmt_currency and stmt_foreign is not None and cur and cur.upper() == str(stmt_currency).upper():
+                if _eq_foreign_amount(float(amt), float(stmt_foreign), currency=str(stmt_currency)):
+                    # Optional rate sanity check when available (prevents wrong matches)
+                    led_rate = _number(lp.get("匯率") or {})
+                    if implied_rate is not None and led_rate is not None:
+                        if not _rate_close(float(led_rate), float(implied_rate)):
+                            # Too far off; skip this candidate
+                            pass
+                        else:
+                            foreign_single_ids.append(lid)
+                    else:
+                        foreign_single_ids.append(lid)
+
+            # TWD-only matching + batch aggregation
+            if cur != "TWD":
                 continue
 
             bid = _batch_id_from_ledger_props(lp)
             if bid:
                 batch_groups[bid].append(lid)
-            if _eq_amount(amt, twd):
+            if _eq_amount(float(amt), float(twd)):
                 exact_single_ids.append(lid)
 
         # Evaluate batch matches
@@ -331,10 +379,44 @@ def reconcile_taishin_statement(*, statement_id: str, period: str, payment_metho
             continue
 
         # Decision priority:
-        # 1) Unique batch sum match
-        # 2) Unique single exact amount match
+        # 0) Unique foreign exact match (when statement provides foreign currency + amount)
+        # 1) Unique batch sum match (TWD)
+        # 2) Unique single exact amount match (TWD)
         # Otherwise: unmatched/ambiguous
-        if batch_match_bid and batch_match_ids:
+
+        unique_foreign = sorted(set(foreign_single_ids))
+        if stmt_currency and stmt_foreign is not None and stmt_currency.upper() != "TWD" and len(unique_foreign) == 1:
+            ledger_id = unique_foreign[0]
+
+            _notion_patch_page(
+                pid,
+                {
+                    "所屬帳單": {"relation": [{"id": statement_page_id}]},
+                    "對應帳目": {"relation": [{"id": ledger_id}]},
+                    "對帳狀態": {"select": {"name": "matched"}},
+                },
+            )
+            _notion_patch_page(
+                ledger_id,
+                {
+                    "對應帳單明細": {"relation": [{"id": pid}]},
+                    "對應帳單": {"relation": [{"id": statement_page_id}]},
+                },
+            )
+            consumed_ledger_ids.add(ledger_id)
+            matched += 1
+
+        elif stmt_currency and stmt_foreign is not None and stmt_currency.upper() != "TWD" and len(unique_foreign) >= 2:
+            ambiguous += 1
+            _notion_patch_page(
+                pid,
+                {
+                    "所屬帳單": {"relation": [{"id": statement_page_id}]},
+                    "對帳狀態": {"select": {"name": "unmatched"}},
+                },
+            )
+
+        elif batch_match_bid and batch_match_ids:
             # Apply batch match
             ledger_ids = batch_match_ids
 

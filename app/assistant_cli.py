@@ -413,9 +413,10 @@ def cmd_cc_run(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        summary = reconcile_taishin_statement(statement_id=statement_id, period=period, user_id=user_id)
+        payment_methods = lock_val.get("payment_methods") or []
+        summary = reconcile_taishin_statement(statement_id=statement_id, period=period, payment_methods=payment_methods)
         text = format_reconcile_summary(summary)
-        _print_json({"status": "ok", "result": summary, "summary_text": text})
+        _print_json({"status": "ok", "result": summary.__dict__, "summary_text": text})
         return 0
     except Exception as e:
         _print_json({"status": "error", "error": {"message": str(e), "reason": "unexpected"}})
