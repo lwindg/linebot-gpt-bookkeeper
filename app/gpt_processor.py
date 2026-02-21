@@ -459,7 +459,10 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False, user_
                     分類=分類,
                     交易類型="支出",
                     專案=project,
-                    必要性=item_data.get("必要性", "必要日常支出"),
+                    必要性=__import__("app.shared.necessity_resolver", fromlist=["normalize_necessity"]).normalize_necessity(
+                        item_data.get("必要性"),
+                        tx_type="支出",
+                    ),
                     代墊狀態=item_data.get("代墊狀態", "無"),
                     收款支付對象=item_data.get("收款支付對象", ""),
                     附註=""
@@ -552,6 +555,10 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False, user_
 
             if field_name == "分類":
                 field_value = resolve_category_autocorrect(str(field_value))
+
+            if field_name == "必要性":
+                from app.shared.necessity_resolver import normalize_necessity
+                field_value = normalize_necessity(str(field_value), tx_type="支出")
 
             if field_name == "原幣金額":
                 try:

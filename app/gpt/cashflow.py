@@ -250,7 +250,7 @@ def process_cashflow_items(cashflow_items: list[dict], user_message: str, user_i
                 分類=category,
                 交易類型=tx_type,
                 專案=project,
-                必要性="必要日常支出",
+                必要性=("N/A" if tx_type == "收入" else "必要日常支出"),
                 代墊狀態="無",
                 收款支付對象="",
                 附註=""

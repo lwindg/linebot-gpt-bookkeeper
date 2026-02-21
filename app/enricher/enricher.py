@@ -12,6 +12,7 @@ from app.parser import AuthoritativeEnvelope, Transaction, TransactionType
 from app.enricher.validator import validate_category
 from app.services.exchange_rate import ExchangeRateService
 from app.shared.category_resolver import apply_health_medical_default
+from app.shared.necessity_resolver import normalize_necessity
 from .types import EnrichedTransaction, EnrichedEnvelope
 from .gpt_client import call_gpt_enrichment
 
@@ -127,7 +128,7 @@ def _merge_enrichment(
         # AI Enrichment 欄位
         分類=category,
         專案=enrichment.get("專案", "日常"),
-        必要性=enrichment.get("必要性", "必要日常支出"),
+        必要性=normalize_necessity(enrichment.get("必要性"), tx_type=("收入" if tx.type == TransactionType.INCOME else "支出")),
         明細說明=enrichment.get("明細說明", ""),
     )
 

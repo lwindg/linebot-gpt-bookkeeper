@@ -91,6 +91,10 @@ def _enriched_tx_to_entry(
     final_currency = tx.currency
     final_fx_rate = tx.fx_rate
 
+    # Necessity normalization: income-like entries should be N/A.
+    from app.shared.necessity_resolver import normalize_necessity
+    final_necessity = normalize_necessity(getattr(tx, "必要性", None), tx_type=tx_type)
+
     if user_id:
         lock_service = LockService(user_id)
         
@@ -136,7 +140,7 @@ def _enriched_tx_to_entry(
         付款方式=final_payment,
         分類=tx.分類,
         專案=final_project,
-        必要性=tx.必要性,
+        必要性=final_necessity,
         代墊狀態=advance_status,
         收款支付對象=tx.counterparty,
         附註="",
@@ -204,7 +208,7 @@ def enriched_to_multi_result(
                 付款方式=target_cash,
                 分類=entry.分類,
                 專案=entry.專案,
-                必要性=entry.必要性,
+                必要性="N/A",
                 代墊狀態=entry.代墊狀態,
                 收款支付對象=entry.收款支付對象,
                 附註=entry.附註,
@@ -230,7 +234,7 @@ def enriched_to_multi_result(
                     付款方式=incoming_account,
                     分類=entry.分類,
                     專案=entry.專案,
-                    必要性=entry.必要性,
+                    必要性="N/A",
                     代墊狀態=entry.代墊狀態,
                     收款支付對象=entry.收款支付對象,
                     附註=entry.附註,
@@ -256,7 +260,7 @@ def enriched_to_multi_result(
                 付款方式=incoming_payment,
                 分類=entry.分類,
                 專案=entry.專案,
-                必要性=entry.必要性,
+                必要性="N/A",
                 代墊狀態=entry.代墊狀態,
                 收款支付對象=entry.收款支付對象,
                 附註=entry.附註,
