@@ -63,7 +63,7 @@ def _enriched_tx_to_entry(
     elif tx.type == TransactionType.WITHDRAWAL:
         tx_type = "提款"
     elif tx.type == TransactionType.TRANSFER:
-        tx_type = "支出" # 轉帳的第一筆(來源)視為支出 (由來源帳戶支出)
+        tx_type = "轉帳"  # Transfer out should be labeled as 轉帳
     elif tx.type == TransactionType.CARD_PAYMENT:
         tx_type = "支出"
     else:
