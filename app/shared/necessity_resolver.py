@@ -32,7 +32,12 @@ _SYNONYMS: dict[str, str] = {
 }
 
 
-def normalize_necessity(value: Optional[str], *, tx_type: Optional[str] = None) -> str:
+def normalize_necessity(
+    value: Optional[str],
+    *,
+    tx_type: Optional[str] = None,
+    is_cashflow: bool = False,
+) -> str:
     """Normalize necessity select value.
 
     Args:
@@ -42,6 +47,9 @@ def normalize_necessity(value: Optional[str], *, tx_type: Optional[str] = None) 
     Returns:
         Canonical necessity option.
     """
+
+    if is_cashflow:
+        return "N/A"
 
     if (tx_type or "").strip() == "收入":
         return "N/A"

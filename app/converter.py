@@ -93,7 +93,11 @@ def _enriched_tx_to_entry(
 
     # Necessity normalization: income-like entries should be N/A.
     from app.shared.necessity_resolver import normalize_necessity
-    final_necessity = normalize_necessity(getattr(tx, "必要性", None), tx_type=tx_type)
+    final_necessity = normalize_necessity(
+        getattr(tx, "必要性", None),
+        tx_type=tx_type,
+        is_cashflow=TransactionType.is_cashflow(tx.type),
+    )
 
     if user_id:
         lock_service = LockService(user_id)

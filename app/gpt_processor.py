@@ -462,6 +462,7 @@ def _process_multi_expense_impl(user_message: str, *, debug: bool = False, user_
                     必要性=__import__("app.shared.necessity_resolver", fromlist=["normalize_necessity"]).normalize_necessity(
                         item_data.get("必要性"),
                         tx_type="支出",
+                        is_cashflow=bool(cashflow_hint),
                     ),
                     代墊狀態=item_data.get("代墊狀態", "無"),
                     收款支付對象=item_data.get("收款支付對象", ""),

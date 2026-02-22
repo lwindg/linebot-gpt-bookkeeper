@@ -128,7 +128,11 @@ def _merge_enrichment(
         # AI Enrichment 欄位
         分類=category,
         專案=enrichment.get("專案", "日常"),
-        必要性=normalize_necessity(enrichment.get("必要性"), tx_type=("收入" if tx.type == TransactionType.INCOME else "支出")),
+        必要性=normalize_necessity(
+            enrichment.get("必要性"),
+            tx_type=("收入" if tx.type == TransactionType.INCOME else "支出"),
+            is_cashflow=TransactionType.is_cashflow(tx.type),
+        ),
         明細說明=enrichment.get("明細說明", ""),
     )
 

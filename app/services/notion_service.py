@@ -70,8 +70,18 @@ class NotionService:
             "代墊狀態": {"select": {"name": entry.代墊狀態 or "無"}},
             "收款／支付對象": {"rich_text": [{"text": {"content": entry.收款支付對象 or ""}}]},
             "交易類型": {"select": {"name": entry.交易類型 or "支出"}},
-            "付款方式": {"select": {"name": entry.付款方式}} if entry.付款方式 and entry.付款方式 != "N/A" else None,
-            "必要性": {"select": {"name": entry.必要性}} if entry.必要性 and entry.必要性 != "N/A" else None,
+            "付款方式": (
+                {"select": {"name": entry.付款方式}}
+                if entry.付款方式
+                and (entry.付款方式 != "N/A" or (entry.代墊狀態 == "需支付"))
+                else None
+            ),
+            "必要性": (
+                {"select": {"name": entry.必要性}}
+                if entry.必要性
+                and (entry.必要性 != "N/A" or (entry.交易類型 == "收入"))
+                else None
+            ),
             "附註": {"rich_text": [{"text": {"content": entry.附註 or ""}}]},
         }
 
