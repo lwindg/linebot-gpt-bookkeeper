@@ -44,6 +44,14 @@ def process_with_parser(
     taipei_tz = ZoneInfo("Asia/Taipei")
     context_date = datetime.now(taipei_tz)
     
+    # Normalize parser-first input to handle glued tokens like "$250現金".
+    try:
+        from app.parser.normalize_input import normalize_parser_input
+
+        user_message = normalize_parser_input(user_message)
+    except Exception:
+        pass
+
     # 偵測整句的共用付款方式（如：午餐80, 晚餐150 現金）
     shared_payment = detect_payment_method(user_message)
     if shared_payment:
