@@ -291,12 +291,16 @@ def resolve_category_input(value: str, *, original_category: str | None = None) 
         raise ValueError("empty category")
 
     normalized = _normalize_separators(raw)
-    
+
+    # 0. Apply top-level defaults early (e.g. "家庭" -> "家庭/餐飲")
+    if normalized in _TOP_LEVEL_DEFAULTS:
+        normalized = _TOP_LEVEL_DEFAULTS[normalized]
+
     # 1. Apply mappings first (Forward compatibility)
     mappings = _load_mappings_from_yaml()
     if normalized in mappings:
         normalized = mappings[normalized]
-    
+
     allowed = allowed_categories()
     leaves = leaf_categories()
 

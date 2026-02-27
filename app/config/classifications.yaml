@@ -208,7 +208,7 @@ rules:
       category: "家庭/用品"
 
   defaults:
-    食品類: "家庭"
+    食品類: "家庭/餐飲"
     個人情境: ["公司聚餐", "同事下午茶"]
 
   food_beverages:

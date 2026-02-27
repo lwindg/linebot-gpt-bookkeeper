@@ -116,6 +116,56 @@ class TestMultiExpenseMultipleItems:
     """測試多項目記帳（核心功能）"""
 
     @patch('app.gpt_processor.OpenAI')
+    def test_breakfast_lunch_dinner_never_top_level_family(self, mock_openai):
+        """TC-V15-009: 早餐午晚餐不允許 L1=家庭"""
+        set_openai_mock_content(mock_openai, '''
+{
+  "intent": "multi_bookkeeping",
+  "payment_method": "現金",
+  "items": [
+    {
+      "品項": "早餐",
+      "原幣金額": 80,
+      "分類": "家庭",
+      "必要性": "必要日常支出",
+      "原幣別": "TWD",
+      "明細說明": "",
+      "代墊狀態": "無",
+      "收款支付對象": ""
+    },
+    {
+      "品項": "午餐",
+      "原幣金額": 150,
+      "分類": "家庭",
+      "必要性": "必要日常支出",
+      "原幣別": "TWD",
+      "明細說明": "",
+      "代墊狀態": "無",
+      "收款支付對象": ""
+    },
+    {
+      "品項": "晚餐",
+      "原幣金額": 200,
+      "分類": "家庭",
+      "必要性": "必要日常支出",
+      "原幣別": "TWD",
+      "明細說明": "",
+      "代墊狀態": "無",
+      "收款支付對象": ""
+    }
+  ]
+}
+''')
+
+        result = process_multi_expense("早餐80元，午餐150元，晚餐200元，現金")
+
+        assert result.intent == "multi_bookkeeping"
+        assert len(result.entries) == 3
+        for entry in result.entries:
+            assert entry.分類 != "家庭"
+            assert entry.分類.startswith("家庭/餐飲")
+
+    @patch('app.gpt_processor.OpenAI')
     def test_two_items_comma_separated(self, mock_openai):
         """TC-V15-010: 雙項目 - 逗號分隔"""
         set_openai_mock_content(mock_openai, '''
