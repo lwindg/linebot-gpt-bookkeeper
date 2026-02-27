@@ -17,9 +17,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import asdict
+from pathlib import Path
 from typing import Any
+
+import yaml
 
 from app.gpt.types import BookkeepingEntry
 from app.processor import process_with_parser
@@ -43,6 +47,60 @@ from app.shared.category_resolver import resolve_category_input
 
 _NEEDS_LLM_CATEGORIES = {None, "", "未分類", "N/A"}
 _ASSISTANT_LAST_CREATED_KEY = "assistant_last_created:{user_id}"
+
+
+def _load_classifications_yaml() -> dict:
+    config_path = Path(__file__).resolve().parent / "config" / "classifications.yaml"
+    if not config_path.exists():
+        return {}
+    with open(config_path, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+def _apply_deterministic_keyword_categories(entries: list[BookkeepingEntry], *, text: str) -> None:
+    """Best-effort category fill for --no-llm mode.
+
+    Uses keyword/regex rules from app/config/classifications.yaml under:
+    - rules.food_beverages (or legacy rules.beverages_snacks)
+    - rules.meal_three_layer.patterns
+
+    Only fills entries whose category is missing.
+    """
+
+    data = _load_classifications_yaml()
+    rules = (data.get("rules") or {}) if isinstance(data, dict) else {}
+
+    # 1) Meal three-layer exact patterns (早餐/午餐/晚餐)
+    meal = rules.get("meal_three_layer") or {}
+    patterns = meal.get("patterns") or []
+    for p in patterns:
+        pat = p.get("pattern")
+        cat = p.get("category")
+        if not pat or not cat:
+            continue
+        try:
+            if re.search(pat, text):
+                for e in entries:
+                    if e.分類 in _NEEDS_LLM_CATEGORIES:
+                        e.分類 = cat
+        except re.error:
+            # ignore invalid regex patterns
+            continue
+
+    # 2) Food / beverages / fruit keywords
+    food_rules = rules.get("food_beverages") or rules.get("beverages_snacks") or []
+    for r in food_rules:
+        pat = r.get("pattern")
+        cat = r.get("category")
+        if not pat or not cat:
+            continue
+        try:
+            if re.search(pat, text):
+                for e in entries:
+                    if e.分類 in _NEEDS_LLM_CATEGORIES:
+                        e.分類 = cat
+        except re.error:
+            continue
 
 
 def _entry_to_dict(entry: BookkeepingEntry) -> dict[str, Any]:
@@ -88,6 +146,10 @@ def cmd_bk(args: argparse.Namespace) -> int:
     if not entries:
         _print_json({"status": "error", "error": {"message": "no entries", "reason": "empty"}})
         return 1
+
+    # Deterministic category fill for --no-llm mode (keyword rules from YAML)
+    if bool(args.no_llm):
+        _apply_deterministic_keyword_categories(entries, text=text)
 
     # If any entry lacks a resolved category, ask OpenClaw to fill it.
     if any(_is_needs_llm_entry(e) for e in entries):
