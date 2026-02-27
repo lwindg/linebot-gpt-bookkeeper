@@ -67,15 +67,46 @@ def _health_medical_categories() -> tuple[str, str]:
 
 
 def _load_categories_from_yaml() -> set[str]:
-    """Load categories from YAML config file."""
+    """Load categories from YAML config file (leaf options)."""
     data = _load_config_from_yaml()
     categories: set[str] = set()
     if data and "categories" in data:
-        for top_level, items in data["categories"].items():
+        for _top_level, items in data["categories"].items():
             if isinstance(items, list):
                 for item in items:
                     categories.add(_normalize_separators(item))
     return categories
+
+
+@lru_cache(maxsize=1)
+def leaf_categories() -> set[str]:
+    """Return *leaf* category options (i.e., options users can actually pick).
+
+    Note: `allowed_categories()` expands parents for matching, but leaf enforcement
+    should be based on the original option set.
+    """
+    # 1) Notion options first (if enabled)
+    leaves = _load_categories_from_notion()
+
+    # 2) YAML options
+    if not leaves:
+        leaves = _load_categories_from_yaml()
+
+    # 3) Legacy fallback
+    if not leaves:
+        leaves = {_normalize_separators(token) for token in _iter_category_tokens_from_rules(CLASSIFICATION_RULES)}
+
+    # Never allow placeholder categories
+    leaves = {c for c in leaves if c and c not in ("未分類", "無")}
+
+    # Normalize to *true* leaves: exclude any option that is a parent of another option.
+    true_leaves: set[str] = set()
+    for c in leaves:
+        if any(other != c and other.startswith(f"{c}/") for other in leaves):
+            continue
+        true_leaves.add(c)
+
+    return true_leaves
 
 
 @lru_cache(maxsize=1)
@@ -231,6 +262,19 @@ def _load_mappings_from_yaml() -> dict[str, str]:
     return data.get("mappings", {})
 
 
+def _pick_leaf_under(prefix: str, leaves: set[str]) -> str | None:
+    """Pick a deterministic leaf category under a non-leaf prefix."""
+    if not prefix:
+        return None
+    prefix_norm = _normalize_separators(prefix)
+    # exact leaf
+    if prefix_norm in leaves:
+        return prefix_norm
+    # descendants
+    desc = sorted([c for c in leaves if c.startswith(f"{prefix_norm}/")])
+    return desc[0] if desc else None
+
+
 def resolve_category_input(value: str, *, original_category: str | None = None) -> str:
     """
     Resolve a user-provided category input to an allowed category path.
@@ -254,8 +298,14 @@ def resolve_category_input(value: str, *, original_category: str | None = None) 
         normalized = mappings[normalized]
     
     allowed = allowed_categories()
+    leaves = leaf_categories()
 
     if normalized in allowed:
+        # Enforce leaf options: never stop at a top-level or intermediate path.
+        picked = _pick_leaf_under(normalized, leaves)
+        if picked:
+            return picked
+        # If somehow nothing is found, fall back to legacy behavior.
         if "/" not in normalized:
             if normalized in _TOP_LEVEL_DEFAULTS:
                 return _TOP_LEVEL_DEFAULTS[normalized]
@@ -347,14 +397,17 @@ def resolve_category_autocorrect(
         raw = (value or "").strip()
         normalized = _normalize_separators(raw)
         allowed = allowed_categories()
+        leaves = leaf_categories()
 
         # If it looks like a path, try reducing specificity: "A/B/C" -> "A/B" -> "A"
         if "/" in normalized:
             parts = [part for part in normalized.split("/") if part]
             for i in range(len(parts) - 1, 0, -1):
                 candidate = "/".join(parts[:i])
-                if candidate in allowed:
-                    return candidate
+                # Only accept leaf categories; otherwise pick a leaf under it.
+                picked = _pick_leaf_under(candidate, leaves)
+                if picked:
+                    return picked
 
             # Also try resolving the top token as a short label (e.g. "水果/香蕉" -> "水果" -> "家庭/水果")
             short = parts[0] if parts else ""
@@ -364,16 +417,24 @@ def resolve_category_autocorrect(
                 if best:
                     return best
 
-        # Fallback: best-effort suggestions
-        suggestions = _suggest_categories(normalized, allowed, limit=1)
-        if suggestions:
-            return apply_health_medical_default(suggestions[0], context_text=context_text)
+        # Fallback: best-effort suggestions (prefer leaf)
+        suggestions = _suggest_categories(normalized, allowed, limit=5)
+        for s in suggestions:
+            picked = _pick_leaf_under(s, leaves)
+            if picked:
+                return apply_health_medical_default(picked, context_text=context_text)
+
+        # Last resort: try to coerce fallback into a leaf
+        picked_fb = _pick_leaf_under(_normalize_separators(fallback), leaves)
+        if picked_fb:
+            return apply_health_medical_default(picked_fb, context_text=context_text)
 
         return apply_health_medical_default(_normalize_separators(fallback), context_text=context_text)
 
 _TOP_LEVEL_DEFAULTS: dict[str, str] = {
     "交通": "交通/車資",
     "折扣": "折扣/優惠",
+    "家庭": "家庭/餐飲",
 }
 
 
