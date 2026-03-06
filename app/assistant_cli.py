@@ -221,6 +221,16 @@ def cmd_bk(args: argparse.Namespace) -> int:
             "result": {
                 "count": len(entries),
                 "transaction_ids": transaction_ids,
+                "entries": [
+                    {
+                        "品項": e.品項,
+                        "金額": e.原幣金額,
+                        "分類": e.分類,
+                        "專案": e.專案,
+                        "交易ID": e.交易ID,
+                    }
+                    for e in entries
+                ],
             },
         }
     )
@@ -309,6 +319,16 @@ def cmd_apply(args: argparse.Namespace) -> int:
             "result": {
                 "count": len(entries),
                 "transaction_ids": transaction_ids,
+                "entries": [
+                    {
+                        "品項": e.品項,
+                        "金額": e.原幣金額,
+                        "分類": e.分類,
+                        "專案": e.專案,
+                        "交易ID": e.交易ID,
+                    }
+                    for e in entries
+                ],
             },
         }
     )
