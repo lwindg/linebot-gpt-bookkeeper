@@ -65,6 +65,33 @@ class StatementVisionError(Exception):
     pass
 
 
+HUANAN_STATEMENT_VISION_PROMPT = """
+Extract Huanan credit card statement rows from this screenshot.
+
+Return JSON object with:
+- status: success | not_statement | partial
+- lines: array of rows
+
+Each row object fields:
+- card_hint: string (use "華南紅" if unsure)
+- trans_date: string (MM/DD or YYYY-MM-DD)
+- post_date: string (MM/DD or YYYY-MM-DD)
+- description: string
+- twd_amount: number (charge positive, refund/credit negative)
+- fx_date: string|null
+- country: string|null
+- currency: string|null
+- foreign_amount: number|null
+- is_fee: boolean
+- fee_reference_amount: number|null
+
+Rules:
+- Ignore totals, headers, payment due info, and ad text.
+- Keep only actual statement line items.
+- If not a Huanan statement detail screenshot, return status=not_statement with empty lines.
+"""
+
+
 def build_statement_raw_text(statement_month: str, line: TaishinStatementLine) -> str:
     trans = _normalize_statement_date(statement_month, line.trans_date) if line.trans_date else None
     post = _normalize_statement_date(statement_month, line.post_date) if line.post_date else None
@@ -528,6 +555,90 @@ def extract_taishin_statement_lines(
                 fee_reference_amount=_parse_float(raw.get("fee_reference_amount")),
             )
         )
+
+    return lines
+
+
+def extract_huanan_statement_lines(
+    image_data: bytes,
+    openai_client: Optional[OpenAI] = None,
+    enable_compression: bool = True,
+    *,
+    statement_month: Optional[str] = None,
+) -> list[TaishinStatementLine]:
+    """Extract Huanan statement lines from image using JSON-mode vision extraction."""
+
+    if openai_client is None:
+        openai_client = OpenAI(api_key=OPENAI_API_KEY)
+
+    if enable_compression:
+        image_data = compress_image(image_data)
+
+    base64_image = encode_image_base64(image_data)
+
+    response = openai_client.chat.completions.create(
+        model=GPT_VISION_MODEL,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": HUANAN_STATEMENT_VISION_PROMPT},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
+                    },
+                ],
+            }
+        ],
+        max_tokens=3000,
+        response_format={"type": "json_object"},
+    )
+
+    text = response.choices[0].message.content
+    if not text:
+        raise StatementVisionError("Empty vision response")
+
+    data = json.loads(text)
+    status = (data.get("status") or "").strip().lower()
+    if status in ("not_statement", "error"):
+        raise StatementVisionError(f"{status}: no parseable statement rows found")
+
+    lines: list[TaishinStatementLine] = []
+    for raw in data.get("lines", []):
+        twd = _parse_float(raw.get("twd_amount"))
+        if twd is None:
+            continue
+
+        desc = (raw.get("description") or "").strip()
+        if not desc:
+            continue
+
+        is_fee = bool(raw.get("is_fee")) or ("手續費" in desc)
+        card_hint = (raw.get("card_hint") or "華南紅").strip() or "華南紅"
+
+        lines.append(
+            TaishinStatementLine(
+                card_hint=card_hint,
+                trans_date=raw.get("trans_date"),
+                post_date=raw.get("post_date"),
+                description=desc,
+                twd_amount=twd,
+                fx_date=raw.get("fx_date"),
+                country=raw.get("country"),
+                currency=raw.get("currency"),
+                foreign_amount=_parse_float(raw.get("foreign_amount")),
+                is_fee=is_fee,
+                fee_reference_amount=_parse_float(raw.get("fee_reference_amount")),
+            )
+        )
+
+    if not lines:
+        raise StatementVisionError("not_statement: no parseable statement rows found")
+
+    # Backfill card hint for all rows in case model omitted some lines.
+    for ln in lines:
+        if not ln.card_hint:
+            ln.card_hint = "華南紅"
 
     return lines
 

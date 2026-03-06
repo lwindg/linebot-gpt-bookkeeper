@@ -41,6 +41,8 @@ def get_bank_config(bank_key: str) -> Optional[CreditCardBankConfig]:
 
     if bank_key_norm in ("台新", "taishin"):
         bank_key_norm = "taishin"
+    elif bank_key_norm in ("華南", "華南銀行", "huanan"):
+        bank_key_norm = "huanan"
 
     b = banks.get(bank_key_norm)
     if not b:

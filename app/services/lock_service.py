@@ -40,7 +40,7 @@ _RE_UNLOCK_CURRENCY = re.compile(r"解鎖幣別\s*(?:名稱)?")
 _RE_UNLOCK_ALL = re.compile(r"(?:解鎖全部|全部解鎖)")
 _RE_LOCK_STATUS = re.compile(r"鎖定狀態")
 
-# Credit card reconcile lock (MVP: Taishin)
+# Credit card reconcile lock
 _RE_LOCK_RECONCILE = re.compile(r"鎖定對帳\s*(?P<bank>\S+)?\s*(?P<period>\d{4}-\d{2})?\s*$")
 _RE_UNLOCK_RECONCILE = re.compile(r"(?:解除對帳|解鎖對帳)")
 _RE_RECONCILE_STATUS = re.compile(r"對帳狀態")
@@ -89,13 +89,15 @@ class LockService:
 
     def set_reconcile_lock(self, *, bank: str, period: str, payment_methods: Optional[List[str]] = None):
         # NOTE: payment method options must match ledger vocabulary.
+        cfg = get_bank_config(bank)
+        bank_key = cfg.bank_key if cfg else (bank or "").strip().lower()
+
         if payment_methods is None:
-            cfg = get_bank_config(bank)
             payment_methods = cfg.payment_methods_default if cfg else []
 
         tz = ZoneInfo("Asia/Taipei")
         now = datetime.now(tz)
-        statement_id = f"taishin-{period}-{now.strftime('%Y%m%d-%H%M%S')}"
+        statement_id = f"{bank_key}-{period}-{now.strftime('%Y%m%d-%H%M%S')}"
 
         self.kv.set(
             LOCK_RECONCILE_KEY.format(user_id=self.user_id),
@@ -226,19 +228,19 @@ class LockService:
                 return "❌ 請提供銀行名稱。\n範例：鎖定對帳 台新 2026-01"
             if not period:
                 return "❌ 請提供對帳月份（YYYY-MM）。\n範例：鎖定對帳 台新 2026-01"
+            cfg = get_bank_config(bank)
+            if not cfg:
+                return "❌ 目前僅支援台新/華南帳單對帳。"
 
-            # MVP: only Taishin
-            if bank not in ("台新", "Taishin", "taishin"):
-                return "❌ 目前僅支援台新帳單對帳。"
-
-            self.set_reconcile_lock(bank="台新", period=period)
+            bank_display = "台新" if cfg.bank_key == "taishin" else "華南" if cfg.bank_key == "huanan" else bank
+            self.set_reconcile_lock(bank=bank_display, period=period)
             lock_val = self.get_reconcile_lock() or {}
             methods = lock_val.get("payment_methods") or []
             methods_text = "、".join(methods) if methods else "(未設定)"
             statement_id = lock_val.get("statement_id")
             return (
                 f"🔒 已進入信用卡對帳模式\n"
-                f"• 銀行：台新\n"
+                f"• 銀行：{bank_display}\n"
                 f"• 期別：{period}\n"
                 f"• 付款方式：{methods_text}\n"
                 f"• 帳單ID：{statement_id}\n\n"
@@ -265,11 +267,12 @@ class LockService:
         if _RE_RECONCILE_RUN.search(text):
             r = self.get_reconcile_lock()
             if not r:
-                return "❌ 尚未鎖定對帳模式。請先輸入：鎖定對帳 台新 YYYY-MM"
+                return "❌ 尚未鎖定對帳模式。請先輸入：鎖定對帳 <台新|華南> YYYY-MM"
 
             bank = r.get("bank")
-            if bank not in ("台新", "Taishin", "taishin"):
-                return "❌ 目前僅支援台新帳單對帳。"
+            cfg = get_bank_config(str(bank or ""))
+            if not cfg:
+                return "❌ 目前僅支援台新/華南帳單對帳。"
 
             statement_id = r.get("statement_id")
             period = r.get("period")
@@ -279,6 +282,7 @@ class LockService:
                 return "❌ 對帳鎖定資訊不完整，請先解除對帳後重新鎖定。"
 
             try:
+                # Matching engine is bank-agnostic in MVP and relies on payment methods from lock.
                 summary = reconcile_taishin_statement(
                     statement_id=statement_id,
                     period=period,

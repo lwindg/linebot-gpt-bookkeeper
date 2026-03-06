@@ -23,3 +23,16 @@ banks:
           contains_any:
             - "FlyGo"
         payment_method: "FlyGo 信用卡"
+
+  huanan:
+    reconcile:
+      payment_methods_default:
+        - 華南紅
+
+    statement_section_map:
+      - match:
+          contains_any:
+            - "華南紅"
+            - "Love"
+            - "i網購"
+        payment_method: "華南紅"

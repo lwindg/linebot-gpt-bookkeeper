@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from app.assistant_cli import _apply_deterministic_keyword_categories
+from app.assistant_cli import _apply_deterministic_keyword_categories, _normalize_bank_name, _bank_supported
 from app.gpt.types import BookkeepingEntry
 
 
@@ -69,3 +69,19 @@ def test_apply_deterministic_keyword_categories_food_rules(monkeypatch) -> None:
     _apply_deterministic_keyword_categories(entries, text="咖啡50")
 
     assert entries[0].分類 == "家庭/飲品"
+
+
+def test_normalize_bank_name_supports_huanan() -> None:
+    assert _normalize_bank_name("台新") == "台新"
+    assert _normalize_bank_name("taishin") == "台新"
+    assert _normalize_bank_name("華南") == "華南"
+    assert _normalize_bank_name("華南銀行") == "華南"
+    assert _normalize_bank_name("huanan") == "華南"
+
+
+def test_bank_supported_uses_credit_card_config(monkeypatch) -> None:
+    monkeypatch.setattr("app.assistant_cli.get_bank_config", lambda bank: object() if bank in ("台新", "華南") else None)
+
+    assert _bank_supported("台新") is True
+    assert _bank_supported("華南") is True
+    assert _bank_supported("unknown") is False
