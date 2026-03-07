@@ -21,7 +21,7 @@ from app.shared.project_resolver import (
 from app.services.project_options import get_project_options
 from app.parser.extract_amount import _CURRENCY_MAP
 from app.shared.credit_card_config import get_bank_config
-from app.services.reconcile_taishin import reconcile_taishin_statement, format_reconcile_summary
+from app.services.reconcile_statement import reconcile_statement, format_reconcile_summary
 
 logger = logging.getLogger(__name__)
 
@@ -283,7 +283,7 @@ class LockService:
 
             try:
                 # Matching engine is bank-agnostic in MVP and relies on payment methods from lock.
-                summary = reconcile_taishin_statement(
+                summary = reconcile_statement(
                     statement_id=statement_id,
                     period=period,
                     payment_methods=list(methods),

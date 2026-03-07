@@ -42,7 +42,7 @@ from app.services.statement_image_handler import (
     notion_create_cc_statement_lines,
     detect_statement_date_anomaly,
 )
-from app.services.reconcile_taishin import reconcile_taishin_statement, format_reconcile_summary
+from app.services.reconcile_statement import reconcile_statement, format_reconcile_summary
 from app.shared.credit_card_config import get_bank_config
 from app.shared.category_resolver import resolve_category_input
 
@@ -521,7 +521,7 @@ def cmd_cc_run(args: argparse.Namespace) -> int:
 
     try:
         payment_methods = lock_val.get("payment_methods") or []
-        summary = reconcile_taishin_statement(statement_id=statement_id, period=period, payment_methods=payment_methods)
+        summary = reconcile_statement(statement_id=statement_id, period=period, payment_methods=payment_methods)
         text = format_reconcile_summary(summary)
         _print_json({"status": "ok", "result": summary.__dict__, "summary_text": text})
         return 0
