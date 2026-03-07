@@ -559,6 +559,91 @@ def extract_taishin_statement_lines(
     return lines
 
 
+def _is_dateish_token(tok: str) -> bool:
+    t = (tok or "").strip()
+    return bool(re.fullmatch(r"\d{2,4}[/-]\d{1,2}(?:[/-]\d{1,2})?", t) or re.fullmatch(r"\d{4,8}", t))
+
+
+def parse_huanan_statement_ocr_text(text: str) -> list[TaishinStatementLine]:
+    """Parse Huanan statement rows from OCR text with deterministic column rules."""
+
+    lines: list[TaishinStatementLine] = []
+
+    for raw_line in (text or "").splitlines():
+        s = (raw_line or "").strip()
+        if not s:
+            continue
+        if s.startswith("交易日") or s.startswith("---"):
+            continue
+        if "晶緻悠遊聯名卡" in s:
+            continue
+
+        parts = s.split()
+        if len(parts) < 4:
+            continue
+        if not (_is_dateish_token(parts[0]) and _is_dateish_token(parts[1])):
+            continue
+
+        trans_date = parts[0]
+        post_date = parts[1]
+        rest = parts[2:]
+
+        foreign_amount = None
+        currency = None
+        fx_date = None
+        country = None
+
+        # Pattern: ... <country> <fx_date> <currency> <foreign_amount>
+        if len(rest) >= 4 and _token_is_amount(rest[-1]) and re.fullmatch(r"[A-Z]{3}", rest[-2]) and _is_dateish_token(rest[-3]) and re.fullmatch(r"[A-Z]{2,3}", rest[-4]):
+            foreign_amount = _parse_amount(rest[-1])
+            currency = rest[-2]
+            fx_date = rest[-3]
+            country = rest[-4]
+            rest = rest[:-4]
+        # Pattern: ... <country> <currency> <foreign_amount>
+        elif len(rest) >= 3 and _token_is_amount(rest[-1]) and re.fullmatch(r"[A-Z]{3}", rest[-2]) and re.fullmatch(r"[A-Z]{2,3}", rest[-3]):
+            foreign_amount = _parse_amount(rest[-1])
+            currency = rest[-2]
+            country = rest[-3]
+            rest = rest[:-3]
+
+        twd_amount = None
+        twd_idx = None
+        for i in range(len(rest) - 1, -1, -1):
+            if _token_is_amount(rest[i]):
+                twd_amount = _parse_amount(rest[i])
+                twd_idx = i
+                break
+
+        if twd_amount is None or twd_idx is None:
+            continue
+
+        desc = " ".join(rest[:twd_idx]).strip()
+        if not desc:
+            continue
+
+        is_fee = "國外交易服務費" in desc
+
+        lines.append(
+            TaishinStatementLine(
+                card_hint="華南紅",
+                trans_date=trans_date,
+                post_date=post_date,
+                description=desc,
+                twd_amount=float(twd_amount),
+                fx_date=fx_date,
+                country=country,
+                currency=currency,
+                foreign_amount=foreign_amount,
+                is_fee=is_fee,
+                fee_reference_amount=None,
+            )
+        )
+
+    return lines
+
+
+
 def extract_huanan_statement_lines(
     image_data: bytes,
     openai_client: Optional[OpenAI] = None,
@@ -566,11 +651,27 @@ def extract_huanan_statement_lines(
     *,
     statement_month: Optional[str] = None,
 ) -> list[TaishinStatementLine]:
-    """Extract Huanan statement lines from image using JSON-mode vision extraction."""
+    """Extract Huanan statement lines.
+
+    Priority:
+    1) OCR text + deterministic parser (keeps explicit 外幣折算日)
+    2) JSON-mode vision fallback
+    """
 
     if openai_client is None:
         openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
+    # Primary: OCR text parser
+    ocr_text = extract_taishin_statement_text(
+        image_data,
+        openai_client=openai_client,
+        enable_compression=enable_compression,
+    )
+    parsed = parse_huanan_statement_ocr_text(ocr_text)
+    if parsed:
+        return parsed
+
+    # Fallback: JSON-mode extraction
     if enable_compression:
         image_data = compress_image(image_data)
 
@@ -598,7 +699,13 @@ def extract_huanan_statement_lines(
     if not text:
         raise StatementVisionError("Empty vision response")
 
-    data = json.loads(text)
+    raw_json = text.strip()
+    if "```" in raw_json:
+        raw_json = raw_json.replace("```json", "").replace("```", "").strip()
+    if "{" in raw_json and "}" in raw_json:
+        raw_json = raw_json[raw_json.find("{") : raw_json.rfind("}") + 1]
+
+    data = json.loads(raw_json)
     status = (data.get("status") or "").strip().lower()
     if status in ("not_statement", "error"):
         raise StatementVisionError(f"{status}: no parseable statement rows found")
@@ -615,18 +722,25 @@ def extract_huanan_statement_lines(
 
         is_fee = bool(raw.get("is_fee")) or ("手續費" in desc)
         card_hint = (raw.get("card_hint") or "華南紅").strip() or "華南紅"
+        trans_date = raw.get("trans_date")
+        post_date = raw.get("post_date")
+        currency = raw.get("currency")
+        foreign_amount = _parse_float(raw.get("foreign_amount"))
+        fx_date = raw.get("fx_date") or raw.get("exchange_date")
+        if currency and foreign_amount is not None and not fx_date:
+            fx_date = post_date or trans_date
 
         lines.append(
             TaishinStatementLine(
                 card_hint=card_hint,
-                trans_date=raw.get("trans_date"),
-                post_date=raw.get("post_date"),
+                trans_date=trans_date,
+                post_date=post_date,
                 description=desc,
                 twd_amount=twd,
-                fx_date=raw.get("fx_date"),
+                fx_date=fx_date,
                 country=raw.get("country"),
-                currency=raw.get("currency"),
-                foreign_amount=_parse_float(raw.get("foreign_amount")),
+                currency=currency,
+                foreign_amount=foreign_amount,
                 is_fee=is_fee,
                 fee_reference_amount=_parse_float(raw.get("fee_reference_amount")),
             )
@@ -634,11 +748,6 @@ def extract_huanan_statement_lines(
 
     if not lines:
         raise StatementVisionError("not_statement: no parseable statement rows found")
-
-    # Backfill card hint for all rows in case model omitted some lines.
-    for ln in lines:
-        if not ln.card_hint:
-            ln.card_hint = "華南紅"
 
     return lines
 
@@ -672,6 +781,18 @@ def _normalize_statement_date(statement_month: str, mmdd_or_iso: Optional[str]) 
         except Exception:
             return None
         return s[:10]
+
+    # ROC date with separators, e.g. 115/02/06 or 115-02-06
+    m_roc_sep = re.fullmatch(r"(\d{3})[/-](\d{1,2})[/-](\d{1,2})", s)
+    if m_roc_sep:
+        try:
+            roc_y = int(m_roc_sep.group(1))
+            mm = int(m_roc_sep.group(2))
+            dd = int(m_roc_sep.group(3))
+            year = roc_y + 1911
+            return f"{year:04d}-{mm:02d}-{dd:02d}"
+        except Exception:
+            return None
 
     # ROC date formats from Taishin statement, e.g. 1141202 (YYYMMDD)
     if s.isdigit():
@@ -896,22 +1017,20 @@ def notion_create_cc_statement_lines(
             if account_page_id:
                 account_rel = {"relation": [{"id": account_page_id}]}
 
+        trans_date_norm = _normalize_statement_date(statement_month, line.trans_date) if line.trans_date else None
+        post_date_norm = _normalize_statement_date(statement_month, line.post_date) if line.post_date else None
+        fx_date_norm = _normalize_statement_date(statement_month, line.fx_date) if line.fx_date else None
+
         props: dict[str, Any] = {
             "Name": {"title": [{"text": {"content": line.description[:80] or "(statement line)"}}]},
             "帳單ID": {"rich_text": [{"text": {"content": statement_id}}]},
             "所屬帳單": {"relation": [{"id": statement_page_id}]} if statement_page_id else None,
             "付款方式": {"select": {"name": line.card_hint}} if line.card_hint else None,
             "連結帳戶": account_rel,
-            "消費日": {"date": {"start": _normalize_statement_date(statement_month, line.trans_date)}}
-            if line.trans_date
-            else None,
-            "入帳起息日": {"date": {"start": _normalize_statement_date(statement_month, line.post_date)}}
-            if line.post_date
-            else None,
+            "消費日": {"date": {"start": trans_date_norm}} if trans_date_norm else None,
+            "入帳起息日": {"date": {"start": post_date_norm}} if post_date_norm else None,
             "新臺幣金額": {"number": line.twd_amount},
-            "外幣折算日": {"date": {"start": _normalize_statement_date(statement_month, line.fx_date)}}
-            if line.fx_date
-            else None,
+            "外幣折算日": {"date": {"start": fx_date_norm}} if fx_date_norm else None,
             "消費地": {"select": {"name": line.country}} if line.country else None,
             "幣別": {"select": {"name": line.currency}} if line.currency else None,
             "外幣金額": {"number": line.foreign_amount} if line.foreign_amount is not None else None,
