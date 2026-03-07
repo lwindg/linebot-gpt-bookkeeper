@@ -254,6 +254,188 @@ def _fetch_ledger_candidates(*, payment_method: str, day: date) -> list[dict[str
     return all_rows
 
 
+
+
+def _notion_get_page(page_id: str) -> dict[str, Any]:
+    url = f"https://api.notion.com/v1/pages/{page_id}"
+    resp = requests.get(url, headers=_headers(NOTION_DB_VERSION), timeout=30)
+    if resp.status_code != 200:
+        raise RuntimeError(f"Notion get page failed: {resp.status_code} {resp.text}")
+    return resp.json()
+
+
+def _line_desc(props: dict[str, Any]) -> str:
+    return _rt_plain(props.get("消費明細") or {}) or _title_plain(props.get("Name") or {})
+
+
+def _is_payment_ack_line(desc: str) -> bool:
+    t = (desc or "").strip()
+    keywords = ("上期繳款已入帳", "本期繳款已入帳", "繳款已入帳")
+    return any(k in t for k in keywords)
+
+
+def _merge_relation_ids(prop: dict[str, Any], add_ids: list[str]) -> list[str]:
+    existing = [x.get("id") for x in ((prop or {}).get("relation") or []) if isinstance(x, dict) and x.get("id")]
+    merged = sorted(set(existing + [x for x in add_ids if x]))
+    return merged
+
+
+def _allocate_foreign_fee_lines(*, statement_id: str, statement_page_id: str) -> int:
+    """Auto-match fee lines and split fee across related ledgers (proportional)."""
+
+    rows = _fetch_statement_lines(statement_id)
+    row_by_id = {r.get("id"): r for r in rows}
+
+    fee_rows: list[dict[str, Any]] = []
+    purchase_by_day: dict[date, list[dict[str, Any]]] = defaultdict(list)
+
+    for row in rows:
+        props = row.get("properties") or {}
+        status = _select_name(props.get("對帳狀態") or {})
+        is_fee = bool((props.get("是否手續費") or {}).get("checkbox"))
+        day = _date(props.get("消費日") or {}) or _date(props.get("入帳起息日") or {})
+        twd = _number(props.get("新臺幣金額") or {})
+        ccy = _select_name(props.get("幣別") or {})
+        rel = [x.get("id") for x in ((props.get("對應帳目") or {}).get("relation") or []) if x.get("id")]
+
+        if is_fee and status == "unmatched" and day and twd is not None:
+            fee_rows.append({"id": row["id"], "day": day, "fee": float(twd)})
+            continue
+
+        if (
+            (not is_fee)
+            and status == "matched"
+            and day
+            and ccy
+            and ccy.upper() != "TWD"
+            and twd is not None
+            and float(twd) > 0
+            and rel
+        ):
+            purchase_by_day[day].append({
+                "line_id": row["id"],
+                "twd": float(twd),
+                "ledger_ids": rel,
+            })
+
+    allocated = 0
+
+    fee_by_day: dict[date, list[dict[str, Any]]] = defaultdict(list)
+    for f in fee_rows:
+        fee_by_day[f["day"]].append(f)
+
+    for day, fees in fee_by_day.items():
+        purchases = sorted(purchase_by_day.get(day, []), key=lambda x: x["twd"])
+        if not purchases:
+            continue
+
+        # Mark purchases already used by a matched fee line on same day.
+        used_purchase_idx: set[int] = set()
+        for i, p in enumerate(purchases):
+            sample = _notion_get_page(p["ledger_ids"][0]).get("properties") or {}
+            rel_line_ids = [x.get("id") for x in ((sample.get("對應帳單明細") or {}).get("relation") or []) if x.get("id")]
+            for rid in rel_line_ids:
+                rr = row_by_id.get(rid)
+                if not rr:
+                    continue
+                rprops = rr.get("properties") or {}
+                if bool((rprops.get("是否手續費") or {}).get("checkbox")):
+                    rday = _date(rprops.get("消費日") or {}) or _date(rprops.get("入帳起息日") or {})
+                    if rday == day and _select_name(rprops.get("對帳狀態") or {}) == "matched":
+                        used_purchase_idx.add(i)
+                        break
+
+        for f in sorted(fees, key=lambda x: x["fee"]):
+            best = None
+            for i, p in enumerate(purchases):
+                if i in used_purchase_idx:
+                    continue
+                diff = abs((p["twd"] * 0.015) - f["fee"])
+                if best is None or diff < best[0]:
+                    best = (diff, i, p)
+
+            if best is None:
+                continue
+
+            _, idx, target = best
+            used_purchase_idx.add(idx)
+            ledger_ids = target["ledger_ids"]
+
+            # Split fee by original amount ratio.
+            ledger_rows: list[tuple[str, float, dict[str, Any]]] = []
+            total_weight = 0.0
+            for lid in ledger_ids:
+                lp = _notion_get_page(lid).get("properties") or {}
+                amt = abs(float(_number(lp.get("原幣金額") or {}) or 0))
+                ledger_rows.append((lid, amt, lp))
+                total_weight += amt
+
+            if not ledger_rows:
+                continue
+
+            running = 0.0
+            for j, (lid, weight, lp) in enumerate(ledger_rows):
+                if j < len(ledger_rows) - 1:
+                    ratio = (weight / total_weight) if total_weight > 0 else (1.0 / len(ledger_rows))
+                    share = round(float(f["fee"]) * ratio, 2)
+                    running += share
+                else:
+                    share = round(float(f["fee"]) - running, 2)
+
+                current_fee = float(_number(lp.get("手續費") or {}) or 0)
+                merged_line_ids = _merge_relation_ids(lp.get("對應帳單明細") or {}, [f["id"]])
+
+                _notion_patch_page(
+                    lid,
+                    {
+                        "手續費": {"number": round(current_fee + share, 2)},
+                        "對應帳單明細": {"relation": [{"id": x} for x in merged_line_ids]},
+                        "對應帳單": {"relation": [{"id": statement_page_id}]},
+                    },
+                )
+
+            _notion_patch_page(
+                f["id"],
+                {
+                    "所屬帳單": {"relation": [{"id": statement_page_id}]},
+                    "對應帳目": {"relation": [{"id": x} for x in ledger_ids]},
+                    "對帳狀態": {"select": {"name": "matched"}},
+                },
+            )
+            allocated += 1
+
+    return allocated
+
+
+def _backfill_unmatched_statement_lines(*, statement_id: str, statement_page_id: str, enabled: bool = False) -> int:
+    """Backfill unmatched non-fee lines into ledger.
+
+    NOTE: disabled by default in reconcile flow. Keep for explicit/manual execution only.
+    """
+    if not enabled:
+        return 0
+    # Intentionally disabled in automated reconcile flow.
+    return 0
+
+
+def _summarize_statuses(statement_id: str) -> tuple[int, int, int, int]:
+    rows = _fetch_statement_lines(statement_id)
+    matched = 0
+    ambiguous = 0
+    unmatched = 0
+    for row in rows:
+        st = _select_name((row.get("properties") or {}).get("對帳狀態") or {})
+        if st == "matched":
+            matched += 1
+        elif st == "unmatched":
+            unmatched += 1
+        elif st in ("ignored", ""):
+            # ignored doesn't count as unmatched/ambiguous in summary
+            pass
+        else:
+            ambiguous += 1
+    return len(rows), matched, ambiguous, unmatched
+
 def reconcile_statement(*, statement_id: str, period: str, payment_methods: list[str]) -> ReconcileSummary:
     if not NOTION_TOKEN:
         raise RuntimeError("NOTION_TOKEN not configured")
@@ -271,7 +453,18 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
         pid = row["id"]
         props = row.get("properties") or {}
 
-        # Skip fee lines for MVP
+        desc = _line_desc(props)
+        if _is_payment_ack_line(desc):
+            _notion_patch_page(
+                pid,
+                {
+                    "所屬帳單": {"relation": [{"id": statement_page_id}]},
+                    "對帳狀態": {"select": {"name": "ignored"}},
+                },
+            )
+            continue
+
+        # Fee lines are processed in post-pass (_allocate_foreign_fee_lines)
         is_fee = bool((props.get("是否手續費") or {}).get("checkbox"))
         if is_fee:
             continue
@@ -598,15 +791,24 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
                     },
                 )
 
-    total = len(lines)
-    unmatched = max(total - matched - ambiguous, 0)
+    # Post-pass: fee mapping/splitting is enabled in reconcile flow.
+    _allocate_foreign_fee_lines(statement_id=statement_id, statement_page_id=statement_page_id)
+
+    # Missing backfill logic exists but stays disabled by default.
+    _backfill_unmatched_statement_lines(
+        statement_id=statement_id,
+        statement_page_id=statement_page_id,
+        enabled=False,
+    )
+
+    total, matched_final, ambiguous_final, unmatched_final = _summarize_statuses(statement_id)
     return ReconcileSummary(
         statement_id=statement_id,
         period=period,
         statement_lines_total=total,
-        matched=matched,
-        ambiguous=ambiguous,
-        unmatched=unmatched,
+        matched=matched_final,
+        ambiguous=ambiguous_final,
+        unmatched=unmatched_final,
         statement_page_id=statement_page_id,
     )
 
