@@ -274,6 +274,13 @@ def _is_payment_ack_line(desc: str) -> bool:
     return any(k in t for k in keywords)
 
 
+def _should_ignore_negative_transfer(*, amount_twd: float | None, desc: str) -> bool:
+    if amount_twd is None or amount_twd >= 0:
+        return False
+    normalized = (desc or "").replace(" ", "").lower()
+    return "轉帳" in normalized
+
+
 def _merge_relation_ids(prop: dict[str, Any], add_ids: list[str]) -> list[str]:
     existing = [x.get("id") for x in ((prop or {}).get("relation") or []) if isinstance(x, dict) and x.get("id")]
     merged = sorted(set(existing + [x for x in add_ids if x]))
@@ -436,11 +443,11 @@ def _summarize_statuses(statement_id: str) -> tuple[int, int, int, int]:
             ambiguous += 1
     return len(rows), matched, ambiguous, unmatched
 
-def reconcile_statement(*, statement_id: str, period: str, payment_methods: list[str]) -> ReconcileSummary:
+def reconcile_statement(*, statement_id: str, period: str, payment_methods: list[str], bank: str = "台新") -> ReconcileSummary:
     if not NOTION_TOKEN:
         raise RuntimeError("NOTION_TOKEN not configured")
 
-    statement_page_id = _ensure_statement_page(statement_id=statement_id, period=period, bank="台新")
+    statement_page_id = _ensure_statement_page(statement_id=statement_id, period=period, bank=bank)
 
     lines = _fetch_statement_lines(statement_id)
     matched = 0
@@ -452,6 +459,17 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
     for row in lines:
         pid = row["id"]
         props = row.get("properties") or {}
+        existing_status = _select_name(props.get("對帳狀態") or {})
+
+        # Preserve manually ignored lines across reruns.
+        if existing_status == "ignored":
+            _notion_patch_page(
+                pid,
+                {
+                    "所屬帳單": {"relation": [{"id": statement_page_id}]},
+                },
+            )
+            continue
 
         desc = _line_desc(props)
         if _is_payment_ack_line(desc):
@@ -609,7 +627,7 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
                 pid,
                 {
                     "所屬帳單": {"relation": [{"id": statement_page_id}]},
-                    "對帳狀態": {"select": {"name": "unmatched"}},
+                    "對帳狀態": {"select": {"name": "proposed"}},
                 },
             )
             continue
@@ -650,7 +668,7 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
                 pid,
                 {
                     "所屬帳單": {"relation": [{"id": statement_page_id}]},
-                    "對帳狀態": {"select": {"name": "unmatched"}},
+                    "對帳狀態": {"select": {"name": "proposed"}},
                 },
             )
 
@@ -694,7 +712,7 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
                 pid,
                 {
                     "所屬帳單": {"relation": [{"id": statement_page_id}]},
-                    "對帳狀態": {"select": {"name": "unmatched"}},
+                    "對帳狀態": {"select": {"name": "proposed"}},
                 },
             )
 
@@ -779,10 +797,19 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
                     pid,
                     {
                         "所屬帳單": {"relation": [{"id": statement_page_id}]},
-                        "對帳狀態": {"select": {"name": "unmatched"}},
+                        "對帳狀態": {"select": {"name": "proposed"}},
                     },
                 )
             else:
+                if _should_ignore_negative_transfer(amount_twd=stmt_twd, desc=desc):
+                    _notion_patch_page(
+                        pid,
+                        {
+                            "所屬帳單": {"relation": [{"id": statement_page_id}]},
+                            "對帳狀態": {"select": {"name": "ignored"}},
+                        },
+                    )
+                    continue
                 _notion_patch_page(
                     pid,
                     {

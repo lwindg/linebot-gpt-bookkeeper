@@ -36,3 +36,13 @@ banks:
             - "Love"
             - "i網購"
         payment_method: "華南紅"
+
+  fubon:
+    reconcile:
+      payment_methods_default:
+        - 富邦 Costco
+
+    # Fubon Costco statement screenshots typically include currency column (e.g. TWD)
+    # but may not have strong section headers. We default all parsed lines to the
+    # single supported payment method.
+    statement_section_map: []

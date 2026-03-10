@@ -77,11 +77,15 @@ def test_normalize_bank_name_supports_huanan() -> None:
     assert _normalize_bank_name("華南") == "華南"
     assert _normalize_bank_name("華南銀行") == "華南"
     assert _normalize_bank_name("huanan") == "華南"
+    assert _normalize_bank_name("富邦") == "富邦"
+    assert _normalize_bank_name("台北富邦") == "富邦"
+    assert _normalize_bank_name("fubon") == "富邦"
 
 
 def test_bank_supported_uses_credit_card_config(monkeypatch) -> None:
-    monkeypatch.setattr("app.assistant_cli.get_bank_config", lambda bank: object() if bank in ("台新", "華南") else None)
+    monkeypatch.setattr("app.assistant_cli.get_bank_config", lambda bank: object() if bank in ("台新", "華南", "富邦") else None)
 
     assert _bank_supported("台新") is True
     assert _bank_supported("華南") is True
+    assert _bank_supported("富邦") is True
     assert _bank_supported("unknown") is False

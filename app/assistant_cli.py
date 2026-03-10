@@ -33,8 +33,10 @@ from app.services.notion_service import NotionService
 from app.services.lock_service import LockService
 from app.services.statement_image_handler import (
     StatementVisionError,
+    TaishinStatementLine,
     extract_taishin_statement_lines,
     extract_huanan_statement_lines,
+    extract_fubon_statement_lines,
     extract_taishin_statement_text,
     build_ocr_preview,
     append_statement_note,
@@ -375,11 +377,106 @@ def _normalize_bank_name(value: str) -> str:
         return "台新"
     if raw in ("華南", "華南銀行", "huanan", "Huanan", "HUANAN"):
         return "華南"
+    if raw in ("富邦", "台北富邦", "Fubon", "fubon"):
+        return "富邦"
     return raw
 
 
 def _bank_supported(bank: str) -> bool:
     return get_bank_config(bank) is not None
+
+
+def _statement_lines_from_json_payload(raw: str) -> list[TaishinStatementLine]:
+    data = json.loads(raw)
+    if not isinstance(data, list):
+        raise ValueError("lines_json must be a JSON array")
+
+    lines: list[TaishinStatementLine] = []
+    for idx, item in enumerate(data, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(f"line[{idx}] must be an object")
+
+        desc = (item.get("description") or "").strip()
+        if not desc:
+            raise ValueError(f"line[{idx}] missing description")
+
+        try:
+            twd_amount = float(item.get("twd_amount"))
+        except Exception as e:  # pragma: no cover - defensive parse error branch
+            raise ValueError(f"line[{idx}] invalid twd_amount") from e
+
+        lines.append(
+            TaishinStatementLine(
+                card_hint=item.get("card_hint"),
+                trans_date=item.get("trans_date"),
+                post_date=item.get("post_date"),
+                description=desc,
+                twd_amount=twd_amount,
+                fx_date=item.get("fx_date"),
+                country=item.get("country"),
+                currency=item.get("currency"),
+                foreign_amount=(float(item["foreign_amount"]) if item.get("foreign_amount") is not None else None),
+                is_fee=bool(item.get("is_fee")),
+                fee_reference_amount=(
+                    float(item["fee_reference_amount"]) if item.get("fee_reference_amount") is not None else None
+                ),
+            )
+        )
+
+    if not lines:
+        raise ValueError("lines_json is empty")
+
+    return lines
+
+
+def _normalize_statement_line_payment_methods(
+    lines: list[TaishinStatementLine],
+    *,
+    allowed_payment_methods: list[str],
+) -> list[TaishinStatementLine]:
+    if not lines:
+        return lines
+    allowed = [m for m in (allowed_payment_methods or []) if isinstance(m, str) and m.strip()]
+    if not allowed:
+        return lines
+
+    # When reconcile lock has exactly one payment method, force all imported lines
+    # to that method if model output is missing/noisy (e.g. last-4 digits like 8905).
+    if len(allowed) == 1:
+        target = allowed[0]
+        return [
+            TaishinStatementLine(
+                card_hint=(ln.card_hint if ln.card_hint in allowed else target),
+                trans_date=ln.trans_date,
+                post_date=ln.post_date,
+                description=ln.description,
+                twd_amount=ln.twd_amount,
+                fx_date=ln.fx_date,
+                country=ln.country,
+                currency=ln.currency,
+                foreign_amount=ln.foreign_amount,
+                is_fee=ln.is_fee,
+                fee_reference_amount=ln.fee_reference_amount,
+            )
+            for ln in lines
+        ]
+
+    return [
+        TaishinStatementLine(
+            card_hint=(ln.card_hint if ln.card_hint in allowed else None),
+            trans_date=ln.trans_date,
+            post_date=ln.post_date,
+            description=ln.description,
+            twd_amount=ln.twd_amount,
+            fx_date=ln.fx_date,
+            country=ln.country,
+            currency=ln.currency,
+            foreign_amount=ln.foreign_amount,
+            is_fee=ln.is_fee,
+            fee_reference_amount=ln.fee_reference_amount,
+        )
+        for ln in lines
+    ]
 
 
 def cmd_cc_lock(args: argparse.Namespace) -> int:
@@ -394,7 +491,7 @@ def cmd_cc_lock(args: argparse.Namespace) -> int:
                 "error": {
                     "message": "unsupported bank",
                     "reason": "unsupported_bank",
-                    "supported_banks": ["台新", "華南"],
+                    "supported_banks": ["台新", "華南", "富邦"],
                 },
             }
         )
@@ -424,38 +521,93 @@ def cmd_cc_import(args: argparse.Namespace) -> int:
     user_id = args.user_id
     image_path = args.image_path
     message_id = args.message_id
+    no_llm = bool(args.no_llm)
+    lines_json = args.lines_json
+    lines_json_path = args.lines_json_path
 
     lock_service = LockService(user_id)
     lock_val = lock_service.get_reconcile_lock() or {}
     bank = _normalize_bank_name(lock_val.get("bank") or "")
     period = lock_val.get("period")
     statement_id = lock_val.get("statement_id")
+    methods = lock_val.get("payment_methods") or []
 
     if not period or not statement_id or not _bank_supported(bank):
         _print_json({"status": "error", "error": {"message": "reconcile lock not set", "reason": "missing_lock"}})
         return 1
 
     try:
-        with open(image_path, "rb") as f:
-            image_data = f.read()
+        lines: list[TaishinStatementLine]
+        image_data: bytes | None = None
 
-        if bank == "台新":
-            lines = extract_taishin_statement_lines(image_data, statement_month=period)
-        elif bank == "華南":
-            lines = extract_huanan_statement_lines(image_data, statement_month=period)
+        if lines_json or lines_json_path:
+            if lines_json and lines_json_path:
+                _print_json(
+                    {
+                        "status": "error",
+                        "error": {"message": "provide only one of lines-json and lines-json-path", "reason": "invalid_input"},
+                    }
+                )
+                return 1
+            raw = lines_json
+            if lines_json_path:
+                raw = Path(str(lines_json_path)).read_text(encoding="utf-8")
+            lines = _statement_lines_from_json_payload(str(raw or ""))
+        elif image_path:
+            if no_llm:
+                _print_json(
+                    {
+                        "status": "error",
+                        "error": {
+                            "message": "no_llm mode requires lines-json or lines-json-path",
+                            "reason": "missing_structured_lines",
+                        },
+                    }
+                )
+                return 1
+
+            with open(image_path, "rb") as f:
+                image_data = f.read()
+
+            if bank == "台新":
+                lines = extract_taishin_statement_lines(image_data, statement_month=period)
+            elif bank == "華南":
+                lines = extract_huanan_statement_lines(image_data, statement_month=period)
+            elif bank == "富邦":
+                lines = extract_fubon_statement_lines(image_data, statement_month=period)
+            else:
+                _print_json({"status": "error", "error": {"message": "unsupported bank", "reason": "unsupported_bank"}})
+                return 1
         else:
-            _print_json({"status": "error", "error": {"message": "unsupported bank", "reason": "unsupported_bank"}})
+            _print_json(
+                {
+                    "status": "error",
+                    "error": {
+                        "message": "missing input: provide image-path or structured lines",
+                        "reason": "missing_input",
+                    },
+                }
+            )
             return 1
+
+        lines = _normalize_statement_line_payment_methods(
+            lines,
+            allowed_payment_methods=list(methods),
+        )
 
         statement_page_id = ensure_cc_statement_page(
             statement_id=statement_id,
             period=period,
             bank=bank,
-            source_note=f"assistant_cli image_path={image_path}" + (f" message_id={message_id}" if message_id else ""),
+            source_note=(
+                f"assistant_cli image_path={image_path}" + (f" message_id={message_id}" if message_id else "")
+                if image_path
+                else "assistant_cli lines_json import"
+            ),
         )
 
         # OCR preview for audit (Taishin parser only)
-        if bank == "台新":
+        if bank == "台新" and image_data is not None:
             try:
                 ocr_text = extract_taishin_statement_text(image_data, enable_compression=False)
                 preview = build_ocr_preview(ocr_text)
@@ -521,7 +673,12 @@ def cmd_cc_run(args: argparse.Namespace) -> int:
 
     try:
         payment_methods = lock_val.get("payment_methods") or []
-        summary = reconcile_statement(statement_id=statement_id, period=period, payment_methods=payment_methods)
+        summary = reconcile_statement(
+            statement_id=statement_id,
+            period=period,
+            payment_methods=payment_methods,
+            bank=bank,
+        )
         text = format_reconcile_summary(summary)
         _print_json({"status": "ok", "result": summary.__dict__, "summary_text": text})
         return 0
@@ -570,7 +727,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     cc_import = cc_sub.add_parser("import", help="Import statement image for current locked bank")
     cc_import.add_argument("--user-id", required=True)
-    cc_import.add_argument("--image-path", required=True)
+    cc_import.add_argument("--image-path", required=False)
+    cc_import.add_argument("--lines-json", required=False, help="Structured statement lines JSON array")
+    cc_import.add_argument("--lines-json-path", required=False, help="Path to structured statement lines JSON file")
+    cc_import.add_argument("--no-llm", action="store_true", help="Do not call OpenAI; requires structured lines input")
     cc_import.add_argument("--message-id", required=False)
     cc_import.set_defaults(func=cmd_cc_import)
 

@@ -92,6 +92,33 @@ Rules:
 """
 
 
+FUBON_STATEMENT_VISION_PROMPT = """
+Extract Fubon Costco credit card statement rows from this screenshot.
+
+Return JSON object with:
+- status: success | not_statement | partial
+- lines: array of rows
+
+Each row object fields:
+- card_hint: string (use "富邦 Costco")
+- trans_date: string (ROC like 115/02/10, or MM/DD, or YYYY-MM-DD)
+- post_date: string (ROC like 115/02/10, or MM/DD, or YYYY-MM-DD)
+- description: string
+- twd_amount: number (charge positive, refund/credit negative; payment/transfer is typically negative)
+- fx_date: string|null
+- country: string|null
+- currency: string|null (e.g. TWD)
+- foreign_amount: number|null
+- is_fee: boolean
+- fee_reference_amount: number|null
+
+Rules:
+- Ignore headers, totals, due amount summaries, and card number lines (e.g. 末4碼).
+- Keep only actual statement line items.
+- If not a Fubon statement detail screenshot, return status=not_statement with empty lines.
+"""
+
+
 def build_statement_raw_text(statement_month: str, line: TaishinStatementLine) -> str:
     trans = _normalize_statement_date(statement_month, line.trans_date) if line.trans_date else None
     post = _normalize_statement_date(statement_month, line.post_date) if line.post_date else None
@@ -639,6 +666,214 @@ def parse_huanan_statement_ocr_text(text: str) -> list[TaishinStatementLine]:
                 fee_reference_amount=None,
             )
         )
+
+    return lines
+
+
+def parse_fubon_statement_ocr_text(text: str) -> list[TaishinStatementLine]:
+    """Parse Fubon Costco statement rows from OCR text.
+
+    Typical columns (screenshot OCR):
+      <trans_date> <description...> <post_date> <currency> ... <twd_amount>
+
+    Notes:
+    - Date tokens are often ROC with slashes (e.g. 115/02/10).
+    - We treat TWD amount as the last numeric token on the line.
+    - Currency is usually 'TWD' in the middle.
+    - We skip non-transaction lines like totals and card headers.
+    """
+
+    lines: list[TaishinStatementLine] = []
+
+    skip_contains = (
+        "前期應繳",
+        "本期應繳",
+        "應繳總額",
+        "最低應繳",
+        "末4碼",
+        "末四碼",
+    )
+
+    for raw_line in (text or "").splitlines():
+        s = (raw_line or "").strip()
+        if not s:
+            continue
+        if any(k in s for k in skip_contains):
+            continue
+        # Card header lines commonly include brand + last-4 markers.
+        if ("末4碼" in s or "末四碼" in s) and ("MASTER" in s.upper() or "VISA" in s.upper()):
+            continue
+        if s.startswith("交易日") or s.startswith("---"):
+            continue
+
+        parts = s.split()
+        if len(parts) < 4:
+            continue
+
+        # Find first two date-ish tokens anywhere in the line
+        date_idxs = [i for i, tok in enumerate(parts) if _is_dateish_token(tok)]
+        if len(date_idxs) < 2:
+            continue
+
+        i0, i1 = date_idxs[0], date_idxs[1]
+        if i0 != 0:
+            # If the first token isn't a date, this is likely not a statement row.
+            continue
+
+        trans_date = parts[i0]
+        post_date = parts[i1]
+
+        # Amount: last numeric token
+        twd_amount = None
+        twd_idx = None
+        for i in range(len(parts) - 1, -1, -1):
+            if _token_is_amount(parts[i]):
+                twd_amount = _parse_amount(parts[i])
+                twd_idx = i
+                break
+        if twd_amount is None or twd_idx is None:
+            continue
+
+        # Payment/transfer lines in Fubon statements often show as negative numbers.
+        # For reconcile matching (ledger 繳卡費 is typically recorded as a positive expense),
+        # normalize these to positive.
+        if twd_amount < 0 and any(k in s for k in ("轉帳", "繳款", "扣繳", "自動扣繳", "扣款", "繳費")):
+            twd_amount = abs(float(twd_amount))
+
+        # Currency: first 3-letter uppercase token after post_date (typically TWD)
+        currency = None
+        for tok in parts[i1 + 1 : twd_idx]:
+            if re.fullmatch(r"[A-Z]{3}", tok):
+                currency = tok
+                break
+
+        # Description: between trans_date and post_date
+        desc_tokens = parts[i0 + 1 : i1]
+        description = " ".join(desc_tokens).strip() or "(statement line)"
+
+        is_fee = "國外交易服務費" in description or "手續費" in description
+
+        lines.append(
+            TaishinStatementLine(
+                card_hint="富邦 Costco",
+                trans_date=trans_date,
+                post_date=post_date,
+                description=description,
+                twd_amount=float(twd_amount),
+                fx_date=None,
+                country=None,
+                currency=currency,
+                foreign_amount=None,
+                is_fee=is_fee,
+                fee_reference_amount=None,
+            )
+        )
+
+    return lines
+
+
+
+def extract_fubon_statement_lines(
+    image_data: bytes,
+    openai_client: Optional[OpenAI] = None,
+    enable_compression: bool = True,
+    *,
+    statement_month: Optional[str] = None,
+) -> list[TaishinStatementLine]:
+    """Extract Fubon Costco statement lines.
+
+    Priority:
+    1) OCR text + deterministic parser
+    2) JSON-mode vision fallback
+    """
+
+    if openai_client is None:
+        openai_client = OpenAI(api_key=OPENAI_API_KEY)
+
+    ocr_text = extract_taishin_statement_text(
+        image_data,
+        openai_client=openai_client,
+        enable_compression=enable_compression,
+    )
+    parsed = parse_fubon_statement_ocr_text(ocr_text)
+    if parsed:
+        return parsed
+
+    # Fallback: JSON-mode extraction
+    if enable_compression:
+        image_data = compress_image(image_data)
+
+    base64_image = encode_image_base64(image_data)
+
+    response = openai_client.chat.completions.create(
+        model=GPT_VISION_MODEL,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": FUBON_STATEMENT_VISION_PROMPT},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
+                    },
+                ],
+            }
+        ],
+        max_tokens=3000,
+        response_format={"type": "json_object"},
+    )
+
+    text = response.choices[0].message.content
+    if not text:
+        raise StatementVisionError("Empty vision response")
+
+    raw_json = text.strip()
+    if "```" in raw_json:
+        raw_json = raw_json.replace("```json", "").replace("```", "").strip()
+    if "{" in raw_json and "}" in raw_json:
+        raw_json = raw_json[raw_json.find("{") : raw_json.rfind("}") + 1]
+
+    data = json.loads(raw_json)
+    status = (data.get("status") or "").strip().lower()
+    if status in ("not_statement", "error"):
+        raise StatementVisionError(f"{status}: no parseable statement rows found")
+
+    lines: list[TaishinStatementLine] = []
+    for raw in data.get("lines", []):
+        twd = _parse_float(raw.get("twd_amount"))
+        if twd is None:
+            continue
+        desc = (raw.get("description") or "").strip()
+        if not desc:
+            continue
+
+        # Normalize payment/transfer negatives to positive to match ledger 繳卡費.
+        if twd < 0 and any(k in desc for k in ("轉帳", "繳款", "扣繳", "自動扣繳", "扣款", "繳費")):
+            twd = abs(float(twd))
+
+        currency = raw.get("currency")
+        if not currency:
+            # Fubon detail usually includes TWD column
+            currency = "TWD"
+
+        lines.append(
+            TaishinStatementLine(
+                card_hint="富邦 Costco",
+                trans_date=raw.get("trans_date"),
+                post_date=raw.get("post_date"),
+                description=desc,
+                twd_amount=twd,
+                fx_date=raw.get("fx_date"),
+                country=raw.get("country"),
+                currency=currency,
+                foreign_amount=_parse_float(raw.get("foreign_amount")),
+                is_fee=bool(raw.get("is_fee")) or ("手續費" in desc),
+                fee_reference_amount=_parse_float(raw.get("fee_reference_amount")),
+            )
+        )
+
+    if not lines:
+        raise StatementVisionError("not_statement: no parseable statement rows found")
 
     return lines
 

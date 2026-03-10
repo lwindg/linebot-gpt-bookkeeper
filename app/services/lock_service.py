@@ -230,9 +230,14 @@ class LockService:
                 return "❌ 請提供對帳月份（YYYY-MM）。\n範例：鎖定對帳 台新 2026-01"
             cfg = get_bank_config(bank)
             if not cfg:
-                return "❌ 目前僅支援台新/華南帳單對帳。"
+                return "❌ 目前僅支援台新/華南/富邦帳單對帳。"
 
-            bank_display = "台新" if cfg.bank_key == "taishin" else "華南" if cfg.bank_key == "huanan" else bank
+            bank_display = (
+                "台新" if cfg.bank_key == "taishin" else
+                "華南" if cfg.bank_key == "huanan" else
+                "富邦" if cfg.bank_key == "fubon" else
+                bank
+            )
             self.set_reconcile_lock(bank=bank_display, period=period)
             lock_val = self.get_reconcile_lock() or {}
             methods = lock_val.get("payment_methods") or []
@@ -267,12 +272,12 @@ class LockService:
         if _RE_RECONCILE_RUN.search(text):
             r = self.get_reconcile_lock()
             if not r:
-                return "❌ 尚未鎖定對帳模式。請先輸入：鎖定對帳 <台新|華南> YYYY-MM"
+                return "❌ 尚未鎖定對帳模式。請先輸入：鎖定對帳 <台新|華南|富邦> YYYY-MM"
 
             bank = r.get("bank")
             cfg = get_bank_config(str(bank or ""))
             if not cfg:
-                return "❌ 目前僅支援台新/華南帳單對帳。"
+                return "❌ 目前僅支援台新/華南/富邦帳單對帳。"
 
             statement_id = r.get("statement_id")
             period = r.get("period")
@@ -287,6 +292,7 @@ class LockService:
                     statement_id=statement_id,
                     period=period,
                     payment_methods=list(methods),
+                    bank=str(bank or ""),
                 )
                 return format_reconcile_summary(summary)
             except Exception as e:

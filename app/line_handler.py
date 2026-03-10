@@ -22,6 +22,8 @@ from app.services.image_handler import (
 )
 from app.services.statement_image_handler import (
     extract_taishin_statement_lines,
+    extract_huanan_statement_lines,
+    extract_fubon_statement_lines,
     ensure_cc_statement_page,
     notion_create_cc_statement_lines,
     detect_statement_date_anomaly,
@@ -298,31 +300,44 @@ def handle_image_message(event: MessageEvent, messaging_api_blob: MessagingApiBl
             statement_id = reconcile_lock.get("statement_id")
             bank = reconcile_lock.get("bank")
 
-            if bank not in ("台新", "Taishin", "taishin"):
-                reply_text = "❌ 目前僅支援台新帳單對帳。"
+            bank_norm = (bank or "").strip()
+            if bank_norm in ("台新", "Taishin", "taishin"):
+                bank_display = "台新"
+                extractor = extract_taishin_statement_lines
+            elif bank_norm in ("華南", "華南銀行", "huanan", "Huanan", "HUANAN"):
+                bank_display = "華南"
+                extractor = extract_huanan_statement_lines
+            elif bank_norm in ("富邦", "台北富邦", "fubon", "Fubon"):
+                bank_display = "富邦"
+                extractor = extract_fubon_statement_lines
             else:
+                reply_text = "❌ 目前僅支援台新/華南/富邦帳單對帳。"
+                extractor = None
+
+            if extractor is not None:
                 try:
-                    logger.info("開始分析台新帳單圖片")
-                    lines = extract_taishin_statement_lines(image_data, statement_month=period)
+                    logger.info(f"開始分析{bank_display}帳單圖片")
+                    lines = extractor(image_data, statement_month=period)
                     statement_page_id = ensure_cc_statement_page(
                         statement_id=statement_id,
                         period=period,
-                        bank="台新",
+                        bank=bank_display,
                         source_note=f"LINE image message_id={message_id}",
                     )
 
-                    # Attach OCR preview for audit (best-effort)
-                    try:
-                        from app.services.statement_image_handler import extract_taishin_statement_text, build_ocr_preview, append_statement_note
+                    # Attach OCR preview for audit (best-effort; Taishin OCR prompt)
+                    if bank_display == "台新":
+                        try:
+                            from app.services.statement_image_handler import extract_taishin_statement_text, build_ocr_preview, append_statement_note
 
-                        ocr_text = extract_taishin_statement_text(image_data, enable_compression=False)
-                        preview = build_ocr_preview(ocr_text)
-                        append_statement_note(
-                            statement_page_id=statement_page_id,
-                            note=f"[OCR preview]\n{preview}",
-                        )
-                    except Exception:
-                        pass
+                            ocr_text = extract_taishin_statement_text(image_data, enable_compression=False)
+                            preview = build_ocr_preview(ocr_text)
+                            append_statement_note(
+                                statement_page_id=statement_page_id,
+                                note=f"[OCR preview]\n{preview}",
+                            )
+                        except Exception:
+                            pass
 
                     created_ids = notion_create_cc_statement_lines(
                         statement_month=period,
@@ -348,7 +363,7 @@ def handle_image_message(event: MessageEvent, messaging_api_blob: MessagingApiBl
                         pass
 
                     reply_text = (
-                        "✅ 已匯入台新帳單明細"
+                        f"✅ 已匯入{bank_display}帳單明細"
                         f"\n• 期別：{period}"
                         f"\n• 帳單ID：{statement_id}"
                         f"\n• 新增明細：{len(created_ids)} 筆"
@@ -357,13 +372,13 @@ def handle_image_message(event: MessageEvent, messaging_api_blob: MessagingApiBl
                         reply_text += f"\n\n{warning}"
                     reply_text += "\n\n接著可輸入：執行對帳"
                 except StatementVisionError as e:
-                    reply_text = f"❌ 無法辨識台新帳單\n\n{str(e)}\n\n💡 請確認圖片是帳單明細截圖（非 Notion/聊天截圖），或重拍清晰一點。"
+                    reply_text = f"❌ 無法辨識{bank_display}帳單\n\n{str(e)}\n\n💡 請確認圖片是帳單明細截圖（非 Notion/聊天截圖），或重拍清晰一點。"
                 except Exception as e:
-                    logger.exception("台新帳單匯入失敗")
+                    logger.exception(f"{bank_display}帳單匯入失敗")
                     msg = str(e)
                     if len(msg) > 200:
                         msg = msg[:200] + "…"
-                    reply_text = f"❌ 匯入台新帳單時發生錯誤，請稍後再試。\n\n({msg})"
+                    reply_text = f"❌ 匯入{bank_display}帳單時發生錯誤，請稍後再試。\n\n({msg})"
 
         else:
             # Receipt flow (existing)
