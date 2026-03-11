@@ -401,3 +401,53 @@ def test_sinopac_autobookkeeping_uses_statement_trans_date(monkeypatch) -> None:
 
     assert result["created"] == 1
     assert sent_dates == ["2026-02-02"]
+
+
+def test_cc_reapply_auto_reuses_existing_statement_lines(monkeypatch) -> None:
+    user_id = "u-test-reapply"
+    _FakeLockService.alias_store.clear()
+    _FakeLockService.store[user_id] = {
+        "bank": "永豐",
+        "period": "2026-02",
+        "statement_id": "sinopac-2026-02-mock",
+        "payment_methods": ["大戶信用卡"],
+        "uploaded_images": 1,
+    }
+    outputs: list[dict] = []
+
+    monkeypatch.setattr(assistant_cli, "LockService", _FakeLockService)
+    monkeypatch.setattr(assistant_cli, "_print_json", lambda payload: outputs.append(payload))
+    monkeypatch.setattr(
+        assistant_cli,
+        "_fetch_statement_lines_for_autobookkeeping",
+        lambda _sid: (
+            [
+                assistant_cli.TaishinStatementLine(
+                    card_hint="大戶信用卡",
+                    trans_date="2026-02-02",
+                    post_date="2026-02-02",
+                    description="大戶消費回饋入帳戶—國內217元",
+                    twd_amount=0.0,
+                    fx_date=None,
+                    country=None,
+                    currency="TWD",
+                    foreign_amount=None,
+                    is_fee=False,
+                    fee_reference_amount=None,
+                )
+            ],
+            ["line-1"],
+        ),
+    )
+    monkeypatch.setattr(
+        assistant_cli,
+        "_apply_sinopac_autobookkeeping",
+        lambda **_kwargs: {"created": 1, "skipped": 0, "failed": []},
+    )
+
+    rc = assistant_cli.cmd_cc_reapply_auto(Namespace(user_id=user_id, force=False))
+
+    assert rc == 0
+    assert outputs[-1]["status"] == "ok"
+    assert outputs[-1]["result"]["line_count"] == 1
+    assert outputs[-1]["result"]["auto_bookkeeping"]["created"] == 1

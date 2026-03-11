@@ -47,8 +47,10 @@ from app.services.statement_image_handler import (
     _normalize_statement_date,
 )
 from app.services.reconcile_statement import reconcile_statement, format_reconcile_summary
+from app.services.reconcile_statement import _notion_query
 from app.shared.credit_card_config import get_bank_config
 from app.shared.category_resolver import resolve_category_input
+from app.config import NOTION_CC_STATEMENT_LINES_DB_ID
 
 
 _NEEDS_LLM_CATEGORIES = {None, "", "未分類", "N/A"}
@@ -590,6 +592,7 @@ def _apply_sinopac_autobookkeeping(
     statement_month: str,
     lines: list[TaishinStatementLine],
     line_page_ids: list[str],
+    force: bool = False,
 ) -> dict[str, Any]:
     kv = KVStore()
     created = 0
@@ -624,7 +627,7 @@ def _apply_sinopac_autobookkeeping(
             continue
 
         dedupe_key = _CC_AUTO_POST_KEY.format(statement_id=statement_id, line_id=line_id, rule=rule)
-        if kv.get(dedupe_key):
+        if (not force) and kv.get(dedupe_key):
             skipped += 1
             continue
 
@@ -638,6 +641,120 @@ def _apply_sinopac_autobookkeeping(
         created += 1
 
     return {"created": created, "skipped": skipped, "failed": failed}
+
+
+def _date_start(prop: dict[str, Any]) -> str | None:
+    d = (prop or {}).get("date")
+    if not isinstance(d, dict):
+        return None
+    v = d.get("start")
+    if not isinstance(v, str) or not v.strip():
+        return None
+    return v[:10]
+
+
+def _number_value(prop: dict[str, Any]) -> float | None:
+    n = (prop or {}).get("number")
+    try:
+        return float(n) if n is not None else None
+    except Exception:
+        return None
+
+
+def _select_name(prop: dict[str, Any]) -> str | None:
+    s = (prop or {}).get("select")
+    if not isinstance(s, dict):
+        return None
+    name = s.get("name")
+    return str(name).strip() if name else None
+
+
+def _rt_plain(prop: dict[str, Any]) -> str:
+    rt = (prop or {}).get("rich_text") or []
+    if not rt or not isinstance(rt, list):
+        return ""
+    t0 = rt[0] if isinstance(rt[0], dict) else {}
+    plain = t0.get("plain_text")
+    if isinstance(plain, str) and plain.strip():
+        return plain.strip()
+    txt = t0.get("text")
+    if isinstance(txt, dict):
+        c = txt.get("content")
+        if isinstance(c, str):
+            return c.strip()
+    return ""
+
+
+def _title_plain(prop: dict[str, Any]) -> str:
+    arr = (prop or {}).get("title") or []
+    if not arr or not isinstance(arr, list):
+        return ""
+    t0 = arr[0] if isinstance(arr[0], dict) else {}
+    plain = t0.get("plain_text")
+    if isinstance(plain, str) and plain.strip():
+        return plain.strip()
+    txt = t0.get("text")
+    if isinstance(txt, dict):
+        c = txt.get("content")
+        if isinstance(c, str):
+            return c.strip()
+    return ""
+
+
+def _fetch_statement_lines_for_autobookkeeping(statement_id: str) -> tuple[list[TaishinStatementLine], list[str]]:
+    if not NOTION_CC_STATEMENT_LINES_DB_ID:
+        raise RuntimeError("NOTION_CC_STATEMENT_LINES_DB_ID not configured")
+
+    rows: list[dict[str, Any]] = []
+    cursor = None
+    while True:
+        payload: dict[str, Any] = {
+            "page_size": 100,
+            "filter": {"property": "帳單ID", "rich_text": {"equals": statement_id}},
+        }
+        if cursor:
+            payload["start_cursor"] = cursor
+        data = _notion_query(NOTION_CC_STATEMENT_LINES_DB_ID, payload)
+        rows.extend(data.get("results") or [])
+        if not data.get("has_more"):
+            break
+        cursor = data.get("next_cursor")
+
+    lines: list[TaishinStatementLine] = []
+    line_ids: list[str] = []
+    for row in rows:
+        pid = row.get("id")
+        props = row.get("properties") or {}
+        if not pid or not isinstance(props, dict):
+            continue
+        desc = _rt_plain(props.get("消費明細") or {}) or _title_plain(props.get("Name") or {})
+        twd = _number_value(props.get("新臺幣金額") or {}) or 0.0
+        trans = _date_start(props.get("消費日") or {})
+        post = _date_start(props.get("入帳起息日") or {})
+        fx = _date_start(props.get("外幣折算日") or {})
+        country = _select_name(props.get("消費地") or {})
+        currency = _select_name(props.get("幣別") or {}) or "TWD"
+        foreign_amount = _number_value(props.get("外幣金額") or {})
+        is_fee = bool((props.get("是否手續費") or {}).get("checkbox") is True)
+        fee_ref = _number_value(props.get("手續費參考金額") or {})
+
+        lines.append(
+            TaishinStatementLine(
+                card_hint=_select_name(props.get("付款方式") or {}),
+                trans_date=trans,
+                post_date=post,
+                description=desc,
+                twd_amount=twd,
+                fx_date=fx,
+                country=country,
+                currency=currency,
+                foreign_amount=foreign_amount,
+                is_fee=is_fee,
+                fee_reference_amount=fee_ref,
+            )
+        )
+        line_ids.append(str(pid))
+    return lines, line_ids
 
 
 def cmd_cc_lock(args: argparse.Namespace) -> int:
@@ -916,6 +1033,50 @@ def cmd_cc_run(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_cc_reapply_auto(args: argparse.Namespace) -> int:
+    user_id = args.user_id
+    force = bool(getattr(args, "force", False))
+
+    lock_val = LockService(user_id).get_reconcile_lock() or {}
+    bank = lock_val.get("bank")
+    period = lock_val.get("period")
+    statement_id = lock_val.get("statement_id")
+    if not period or not statement_id or not _bank_supported(bank):
+        _print_json({"status": "error", "error": {"message": "reconcile lock not set", "reason": "missing_lock"}})
+        return 1
+    if bank != "永豐":
+        _print_json({"status": "error", "error": {"message": f"bank not supported: {bank}", "reason": "bank_unsupported"}})
+        return 1
+
+    try:
+        lines, line_ids = _fetch_statement_lines_for_autobookkeeping(statement_id)
+        result = _apply_sinopac_autobookkeeping(
+            user_id=user_id,
+            statement_id=statement_id,
+            statement_month=period,
+            lines=lines,
+            line_page_ids=line_ids,
+            force=force,
+        )
+        _print_json(
+            {
+                "status": "ok",
+                "result": {
+                    "statement_id": statement_id,
+                    "period": period,
+                    "bank": bank,
+                    "line_count": len(lines),
+                    "force": force,
+                    "auto_bookkeeping": result,
+                },
+            }
+        )
+        return 0
+    except Exception as e:
+        _print_json({"status": "error", "error": {"message": str(e), "reason": "unexpected"}})
+        return 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="assistant_cli", description="OpenClaw local assistant CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -984,6 +1145,11 @@ def build_parser() -> argparse.ArgumentParser:
     cc_run = cc_sub.add_parser("run", help="Run reconcile for current statement")
     cc_run.add_argument("--user-id", required=True)
     cc_run.set_defaults(func=cmd_cc_run)
+
+    cc_reapply_auto = cc_sub.add_parser("reapply-auto", help="Re-run SinoPac auto-bookkeeping without re-importing statement lines")
+    cc_reapply_auto.add_argument("--user-id", required=True)
+    cc_reapply_auto.add_argument("--force", action="store_true", help="Ignore dedupe key and run again")
+    cc_reapply_auto.set_defaults(func=cmd_cc_reapply_auto)
 
     return parser
 
