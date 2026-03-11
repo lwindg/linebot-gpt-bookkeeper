@@ -44,6 +44,7 @@ from app.services.statement_image_handler import (
     ensure_cc_statement_page,
     notion_create_cc_statement_lines,
     detect_statement_date_anomaly,
+    _normalize_statement_date,
 )
 from app.services.reconcile_statement import reconcile_statement, format_reconcile_summary
 from app.shared.credit_card_config import get_bank_config
@@ -552,7 +553,12 @@ def _extract_amount_from_desc_yuan(desc: str) -> float | None:
         return None
 
 
-def _execute_bk_text(*, user_id: str, text: str) -> tuple[bool, list[str], str | None]:
+def _execute_bk_text(
+    *,
+    user_id: str,
+    text: str,
+    tx_date: str | None = None,
+) -> tuple[bool, list[str], str | None]:
     result = process_with_parser(text, skip_gpt=True, user_id=user_id)
     if result.intent == "error":
         return False, [], result.error_message
@@ -562,6 +568,9 @@ def _execute_bk_text(*, user_id: str, text: str) -> tuple[bool, list[str], str |
         return False, [], "no_entries"
     if any(_is_needs_llm_entry(e) for e in entries):
         return False, [], "needs_llm"
+    if tx_date:
+        for e in entries:
+            e.日期 = tx_date
 
     ok = True
     if len(entries) == 1:
@@ -578,6 +587,7 @@ def _apply_sinopac_autobookkeeping(
     *,
     user_id: str,
     statement_id: str,
+    statement_month: str,
     lines: list[TaishinStatementLine],
     line_page_ids: list[str],
 ) -> dict[str, Any]:
@@ -618,7 +628,8 @@ def _apply_sinopac_autobookkeeping(
             skipped += 1
             continue
 
-        ok, tx_ids, err = _execute_bk_text(user_id=user_id, text=str(text))
+        tx_date = _normalize_statement_date(statement_month, ln.trans_date) if ln.trans_date else None
+        ok, tx_ids, err = _execute_bk_text(user_id=user_id, text=str(text), tx_date=tx_date)
         if not ok:
             failed.append({"line_id": line_id, "rule": str(rule), "error": str(err or "unknown")})
             continue
@@ -836,6 +847,7 @@ def cmd_cc_import(args: argparse.Namespace) -> int:
             auto_bookkeeping = _apply_sinopac_autobookkeeping(
                 user_id=user_id,
                 statement_id=statement_id,
+                statement_month=period,
                 lines=lines,
                 line_page_ids=created_ids,
             )

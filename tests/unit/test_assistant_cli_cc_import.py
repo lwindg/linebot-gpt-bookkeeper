@@ -4,6 +4,7 @@ from argparse import Namespace
 from pathlib import Path
 
 import app.assistant_cli as assistant_cli
+from app.gpt.types import BookkeepingEntry, MultiExpenseResult
 
 
 class _FakeKV:
@@ -337,3 +338,66 @@ def test_cc_import_sinopac_includes_auto_bookkeeping_result(monkeypatch, tmp_pat
     assert rc == 0
     assert outputs[-1]["status"] == "ok"
     assert outputs[-1]["result"]["auto_bookkeeping"]["created"] == 2
+
+
+def test_sinopac_autobookkeeping_uses_statement_trans_date(monkeypatch) -> None:
+    class _KV:
+        def get(self, _key):
+            return None
+
+        def set(self, _key, _value, ttl=None):  # noqa: ARG002
+            return None
+
+    sent_dates: list[str] = []
+
+    monkeypatch.setattr(assistant_cli, "KVStore", lambda: _KV())
+    monkeypatch.setattr(
+        assistant_cli,
+        "process_with_parser",
+        lambda _text, **_kwargs: MultiExpenseResult(
+            intent="create",
+            entries=[
+                BookkeepingEntry(
+                    intent="記帳",
+                    日期="2099-01-01",
+                    品項="回饋金",
+                    原幣別="TWD",
+                    原幣金額=217.0,
+                    付款方式="大戶信用卡",
+                    交易ID="tx-auto-1",
+                    分類="其他",
+                    交易類型="收入",
+                )
+            ],
+        ),
+    )
+    monkeypatch.setattr(
+        assistant_cli,
+        "send_to_webhook",
+        lambda entry, **_kwargs: sent_dates.append(str(entry.日期)) or True,
+    )
+
+    result = assistant_cli._apply_sinopac_autobookkeeping(
+        user_id="u-test-date",
+        statement_id="sinopac-2026-02-mock",
+        statement_month="2026-02",
+        lines=[
+            assistant_cli.TaishinStatementLine(
+                card_hint="8006",
+                trans_date="02/02",
+                post_date="02/02",
+                description="大戶消費回饋入帳戶—國內217元",
+                twd_amount=0.0,
+                fx_date=None,
+                country=None,
+                currency="TWD",
+                foreign_amount=None,
+                is_fee=False,
+                fee_reference_amount=None,
+            )
+        ],
+        line_page_ids=["line-1"],
+    )
+
+    assert result["created"] == 1
+    assert sent_dates == ["2026-02-02"]
