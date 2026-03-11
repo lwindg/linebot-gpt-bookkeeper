@@ -618,7 +618,7 @@ def _apply_sinopac_autobookkeeping(
                 skipped += 1
                 continue
             rule = "rebate_income"
-            text = f"收入 {int(amt) if float(amt).is_integer() else amt} 回饋金 大戶信用卡"
+            text = f"收入 {int(amt) if float(amt).is_integer() else amt} 回饋金 大戶網銀"
         elif "永豐自扣已入帳" in desc:
             amt = abs(float(ln.twd_amount or 0))
             if amt <= 0:

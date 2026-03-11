@@ -350,26 +350,30 @@ def test_sinopac_autobookkeeping_uses_statement_trans_date(monkeypatch) -> None:
 
     sent_dates: list[str] = []
     sent_txids: list[str] = []
+    seen_texts: list[str] = []
 
     monkeypatch.setattr(assistant_cli, "KVStore", lambda: _KV())
     monkeypatch.setattr(
         assistant_cli,
         "process_with_parser",
-        lambda _text, **_kwargs: MultiExpenseResult(
-            intent="create",
-            entries=[
-                BookkeepingEntry(
-                    intent="記帳",
-                    日期="2099-01-01",
-                    品項="回饋金",
-                    原幣別="TWD",
-                    原幣金額=217.0,
-                    付款方式="大戶信用卡",
-                    交易ID="tx-auto-1",
-                    分類="其他",
-                    交易類型="收入",
-                )
-            ],
+        lambda _text, **_kwargs: (
+            seen_texts.append(str(_text))
+            or MultiExpenseResult(
+                intent="create",
+                entries=[
+                    BookkeepingEntry(
+                        intent="記帳",
+                        日期="2099-01-01",
+                        品項="回饋金",
+                        原幣別="TWD",
+                        原幣金額=217.0,
+                        付款方式="大戶網銀",
+                        交易ID="tx-auto-1",
+                        分類="其他",
+                        交易類型="收入",
+                    )
+                ],
+            )
         ),
     )
     monkeypatch.setattr(
@@ -404,6 +408,7 @@ def test_sinopac_autobookkeeping_uses_statement_trans_date(monkeypatch) -> None:
     assert sent_dates == ["2026-02-02"]
     assert len(sent_txids) == 1
     assert sent_txids[0].startswith("20260202-")
+    assert seen_texts == ["收入 217 回饋金 大戶網銀"]
 
 
 def test_cc_reapply_auto_reuses_existing_statement_lines(monkeypatch) -> None:
