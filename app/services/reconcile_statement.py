@@ -487,6 +487,34 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
         if is_fee:
             continue
 
+        # If statement line already has explicit linked ledger relations,
+        # keep them as authoritative and skip amount/date matching.
+        prelinked_ledger_ids = [x.get("id") for x in ((props.get("對應帳目") or {}).get("relation") or []) if isinstance(x, dict) and x.get("id")]
+        if prelinked_ledger_ids:
+            _notion_patch_page(
+                pid,
+                {
+                    "所屬帳單": {"relation": [{"id": statement_page_id}]},
+                    "對應帳目": {"relation": [{"id": x} for x in sorted(set(prelinked_ledger_ids))]},
+                    "對帳狀態": {"select": {"name": "matched"}},
+                },
+            )
+            for ledger_id in sorted(set(prelinked_ledger_ids)):
+                led_page = _notion_get_page(ledger_id)
+                lp = led_page.get("properties") or {}
+                line_rel = _merge_relation_ids(lp.get("對應帳單明細") or {}, [pid])
+                stmt_rel = _merge_relation_ids(lp.get("對應帳單") or {}, [statement_page_id])
+                _notion_patch_page(
+                    ledger_id,
+                    {
+                        "對應帳單明細": {"relation": [{"id": x} for x in line_rel]},
+                        "對應帳單": {"relation": [{"id": x} for x in stmt_rel]},
+                    },
+                )
+                consumed_ledger_ids.add(ledger_id)
+            matched += 1
+            continue
+
         pay = _select_name(props.get("付款方式") or {})
         # If payment method is present, keep it within allowlist.
         if payment_methods and pay and pay not in payment_methods:

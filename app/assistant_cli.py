@@ -48,10 +48,10 @@ from app.services.statement_image_handler import (
     _normalize_statement_date,
 )
 from app.services.reconcile_statement import reconcile_statement, format_reconcile_summary
-from app.services.reconcile_statement import _notion_query
+from app.services.reconcile_statement import _notion_query, _notion_get_page, _notion_patch_page
 from app.shared.credit_card_config import get_bank_config
 from app.shared.category_resolver import resolve_category_input
-from app.config import NOTION_CC_STATEMENT_LINES_DB_ID
+from app.config import NOTION_CC_STATEMENT_LINES_DB_ID, NOTION_DATABASE_ID
 
 
 _NEEDS_LLM_CATEGORIES = {None, "", "未分類", "N/A"}
@@ -561,6 +561,7 @@ def _execute_bk_text(
     user_id: str,
     text: str,
     tx_date: str | None = None,
+    single_suffix: int | None = None,
 ) -> tuple[bool, list[str], str | None]:
     result = process_with_parser(text, skip_gpt=True, user_id=user_id)
     if result.intent == "error":
@@ -576,6 +577,8 @@ def _execute_bk_text(
             e.日期 = tx_date
         batch_id = build_batch_id(tx_date, item=(entries[0].品項 if entries else None), use_current_time=False)
         assign_transaction_ids(entries, batch_id)
+        if len(entries) == 1 and single_suffix is not None:
+            entries[0].交易ID = f"{batch_id}-{int(single_suffix):02d}"
 
     ok = True
     if len(entries) == 1:
@@ -595,6 +598,7 @@ def _apply_sinopac_autobookkeeping(
     statement_month: str,
     lines: list[TaishinStatementLine],
     line_page_ids: list[str],
+    statement_page_id: str | None = None,
     force: bool = False,
 ) -> dict[str, Any]:
     kv = KVStore()
@@ -635,15 +639,100 @@ def _apply_sinopac_autobookkeeping(
             continue
 
         tx_date = _normalize_statement_date(statement_month, ln.trans_date) if ln.trans_date else None
-        ok, tx_ids, err = _execute_bk_text(user_id=user_id, text=str(text), tx_date=tx_date)
+        ok, tx_ids, err = _execute_bk_text(
+            user_id=user_id,
+            text=str(text),
+            tx_date=tx_date,
+            single_suffix=idx + 1,
+        )
         if not ok:
             failed.append({"line_id": line_id, "rule": str(rule), "error": str(err or "unknown")})
             continue
 
-        kv.set(dedupe_key, {"line_id": line_id, "rule": rule, "transaction_ids": tx_ids}, ttl=86400 * 30)
+        ledger_page_ids = _fetch_ledger_page_ids_by_transaction_ids(tx_ids)
+        if ledger_page_ids and statement_page_id:
+            _link_statement_line_to_ledger(
+                line_page_id=line_id,
+                ledger_page_ids=ledger_page_ids,
+                statement_page_id=statement_page_id,
+            )
+
+        kv.set(
+            dedupe_key,
+            {
+                "line_id": line_id,
+                "rule": rule,
+                "transaction_ids": tx_ids,
+                "ledger_page_ids": ledger_page_ids,
+            },
+            ttl=86400 * 30,
+        )
         created += 1
 
     return {"created": created, "skipped": skipped, "failed": failed}
+
+
+def _relation_ids(prop: dict[str, Any]) -> list[str]:
+    rel = (prop or {}).get("relation") or []
+    out: list[str] = []
+    for r in rel:
+        if isinstance(r, dict):
+            pid = r.get("id")
+            if pid:
+                out.append(str(pid))
+    return out
+
+
+def _merge_relation_ids(prop: dict[str, Any], add_ids: list[str]) -> list[str]:
+    merged = sorted(set(_relation_ids(prop) + [x for x in add_ids if x]))
+    return merged
+
+
+def _fetch_ledger_page_ids_by_transaction_ids(transaction_ids: list[str]) -> list[str]:
+    if not NOTION_DATABASE_ID:
+        return []
+    out: list[str] = []
+    for tid in transaction_ids:
+        if not tid:
+            continue
+        data = _notion_query(
+            NOTION_DATABASE_ID,
+            {"page_size": 20, "filter": {"property": "交易ID", "rich_text": {"equals": tid}}},
+        )
+        for r in data.get("results") or []:
+            pid = r.get("id")
+            if pid:
+                out.append(str(pid))
+    return sorted(set(out))
+
+
+def _link_statement_line_to_ledger(*, line_page_id: str, ledger_page_ids: list[str], statement_page_id: str) -> None:
+    if not line_page_id or not ledger_page_ids:
+        return
+
+    line_page = _notion_get_page(line_page_id)
+    lprops = (line_page or {}).get("properties") or {}
+    line_target_rel = _merge_relation_ids(lprops.get("對應帳目") or {}, ledger_page_ids)
+    patch_line: dict[str, Any] = {
+        "對帳狀態": {"select": {"name": "matched"}},
+        "對應帳目": {"relation": [{"id": x} for x in line_target_rel]},
+    }
+    if statement_page_id:
+        patch_line["所屬帳單"] = {"relation": [{"id": statement_page_id}]}
+    _notion_patch_page(line_page_id, patch_line)
+
+    for ledger_id in ledger_page_ids:
+        led_page = _notion_get_page(ledger_id)
+        props = (led_page or {}).get("properties") or {}
+        line_rel = _merge_relation_ids(props.get("對應帳單明細") or {}, [line_page_id])
+        stmt_rel = _merge_relation_ids(props.get("對應帳單") or {}, [statement_page_id])
+        _notion_patch_page(
+            ledger_id,
+            {
+                "對應帳單明細": {"relation": [{"id": x} for x in line_rel]},
+                "對應帳單": {"relation": [{"id": x} for x in stmt_rel]},
+            },
+        )
 
 
 def _date_start(prop: dict[str, Any]) -> str | None:
@@ -970,6 +1059,7 @@ def cmd_cc_import(args: argparse.Namespace) -> int:
                 statement_month=period,
                 lines=lines,
                 line_page_ids=created_ids,
+                statement_page_id=statement_page_id,
             )
 
         # increment uploaded count (best-effort)
@@ -1053,12 +1143,14 @@ def cmd_cc_reapply_auto(args: argparse.Namespace) -> int:
 
     try:
         lines, line_ids = _fetch_statement_lines_for_autobookkeeping(statement_id)
+        statement_page_id = ensure_cc_statement_page(statement_id=statement_id, period=period, bank=bank)
         result = _apply_sinopac_autobookkeeping(
             user_id=user_id,
             statement_id=statement_id,
             statement_month=period,
             lines=lines,
             line_page_ids=line_ids,
+            statement_page_id=statement_page_id,
             force=force,
         )
         _print_json(

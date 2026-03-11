@@ -192,3 +192,82 @@ def test_reconcile_statement_negative_transfer_marks_ignored(monkeypatch) -> Non
     assert summary.matched == 0
     assert summary.ambiguous == 0
     assert summary.unmatched == 0
+
+
+def test_reconcile_statement_keeps_prelinked_relations_as_matched(monkeypatch) -> None:
+    rows = [
+        {
+            "id": "stmt-prelinked",
+            "properties": {
+                "付款方式": {"select": {"name": "大戶信用卡"}},
+                "消費日": {"date": {"start": "2026-02-02"}},
+                "新臺幣金額": {"number": 0},
+                "幣別": {"select": {"name": "TWD"}},
+                "消費明細": {"rich_text": [{"plain_text": "大戶消費回饋入帳戶"}]},
+                "是否手續費": {"checkbox": False},
+                "對應帳目": {"relation": [{"id": "ledger-1"}]},
+                "對帳狀態": {"select": {"name": "unmatched"}},
+            },
+        }
+    ]
+    ledger_pages = {
+        "ledger-1": {
+            "properties": {
+                "對應帳單明細": {"relation": []},
+                "對應帳單": {"relation": []},
+            }
+        }
+    }
+
+    def fake_ensure_statement_page(*, statement_id: str, period: str, bank: str = "台新") -> str:
+        return "statement-page-1"
+
+    def fake_fetch_statement_lines(statement_id: str):  # noqa: ARG001
+        return rows
+
+    def fake_fetch_ledger_candidates(*, payment_method: str, day):  # noqa: ARG001
+        return []
+
+    def fake_notion_get_page(page_id: str):
+        return ledger_pages[page_id]
+
+    def fake_notion_patch_page(page_id: str, properties):
+        if page_id == "stmt-prelinked":
+            row = rows[0]
+            if "對帳狀態" in properties:
+                row["properties"]["對帳狀態"] = properties["對帳狀態"]
+            if "所屬帳單" in properties:
+                row["properties"]["所屬帳單"] = properties["所屬帳單"]
+            if "對應帳目" in properties:
+                row["properties"]["對應帳目"] = properties["對應帳目"]
+            return
+        if page_id == "ledger-1":
+            page = ledger_pages["ledger-1"]["properties"]
+            if "對應帳單明細" in properties:
+                page["對應帳單明細"] = properties["對應帳單明細"]
+            if "對應帳單" in properties:
+                page["對應帳單"] = properties["對應帳單"]
+
+    monkeypatch.setattr(reconcile_mod, "NOTION_TOKEN", "test-token")
+    monkeypatch.setattr(reconcile_mod, "_ensure_statement_page", fake_ensure_statement_page)
+    monkeypatch.setattr(reconcile_mod, "_fetch_statement_lines", fake_fetch_statement_lines)
+    monkeypatch.setattr(reconcile_mod, "_fetch_ledger_candidates", fake_fetch_ledger_candidates)
+    monkeypatch.setattr(reconcile_mod, "_notion_get_page", fake_notion_get_page)
+    monkeypatch.setattr(reconcile_mod, "_notion_patch_page", fake_notion_patch_page)
+    monkeypatch.setattr(reconcile_mod, "_allocate_foreign_fee_lines", lambda **kwargs: 0)
+    monkeypatch.setattr(reconcile_mod, "_backfill_unmatched_statement_lines", lambda **kwargs: 0)
+
+    summary = reconcile_mod.reconcile_statement(
+        statement_id="sinopac-2026-02-20260311-103852",
+        period="2026-02",
+        payment_methods=["大戶信用卡"],
+        bank="永豐",
+    )
+
+    assert rows[0]["properties"]["對帳狀態"]["select"]["name"] == "matched"
+    stmt_rel = ledger_pages["ledger-1"]["properties"]["對應帳單"]["relation"]
+    line_rel = ledger_pages["ledger-1"]["properties"]["對應帳單明細"]["relation"]
+    assert {"id": "statement-page-1"} in stmt_rel
+    assert {"id": "stmt-prelinked"} in line_rel
+    assert summary.matched == 1
+    assert summary.unmatched == 0
