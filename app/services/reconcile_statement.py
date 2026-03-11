@@ -295,6 +295,64 @@ def _allocate_foreign_fee_lines(*, statement_id: str, statement_page_id: str) ->
 
     fee_rows: list[dict[str, Any]] = []
     purchase_by_day: dict[date, list[dict[str, Any]]] = defaultdict(list)
+    purchase_rows_any: list[dict[str, Any]] = []
+
+    def _merchant_tag(desc: str) -> str:
+        t = (desc or "").strip()
+        if not t:
+            return ""
+        token = t.split()[0].strip().upper()
+        return token
+
+    def _allocate_fee_to_purchase(*, fee_row_id: str, fee_amount: float, purchase: dict[str, Any]) -> bool:
+        nonlocal allocated
+        ledger_ids = purchase.get("ledger_ids") or []
+        if not ledger_ids:
+            return False
+
+        # Split fee by original amount ratio.
+        ledger_rows: list[tuple[str, float, dict[str, Any]]] = []
+        total_weight = 0.0
+        for lid in ledger_ids:
+            lp = _notion_get_page(lid).get("properties") or {}
+            amt = abs(float(_number(lp.get("原幣金額") or {}) or 0))
+            ledger_rows.append((lid, amt, lp))
+            total_weight += amt
+
+        if not ledger_rows:
+            return False
+
+        running = 0.0
+        for j, (lid, weight, lp) in enumerate(ledger_rows):
+            if j < len(ledger_rows) - 1:
+                ratio = (weight / total_weight) if total_weight > 0 else (1.0 / len(ledger_rows))
+                share = round(float(fee_amount) * ratio, 2)
+                running += share
+            else:
+                share = round(float(fee_amount) - running, 2)
+
+            current_fee = float(_number(lp.get("手續費") or {}) or 0)
+            merged_line_ids = _merge_relation_ids(lp.get("對應帳單明細") or {}, [fee_row_id])
+
+            _notion_patch_page(
+                lid,
+                {
+                    "手續費": {"number": round(current_fee + share, 2)},
+                    "對應帳單明細": {"relation": [{"id": x} for x in merged_line_ids]},
+                    "對應帳單": {"relation": [{"id": statement_page_id}]},
+                },
+            )
+
+        _notion_patch_page(
+            fee_row_id,
+            {
+                "所屬帳單": {"relation": [{"id": statement_page_id}]},
+                "對應帳目": {"relation": [{"id": x} for x in ledger_ids]},
+                "對帳狀態": {"select": {"name": "matched"}},
+            },
+        )
+        allocated += 1
+        return True
 
     for row in rows:
         props = row.get("properties") or {}
@@ -304,9 +362,11 @@ def _allocate_foreign_fee_lines(*, statement_id: str, statement_page_id: str) ->
         twd = _number(props.get("新臺幣金額") or {})
         ccy = _select_name(props.get("幣別") or {})
         rel = [x.get("id") for x in ((props.get("對應帳目") or {}).get("relation") or []) if x.get("id")]
+        desc = _line_desc(props)
+        tag = _merchant_tag(desc)
 
         if is_fee and status == "unmatched" and day and twd is not None:
-            fee_rows.append({"id": row["id"], "day": day, "fee": float(twd)})
+            fee_rows.append({"id": row["id"], "day": day, "fee": float(twd), "tag": tag})
             continue
 
         if (
@@ -323,9 +383,32 @@ def _allocate_foreign_fee_lines(*, statement_id: str, statement_page_id: str) ->
                 "line_id": row["id"],
                 "twd": float(twd),
                 "ledger_ids": rel,
+                "tag": tag,
             })
+            purchase_rows_any.append(
+                {
+                    "line_id": row["id"],
+                    "day": day,
+                    "twd": float(twd),
+                    "ledger_ids": rel,
+                    "tag": tag,
+                }
+            )
+            continue
+
+        if (not is_fee) and status == "matched" and day and twd is not None and float(twd) > 0 and rel:
+            purchase_rows_any.append(
+                {
+                    "line_id": row["id"],
+                    "day": day,
+                    "twd": float(twd),
+                    "ledger_ids": rel,
+                    "tag": tag,
+                }
+            )
 
     allocated = 0
+    allocated_fee_line_ids: set[str] = set()
 
     fee_by_day: dict[date, list[dict[str, Any]]] = defaultdict(list)
     for f in fee_rows:
@@ -366,50 +449,28 @@ def _allocate_foreign_fee_lines(*, statement_id: str, statement_page_id: str) ->
 
             _, idx, target = best
             used_purchase_idx.add(idx)
-            ledger_ids = target["ledger_ids"]
+            if _allocate_fee_to_purchase(fee_row_id=f["id"], fee_amount=float(f["fee"]), purchase=target):
+                allocated_fee_line_ids.add(str(f["id"]))
 
-            # Split fee by original amount ratio.
-            ledger_rows: list[tuple[str, float, dict[str, Any]]] = []
-            total_weight = 0.0
-            for lid in ledger_ids:
-                lp = _notion_get_page(lid).get("properties") or {}
-                amt = abs(float(_number(lp.get("原幣金額") or {}) or 0))
-                ledger_rows.append((lid, amt, lp))
-                total_weight += amt
-
-            if not ledger_rows:
-                continue
-
-            running = 0.0
-            for j, (lid, weight, lp) in enumerate(ledger_rows):
-                if j < len(ledger_rows) - 1:
-                    ratio = (weight / total_weight) if total_weight > 0 else (1.0 / len(ledger_rows))
-                    share = round(float(f["fee"]) * ratio, 2)
-                    running += share
-                else:
-                    share = round(float(f["fee"]) - running, 2)
-
-                current_fee = float(_number(lp.get("手續費") or {}) or 0)
-                merged_line_ids = _merge_relation_ids(lp.get("對應帳單明細") or {}, [f["id"]])
-
-                _notion_patch_page(
-                    lid,
-                    {
-                        "手續費": {"number": round(current_fee + share, 2)},
-                        "對應帳單明細": {"relation": [{"id": x} for x in merged_line_ids]},
-                        "對應帳單": {"relation": [{"id": statement_page_id}]},
-                    },
-                )
-
-            _notion_patch_page(
-                f["id"],
-                {
-                    "所屬帳單": {"relation": [{"id": statement_page_id}]},
-                    "對應帳目": {"relation": [{"id": x} for x in ledger_ids]},
-                    "對帳狀態": {"select": {"name": "matched"}},
-                },
-            )
-            allocated += 1
+    # Fallback allocation when statement currency is missing:
+    # match fee lines by merchant tag + nearest day on already matched purchases.
+    for f in fee_rows:
+        if str(f["id"]) in allocated_fee_line_ids:
+            continue
+        candidates = [
+            p
+            for p in purchase_rows_any
+            if p.get("tag")
+            and f.get("tag")
+            and p["tag"] == f["tag"]
+            and abs((p["day"] - f["day"]).days) <= 3
+        ]
+        if not candidates:
+            continue
+        candidates.sort(key=lambda p: (abs((p["day"] - f["day"]).days), abs((p["twd"] * 0.015) - float(f["fee"]))))
+        target = candidates[0]
+        if _allocate_fee_to_purchase(fee_row_id=f["id"], fee_amount=float(f["fee"]), purchase=target):
+            allocated_fee_line_ids.add(str(f["id"]))
 
     return allocated
 

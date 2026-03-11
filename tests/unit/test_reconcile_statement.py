@@ -271,3 +271,94 @@ def test_reconcile_statement_keeps_prelinked_relations_as_matched(monkeypatch) -
     assert {"id": "stmt-prelinked"} in line_rel
     assert summary.matched == 1
     assert summary.unmatched == 0
+
+
+def test_reconcile_statement_fee_fallback_matches_by_tag_when_currency_missing(monkeypatch) -> None:
+    rows = [
+        {
+            "id": "stmt-apple-main",
+            "properties": {
+                "付款方式": {"select": {"name": "大戶信用卡"}},
+                "消費日": {"date": {"start": "2026-02-06"}},
+                "新臺幣金額": {"number": 300},
+                "幣別": {"select": None},
+                "消費明細": {"rich_text": [{"plain_text": "APPLE.COM/BILL ITUNES.COM IE"}]},
+                "是否手續費": {"checkbox": False},
+                "對應帳目": {"relation": [{"id": "ledger-apple-1"}]},
+                "對帳狀態": {"select": {"name": "matched"}},
+            },
+        },
+        {
+            "id": "stmt-apple-fee",
+            "properties": {
+                "付款方式": {"select": {"name": "大戶信用卡"}},
+                "消費日": {"date": {"start": "2026-02-06"}},
+                "新臺幣金額": {"number": 5},
+                "幣別": {"select": None},
+                "消費明細": {"rich_text": [{"plain_text": "APPLE.COM/BILL 國外交易服務費"}]},
+                "是否手續費": {"checkbox": True},
+                "對應帳目": {"relation": []},
+                "對帳狀態": {"select": {"name": "unmatched"}},
+            },
+        },
+    ]
+
+    ledger_pages = {
+        "ledger-apple-1": {
+            "properties": {
+                "原幣金額": {"number": 300},
+                "手續費": {"number": 0},
+                "對應帳單明細": {"relation": [{"id": "stmt-apple-main"}]},
+                "對應帳單": {"relation": []},
+            }
+        }
+    }
+
+    def fake_ensure_statement_page(*, statement_id: str, period: str, bank: str = "台新") -> str:
+        return "statement-page-1"
+
+    def fake_fetch_statement_lines(statement_id: str):  # noqa: ARG001
+        return rows
+
+    def fake_fetch_ledger_candidates(*, payment_method: str, day):  # noqa: ARG001
+        return []
+
+    def fake_notion_get_page(page_id: str):
+        if page_id in ledger_pages:
+            return ledger_pages[page_id]
+        for r in rows:
+            if r["id"] == page_id:
+                return r
+        return {"properties": {}}
+
+    def fake_notion_patch_page(page_id: str, properties):
+        if page_id in ledger_pages:
+            page = ledger_pages[page_id]["properties"]
+            for k, v in properties.items():
+                page[k] = v
+            return
+        for r in rows:
+            if r["id"] == page_id:
+                for k, v in properties.items():
+                    r["properties"][k] = v
+                return
+
+    monkeypatch.setattr(reconcile_mod, "NOTION_TOKEN", "test-token")
+    monkeypatch.setattr(reconcile_mod, "_ensure_statement_page", fake_ensure_statement_page)
+    monkeypatch.setattr(reconcile_mod, "_fetch_statement_lines", fake_fetch_statement_lines)
+    monkeypatch.setattr(reconcile_mod, "_fetch_ledger_candidates", fake_fetch_ledger_candidates)
+    monkeypatch.setattr(reconcile_mod, "_notion_get_page", fake_notion_get_page)
+    monkeypatch.setattr(reconcile_mod, "_notion_patch_page", fake_notion_patch_page)
+    monkeypatch.setattr(reconcile_mod, "_backfill_unmatched_statement_lines", lambda **kwargs: 0)
+
+    summary = reconcile_mod.reconcile_statement(
+        statement_id="sinopac-2026-02-20260311-103852",
+        period="2026-02",
+        payment_methods=["大戶信用卡"],
+        bank="永豐",
+    )
+
+    fee_status = rows[1]["properties"]["對帳狀態"]["select"]["name"]
+    assert fee_status == "matched"
+    assert ledger_pages["ledger-apple-1"]["properties"]["手續費"]["number"] == 5
+    assert summary.unmatched == 0
