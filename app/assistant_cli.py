@@ -27,6 +27,7 @@ import yaml
 
 from app.gpt.types import BookkeepingEntry
 from app.processor import process_with_parser
+from app.pipeline.normalize import build_batch_id, assign_transaction_ids
 from app.services.webhook_sender import send_multiple_webhooks, send_to_webhook
 from app.services.kv_store import KVStore
 from app.services.notion_service import NotionService
@@ -573,6 +574,8 @@ def _execute_bk_text(
     if tx_date:
         for e in entries:
             e.日期 = tx_date
+        batch_id = build_batch_id(tx_date, item=(entries[0].品項 if entries else None), use_current_time=False)
+        assign_transaction_ids(entries, batch_id)
 
     ok = True
     if len(entries) == 1:

@@ -349,6 +349,7 @@ def test_sinopac_autobookkeeping_uses_statement_trans_date(monkeypatch) -> None:
             return None
 
     sent_dates: list[str] = []
+    sent_txids: list[str] = []
 
     monkeypatch.setattr(assistant_cli, "KVStore", lambda: _KV())
     monkeypatch.setattr(
@@ -374,7 +375,7 @@ def test_sinopac_autobookkeeping_uses_statement_trans_date(monkeypatch) -> None:
     monkeypatch.setattr(
         assistant_cli,
         "send_to_webhook",
-        lambda entry, **_kwargs: sent_dates.append(str(entry.日期)) or True,
+        lambda entry, **_kwargs: sent_dates.append(str(entry.日期)) or sent_txids.append(str(entry.交易ID)) or True,
     )
 
     result = assistant_cli._apply_sinopac_autobookkeeping(
@@ -401,6 +402,8 @@ def test_sinopac_autobookkeeping_uses_statement_trans_date(monkeypatch) -> None:
 
     assert result["created"] == 1
     assert sent_dates == ["2026-02-02"]
+    assert len(sent_txids) == 1
+    assert sent_txids[0].startswith("20260202-")
 
 
 def test_cc_reapply_auto_reuses_existing_statement_lines(monkeypatch) -> None:
