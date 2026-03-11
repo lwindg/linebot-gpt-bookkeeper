@@ -37,6 +37,7 @@ from app.services.statement_image_handler import (
     extract_taishin_statement_lines,
     extract_huanan_statement_lines,
     extract_fubon_statement_lines,
+    extract_sinopac_statement_lines,
     extract_taishin_statement_text,
     build_ocr_preview,
     append_statement_note,
@@ -379,6 +380,8 @@ def _normalize_bank_name(value: str) -> str:
         return "華南"
     if raw in ("富邦", "台北富邦", "Fubon", "fubon"):
         return "富邦"
+    if raw in ("永豐", "永豐銀行", "SinoPac", "sinopac", "SINOPAC"):
+        return "永豐"
     return raw
 
 
@@ -433,20 +436,29 @@ def _normalize_statement_line_payment_methods(
     lines: list[TaishinStatementLine],
     *,
     allowed_payment_methods: list[str],
+    card_aliases: dict[str, str] | None = None,
 ) -> list[TaishinStatementLine]:
     if not lines:
         return lines
+    aliases = {
+        str(k).strip(): str(v).strip()
+        for k, v in (card_aliases or {}).items()
+        if str(k).strip() and str(v).strip()
+    }
+
+    def _mapped_hint(raw_hint: str | None) -> str | None:
+        if raw_hint is None:
+            return None
+        h = str(raw_hint).strip()
+        if not h:
+            return None
+        return aliases.get(h, h)
+
     allowed = [m for m in (allowed_payment_methods or []) if isinstance(m, str) and m.strip()]
     if not allowed:
-        return lines
-
-    # When reconcile lock has exactly one payment method, force all imported lines
-    # to that method if model output is missing/noisy (e.g. last-4 digits like 8905).
-    if len(allowed) == 1:
-        target = allowed[0]
         return [
             TaishinStatementLine(
-                card_hint=(ln.card_hint if ln.card_hint in allowed else target),
+                card_hint=_mapped_hint(ln.card_hint),
                 trans_date=ln.trans_date,
                 post_date=ln.post_date,
                 description=ln.description,
@@ -461,9 +473,31 @@ def _normalize_statement_line_payment_methods(
             for ln in lines
         ]
 
+    # When reconcile lock has exactly one payment method, force all imported lines
+    # to that method if model output is missing/noisy (e.g. last-4 digits like 8905).
+    if len(allowed) == 1:
+        target = allowed[0]
+        return [
+            TaishinStatementLine(
+                card_hint=(mh if mh in allowed else target),
+                trans_date=ln.trans_date,
+                post_date=ln.post_date,
+                description=ln.description,
+                twd_amount=ln.twd_amount,
+                fx_date=ln.fx_date,
+                country=ln.country,
+                currency=ln.currency,
+                foreign_amount=ln.foreign_amount,
+                is_fee=ln.is_fee,
+                fee_reference_amount=ln.fee_reference_amount,
+            )
+            for ln in lines
+            for mh in [_mapped_hint(ln.card_hint)]
+        ]
+
     return [
         TaishinStatementLine(
-            card_hint=(ln.card_hint if ln.card_hint in allowed else None),
+            card_hint=(mh if mh in allowed else None),
             trans_date=ln.trans_date,
             post_date=ln.post_date,
             description=ln.description,
@@ -476,6 +510,7 @@ def _normalize_statement_line_payment_methods(
             fee_reference_amount=ln.fee_reference_amount,
         )
         for ln in lines
+        for mh in [_mapped_hint(ln.card_hint)]
     ]
 
 
@@ -491,7 +526,7 @@ def cmd_cc_lock(args: argparse.Namespace) -> int:
                 "error": {
                     "message": "unsupported bank",
                     "reason": "unsupported_bank",
-                    "supported_banks": ["台新", "華南", "富邦"],
+                    "supported_banks": ["台新", "華南", "富邦", "永豐"],
                 },
             }
         )
@@ -514,6 +549,59 @@ def cmd_cc_unlock(args: argparse.Namespace) -> int:
     user_id = args.user_id
     LockService(user_id).remove_reconcile_lock()
     _print_json({"status": "ok"})
+    return 0
+
+
+def cmd_cc_set_card_alias(args: argparse.Namespace) -> int:
+    user_id = args.user_id
+    bank = _normalize_bank_name(args.bank)
+    last4 = (args.last4 or "").strip()
+    payment_method = (args.payment_method or "").strip()
+    if not bank or not last4 or not payment_method:
+        _print_json(
+            {
+                "status": "error",
+                "error": {"message": "bank, last4, payment_method are required", "reason": "invalid_input"},
+            }
+        )
+        return 1
+
+    try:
+        lock_service = LockService(user_id)
+        lock_service.set_card_alias(bank=bank, last4=last4, payment_method=payment_method)
+        _print_json(
+            {
+                "status": "ok",
+                "result": {"bank": bank, "last4": last4, "payment_method": payment_method, "aliases": lock_service.get_card_aliases(bank)},
+            }
+        )
+        return 0
+    except ValueError as e:
+        _print_json({"status": "error", "error": {"message": str(e), "reason": "invalid_input"}})
+        return 1
+    except Exception as e:
+        _print_json({"status": "error", "error": {"message": str(e), "reason": "unexpected"}})
+        return 1
+
+
+def cmd_cc_list_card_alias(args: argparse.Namespace) -> int:
+    user_id = args.user_id
+    bank = _normalize_bank_name(args.bank)
+    aliases = LockService(user_id).get_card_aliases(bank)
+    _print_json({"status": "ok", "result": {"bank": bank, "aliases": aliases}})
+    return 0
+
+
+def cmd_cc_del_card_alias(args: argparse.Namespace) -> int:
+    user_id = args.user_id
+    bank = _normalize_bank_name(args.bank)
+    last4 = (args.last4 or "").strip()
+    if not bank or not last4:
+        _print_json({"status": "error", "error": {"message": "bank and last4 are required", "reason": "invalid_input"}})
+        return 1
+    lock_service = LockService(user_id)
+    lock_service.remove_card_alias(bank=bank, last4=last4)
+    _print_json({"status": "ok", "result": {"bank": bank, "last4": last4, "aliases": lock_service.get_card_aliases(bank)}})
     return 0
 
 
@@ -575,6 +663,8 @@ def cmd_cc_import(args: argparse.Namespace) -> int:
                 lines = extract_huanan_statement_lines(image_data, statement_month=period)
             elif bank == "富邦":
                 lines = extract_fubon_statement_lines(image_data, statement_month=period)
+            elif bank == "永豐":
+                lines = extract_sinopac_statement_lines(image_data, statement_month=period)
             else:
                 _print_json({"status": "error", "error": {"message": "unsupported bank", "reason": "unsupported_bank"}})
                 return 1
@@ -590,9 +680,11 @@ def cmd_cc_import(args: argparse.Namespace) -> int:
             )
             return 1
 
+        card_aliases = lock_service.get_card_aliases(bank)
         lines = _normalize_statement_line_payment_methods(
             lines,
             allowed_payment_methods=list(methods),
+            card_aliases=card_aliases,
         )
 
         statement_page_id = ensure_cc_statement_page(
@@ -724,6 +816,24 @@ def build_parser() -> argparse.ArgumentParser:
     cc_unlock = cc_sub.add_parser("unlock", help="Unlock reconcile mode")
     cc_unlock.add_argument("--user-id", required=True)
     cc_unlock.set_defaults(func=cmd_cc_unlock)
+
+    cc_set_card_alias = cc_sub.add_parser("set-card-alias", help="Set per-bank card last4 -> payment method alias")
+    cc_set_card_alias.add_argument("--user-id", required=True)
+    cc_set_card_alias.add_argument("--bank", required=True)
+    cc_set_card_alias.add_argument("--last4", required=True, help="Card last4 or card_hint token")
+    cc_set_card_alias.add_argument("--payment-method", required=True)
+    cc_set_card_alias.set_defaults(func=cmd_cc_set_card_alias)
+
+    cc_list_card_alias = cc_sub.add_parser("list-card-alias", help="List per-bank card aliases")
+    cc_list_card_alias.add_argument("--user-id", required=True)
+    cc_list_card_alias.add_argument("--bank", required=True)
+    cc_list_card_alias.set_defaults(func=cmd_cc_list_card_alias)
+
+    cc_del_card_alias = cc_sub.add_parser("del-card-alias", help="Delete per-bank card alias by last4")
+    cc_del_card_alias.add_argument("--user-id", required=True)
+    cc_del_card_alias.add_argument("--bank", required=True)
+    cc_del_card_alias.add_argument("--last4", required=True)
+    cc_del_card_alias.set_defaults(func=cmd_cc_del_card_alias)
 
     cc_import = cc_sub.add_parser("import", help="Import statement image for current locked bank")
     cc_import.add_argument("--user-id", required=True)

@@ -45,6 +45,8 @@ def get_bank_config(bank_key: str) -> Optional[CreditCardBankConfig]:
         bank_key_norm = "huanan"
     elif bank_key_norm in ("富邦", "台北富邦", "fubon"):
         bank_key_norm = "fubon"
+    elif bank_key_norm in ("永豐", "永豐銀行", "sinopac", "SinoPac", "SINOPAC"):
+        bank_key_norm = "sinopac"
 
     b = banks.get(bank_key_norm)
     if not b:

@@ -29,6 +29,7 @@ LOCK_PROJECT_KEY = "lock:project:{user_id}"
 LOCK_PAYMENT_KEY = "lock:payment:{user_id}"
 LOCK_CURRENCY_KEY = "lock:currency:{user_id}"
 LOCK_RECONCILE_KEY = "lock:reconcile:{user_id}"
+LOCK_CC_CARD_ALIAS_KEY = "cc:card_alias:{user_id}:{bank_key}"
 
 # Command Patterns
 _RE_LOCK_PROJECT = re.compile(r"鎖定專案\s*(?:名稱)?\s*(?P<name>.+)?")
@@ -86,6 +87,82 @@ class LockService:
 
     def get_reconcile_lock(self) -> Optional[dict]:
         return self.kv.get(LOCK_RECONCILE_KEY.format(user_id=self.user_id))
+
+    def _normalize_bank_key(self, bank: str) -> str:
+        cfg = get_bank_config(bank)
+        if cfg:
+            return cfg.bank_key
+        return (bank or "").strip().lower()
+
+    def _cc_card_alias_key(self, bank: str) -> str:
+        return LOCK_CC_CARD_ALIAS_KEY.format(
+            user_id=self.user_id,
+            bank_key=self._normalize_bank_key(bank),
+        )
+
+    def get_card_aliases(self, bank: str) -> dict[str, str]:
+        if not bank:
+            return {}
+        data = self.kv.get(self._cc_card_alias_key(bank))
+        if not isinstance(data, dict):
+            return {}
+        aliases = data.get("aliases")
+        if not isinstance(aliases, dict):
+            return {}
+
+        out: dict[str, str] = {}
+        for raw_last4, raw_method in aliases.items():
+            last4 = str(raw_last4 or "").strip()
+            method = str(raw_method or "").strip()
+            if not last4 or not method:
+                continue
+            out[last4] = method
+        return out
+
+    def set_card_alias(self, *, bank: str, last4: str, payment_method: str):
+        bank_name = (bank or "").strip()
+        last4_norm = str(last4 or "").strip()
+        payment_method_norm = str(payment_method or "").strip()
+        if not bank_name:
+            raise ValueError("bank is required")
+        if not last4_norm:
+            raise ValueError("last4 is required")
+        if not payment_method_norm:
+            raise ValueError("payment_method is required")
+
+        aliases = self.get_card_aliases(bank_name)
+
+        # Enforce one-to-one mapping per (user_id, bank):
+        # - card last4 must be unique
+        # - payment method must be unique
+        for k, v in aliases.items():
+            if k != last4_norm and v == payment_method_norm:
+                raise ValueError(f"payment_method already mapped to another card last4: {k}")
+
+        aliases[last4_norm] = payment_method_norm
+        tz = ZoneInfo("Asia/Taipei")
+        now = datetime.now(tz)
+        self.kv.set(
+            self._cc_card_alias_key(bank_name),
+            {"bank": bank_name, "aliases": aliases, "updated_at": now.isoformat()},
+            ttl=86400 * 30,
+        )
+
+    def remove_card_alias(self, *, bank: str, last4: str):
+        bank_name = (bank or "").strip()
+        last4_norm = str(last4 or "").strip()
+        if not bank_name or not last4_norm:
+            return
+        aliases = self.get_card_aliases(bank_name)
+        if last4_norm in aliases:
+            aliases.pop(last4_norm, None)
+            tz = ZoneInfo("Asia/Taipei")
+            now = datetime.now(tz)
+            self.kv.set(
+                self._cc_card_alias_key(bank_name),
+                {"bank": bank_name, "aliases": aliases, "updated_at": now.isoformat()},
+                ttl=86400 * 30,
+            )
 
     def set_reconcile_lock(self, *, bank: str, period: str, payment_methods: Optional[List[str]] = None):
         # NOTE: payment method options must match ledger vocabulary.
