@@ -801,7 +801,7 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
                     },
                 )
             else:
-                if _should_ignore_negative_transfer(amount_twd=stmt_twd, desc=desc):
+                if _should_ignore_negative_transfer(amount_twd=twd, desc=desc):
                     _notion_patch_page(
                         pid,
                         {

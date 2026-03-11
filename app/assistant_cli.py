@@ -52,6 +52,7 @@ from app.shared.category_resolver import resolve_category_input
 
 _NEEDS_LLM_CATEGORIES = {None, "", "未分類", "N/A"}
 _ASSISTANT_LAST_CREATED_KEY = "assistant_last_created:{user_id}"
+_CC_AUTO_POST_KEY = "cc:auto:{statement_id}:{line_id}:{rule}"
 
 
 def _load_classifications_yaml() -> dict:
@@ -514,6 +515,120 @@ def _normalize_statement_line_payment_methods(
     ]
 
 
+def _backfill_missing_statement_dates(lines: list[TaishinStatementLine]) -> list[TaishinStatementLine]:
+    out: list[TaishinStatementLine] = []
+    for ln in (lines or []):
+        trans = (ln.trans_date or "").strip() or None
+        post = (ln.post_date or "").strip() or None
+        if trans and not post:
+            post = trans
+        if post and not trans:
+            trans = post
+        out.append(
+            TaishinStatementLine(
+                card_hint=ln.card_hint,
+                trans_date=trans,
+                post_date=post,
+                description=ln.description,
+                twd_amount=ln.twd_amount,
+                fx_date=ln.fx_date,
+                country=ln.country,
+                currency=ln.currency,
+                foreign_amount=ln.foreign_amount,
+                is_fee=ln.is_fee,
+                fee_reference_amount=ln.fee_reference_amount,
+            )
+        )
+    return out
+
+
+def _extract_amount_from_desc_yuan(desc: str) -> float | None:
+    values = re.findall(r"([0-9][0-9,]*)\s*元", desc or "")
+    if not values:
+        return None
+    try:
+        return float(values[-1].replace(",", ""))
+    except Exception:
+        return None
+
+
+def _execute_bk_text(*, user_id: str, text: str) -> tuple[bool, list[str], str | None]:
+    result = process_with_parser(text, skip_gpt=True, user_id=user_id)
+    if result.intent == "error":
+        return False, [], result.error_message
+
+    entries = list(result.entries or [])
+    if not entries:
+        return False, [], "no_entries"
+    if any(_is_needs_llm_entry(e) for e in entries):
+        return False, [], "needs_llm"
+
+    ok = True
+    if len(entries) == 1:
+        ok = send_to_webhook(entries[0], user_id=user_id)
+    else:
+        _success, failure = send_multiple_webhooks(entries, user_id=user_id)
+        ok = failure == 0
+
+    transaction_ids = [e.交易ID for e in entries if e.交易ID]
+    return ok, transaction_ids, (None if ok else "webhook_failed")
+
+
+def _apply_sinopac_autobookkeeping(
+    *,
+    user_id: str,
+    statement_id: str,
+    lines: list[TaishinStatementLine],
+    line_page_ids: list[str],
+) -> dict[str, Any]:
+    kv = KVStore()
+    created = 0
+    skipped = 0
+    failed: list[dict[str, str]] = []
+
+    for idx, ln in enumerate(lines):
+        if idx >= len(line_page_ids):
+            break
+        line_id = line_page_ids[idx]
+        desc = (ln.description or "").strip()
+        if not desc:
+            continue
+
+        rule = None
+        text = None
+        if "大戶消費回饋入帳戶" in desc:
+            amt = _extract_amount_from_desc_yuan(desc)
+            if amt is None or amt <= 0:
+                skipped += 1
+                continue
+            rule = "rebate_income"
+            text = f"收入 {int(amt) if float(amt).is_integer() else amt} 回饋金 大戶信用卡"
+        elif "永豐自扣已入帳" in desc:
+            amt = abs(float(ln.twd_amount or 0))
+            if amt <= 0:
+                skipped += 1
+                continue
+            rule = "autodebit_card_payment"
+            text = f"大戶網銀繳卡費到大戶信用卡 {int(amt) if float(amt).is_integer() else amt}"
+        else:
+            continue
+
+        dedupe_key = _CC_AUTO_POST_KEY.format(statement_id=statement_id, line_id=line_id, rule=rule)
+        if kv.get(dedupe_key):
+            skipped += 1
+            continue
+
+        ok, tx_ids, err = _execute_bk_text(user_id=user_id, text=str(text))
+        if not ok:
+            failed.append({"line_id": line_id, "rule": str(rule), "error": str(err or "unknown")})
+            continue
+
+        kv.set(dedupe_key, {"line_id": line_id, "rule": rule, "transaction_ids": tx_ids}, ttl=86400 * 30)
+        created += 1
+
+    return {"created": created, "skipped": skipped, "failed": failed}
+
+
 def cmd_cc_lock(args: argparse.Namespace) -> int:
     user_id = args.user_id
     bank = _normalize_bank_name(args.bank)
@@ -680,6 +795,7 @@ def cmd_cc_import(args: argparse.Namespace) -> int:
             )
             return 1
 
+        lines = _backfill_missing_statement_dates(lines)
         card_aliases = lock_service.get_card_aliases(bank)
         lines = _normalize_statement_line_payment_methods(
             lines,
@@ -715,6 +831,14 @@ def cmd_cc_import(args: argparse.Namespace) -> int:
         )
 
         warning = detect_statement_date_anomaly(period, lines)
+        auto_bookkeeping = None
+        if bank == "永豐":
+            auto_bookkeeping = _apply_sinopac_autobookkeeping(
+                user_id=user_id,
+                statement_id=statement_id,
+                lines=lines,
+                line_page_ids=created_ids,
+            )
 
         # increment uploaded count (best-effort)
         try:
@@ -737,6 +861,7 @@ def cmd_cc_import(args: argparse.Namespace) -> int:
                     "statement_page_id": statement_page_id,
                     "created_count": len(created_ids),
                     "warning": warning,
+                    "auto_bookkeeping": auto_bookkeeping,
                 },
             }
         )
