@@ -174,6 +174,7 @@ Rules:
 - If this is not a Union statement detail screenshot, return status=not_statement.
 - If card_hint is missing, default to "聯邦綠卡".
 - "國外交易服務費"/"手續費" rows must set is_fee=true.
+- Cashback/rebate rows (e.g. "刷卡現金回饋") must be kept; negative amounts are valid.
 """
 
 
@@ -1263,6 +1264,53 @@ def extract_sinopac_statement_lines(
     return lines
 
 
+def parse_union_statement_ocr_text(ocr_text: str) -> list[TaishinStatementLine]:
+    """Best-effort deterministic parser for Union statement OCR text."""
+
+    lines: list[TaishinStatementLine] = []
+    for raw in (ocr_text or "").splitlines():
+        s = (raw or "").strip()
+        if not s:
+            continue
+        if "上期金額" in s or "上期付款金額已收到" in s:
+            continue
+
+        m = re.match(
+            r"^\s*(\d{2}/\d{2})\s+(\d{2}/\d{2})\s+(.+?)\s+(?:(TW|US|JP|HK|SG|GB|AU)\s+)?([+\-−–]?\d[\d,]*)\s*$",
+            s,
+            flags=re.IGNORECASE,
+        )
+        if not m:
+            continue
+
+        trans_date = m.group(1)
+        post_date = m.group(2)
+        desc = (m.group(3) or "").strip()
+        country = (m.group(4) or "").upper() or None
+        amt_token = (m.group(5) or "").replace(",", "").replace("−", "-").replace("–", "-")
+        twd = _parse_float(amt_token)
+        if twd is None:
+            continue
+
+        lines.append(
+            TaishinStatementLine(
+                card_hint="聯邦綠卡",
+                trans_date=trans_date,
+                post_date=post_date,
+                description=desc,
+                twd_amount=twd,
+                fx_date=None,
+                country=country,
+                currency=None,
+                foreign_amount=None,
+                is_fee=("手續費" in desc or "國外交易服務費" in desc),
+                fee_reference_amount=None,
+            )
+        )
+
+    return lines
+
+
 def extract_union_statement_lines(
     image_data: bytes,
     openai_client: Optional[OpenAI] = None,
@@ -1274,6 +1322,15 @@ def extract_union_statement_lines(
 
     if openai_client is None:
         openai_client = OpenAI(api_key=OPENAI_API_KEY)
+
+    ocr_text = extract_taishin_statement_text(
+        image_data,
+        openai_client=openai_client,
+        enable_compression=enable_compression,
+    )
+    parsed = parse_union_statement_ocr_text(ocr_text)
+    if parsed:
+        return parsed
 
     if enable_compression:
         image_data = compress_image(image_data)
@@ -1445,7 +1502,7 @@ def _normalize_statement_date(statement_month: str, mmdd_or_iso: Optional[str]) 
                 mm = int(s[:2])
                 dd = int(s[2:4])
                 y, m = [int(x) for x in statement_month.split("-", 1)]
-                year = y + (1 if mm < m else 0)
+                year = y - (1 if mm > m else 0)
                 return f"{year:04d}-{mm:02d}-{dd:02d}"
             except Exception:
                 return None
@@ -1460,7 +1517,7 @@ def _normalize_statement_date(statement_month: str, mmdd_or_iso: Optional[str]) 
         mm = int(mm_s)
         dd = int(dd_s)
         y, m = [int(x) for x in statement_month.split("-", 1)]
-        year = y + (1 if mm < m else 0)
+        year = y - (1 if mm > m else 0)
         return f"{year:04d}-{mm:02d}-{dd:02d}"
     except Exception:
         return None
