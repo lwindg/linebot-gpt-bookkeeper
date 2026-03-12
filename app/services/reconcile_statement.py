@@ -156,6 +156,13 @@ def _eq_amount(a: float, b: float) -> bool:
     return round(a, 2) == round(b, 2)
 
 
+def _is_cashback_or_rebate_desc(desc: str) -> bool:
+    s = (desc or "").strip()
+    if not s:
+        return False
+    return any(k in s for k in ("回饋", "返現", "返利", "折抵"))
+
+
 def _implied_fx_rate(twd: float | None, foreign_amount: float | None) -> Optional[float]:
     if twd is None or foreign_amount is None:
         return None
@@ -664,7 +671,17 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
 
             if bid:
                 batch_groups[bid].append(lid)
-            if _eq_amount(float(amt), float(twd)):
+            # Special-case cashback/rebate: statement may be negative while ledger
+            # is recorded as income positive. Allow abs-amount matching only for
+            # explicit rebate-like descriptions and income entries.
+            txn_type = _select_name(lp.get("交易類型") or {})
+            cashback_income_sign_flip = (
+                float(twd) < 0
+                and _is_cashback_or_rebate_desc(desc)
+                and txn_type == "收入"
+                and _eq_amount(abs(float(amt)), abs(float(twd)))
+            )
+            if _eq_amount(float(amt), float(twd)) or cashback_income_sign_flip:
                 exact_single_ids.append(lid)
 
         # Evaluate batch matches

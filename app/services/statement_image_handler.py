@@ -1276,7 +1276,7 @@ def parse_union_statement_ocr_text(ocr_text: str) -> list[TaishinStatementLine]:
             continue
 
         m = re.match(
-            r"^\s*(\d{2}/\d{2})\s+(\d{2}/\d{2})\s+(.+?)\s+(?:(TW|US|JP|HK|SG|GB|AU)\s+)?([+\-−–]?\d[\d,]*)\s*$",
+            r"^\s*(\d{2}/\d{2})\s+(\d{2}/\d{2})\s+(.+?)\s+(?:(TW|TWD|USD|JPY|HKD|SGD|GBP|AUD)\s+)?([+\-−–]?\d[\d,]*)\s*$",
             s,
             flags=re.IGNORECASE,
         )
@@ -1286,7 +1286,13 @@ def parse_union_statement_ocr_text(ocr_text: str) -> list[TaishinStatementLine]:
         trans_date = m.group(1)
         post_date = m.group(2)
         desc = (m.group(3) or "").strip()
-        country = (m.group(4) or "").upper() or None
+        ccy_token = (m.group(4) or "").upper()
+        currency = None
+        if ccy_token:
+            if ccy_token in ("TW", "TWD", "NTD"):
+                currency = "TWD"
+            else:
+                currency = ccy_token
         amt_token = (m.group(5) or "").replace(",", "").replace("−", "-").replace("–", "-")
         twd = _parse_float(amt_token)
         if twd is None:
@@ -1300,8 +1306,8 @@ def parse_union_statement_ocr_text(ocr_text: str) -> list[TaishinStatementLine]:
                 description=desc,
                 twd_amount=twd,
                 fx_date=None,
-                country=country,
-                currency=None,
+                country=None,
+                currency=currency or "TWD",
                 foreign_amount=None,
                 is_fee=("手續費" in desc or "國外交易服務費" in desc),
                 fee_reference_amount=None,
@@ -1384,6 +1390,10 @@ def extract_union_statement_lines(
         trans_date = raw.get("trans_date")
         post_date = raw.get("post_date")
         currency = raw.get("currency")
+        if isinstance(currency, str):
+            c = currency.strip().upper()
+            if c in ("TW", "TWD", "NTD"):
+                currency = "TWD"
         foreign_amount = _parse_float(raw.get("foreign_amount"))
         if currency and foreign_amount is not None and not fx_date:
             fx_date = post_date or trans_date
@@ -1397,7 +1407,7 @@ def extract_union_statement_lines(
                 twd_amount=twd,
                 fx_date=fx_date,
                 country=raw.get("country"),
-                currency=currency,
+                currency=currency or "TWD",
                 foreign_amount=foreign_amount,
                 is_fee=bool(raw.get("is_fee")) or ("國外交易服務費" in desc) or ("手續費" in desc),
                 fee_reference_amount=_parse_float(raw.get("fee_reference_amount")),

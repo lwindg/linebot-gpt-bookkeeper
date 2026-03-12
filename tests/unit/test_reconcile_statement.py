@@ -426,3 +426,73 @@ def test_reconcile_statement_writes_implied_fx_rate_on_foreign_match(monkeypatch
     assert rows[0]["properties"]["對帳狀態"]["select"]["name"] == "matched"
     assert patched_ledger["匯率"]["number"] == 31.57
     assert summary.matched == 1
+
+
+def test_reconcile_statement_matches_negative_cashback_to_positive_income(monkeypatch) -> None:
+    rows = [
+        {
+            "id": "stmt-cashback-1",
+            "properties": {
+                "付款方式": {"select": {"name": "聯邦綠卡"}},
+                "消費日": {"date": {"start": "2026-02-15"}},
+                "新臺幣金額": {"number": -52},
+                "幣別": {"select": {"name": "TWD"}},
+                "消費明細": {"rich_text": [{"plain_text": "刷卡現金回饋-聯邦綠卡生活代扣繳回饋"}]},
+                "是否手續費": {"checkbox": False},
+                "對帳狀態": {"select": {"name": "unmatched"}},
+            },
+        }
+    ]
+    ledgers = [
+        {
+            "id": "ledger-income-1",
+            "properties": {
+                "原幣別": {"select": {"name": "TWD"}},
+                "原幣金額": {"number": 52},
+                "交易類型": {"select": {"name": "收入"}},
+            },
+        },
+        {
+            "id": "ledger-expense-1",
+            "properties": {
+                "原幣別": {"select": {"name": "TWD"}},
+                "原幣金額": {"number": 52},
+                "交易類型": {"select": {"name": "支出"}},
+            },
+        },
+    ]
+
+    def fake_ensure_statement_page(*, statement_id: str, period: str, bank: str = "台新") -> str:
+        return "statement-page-1"
+
+    def fake_fetch_statement_lines(statement_id: str):  # noqa: ARG001
+        return rows
+
+    def fake_fetch_ledger_candidates(*, payment_method: str, day):  # noqa: ARG001
+        return ledgers
+
+    def fake_notion_patch_page(page_id: str, properties):
+        if page_id == "stmt-cashback-1":
+            if "對帳狀態" in properties:
+                rows[0]["properties"]["對帳狀態"] = properties["對帳狀態"]
+            if "對應帳目" in properties:
+                rows[0]["properties"]["對應帳目"] = properties["對應帳目"]
+
+    monkeypatch.setattr(reconcile_mod, "NOTION_TOKEN", "test-token")
+    monkeypatch.setattr(reconcile_mod, "_ensure_statement_page", fake_ensure_statement_page)
+    monkeypatch.setattr(reconcile_mod, "_fetch_statement_lines", fake_fetch_statement_lines)
+    monkeypatch.setattr(reconcile_mod, "_fetch_ledger_candidates", fake_fetch_ledger_candidates)
+    monkeypatch.setattr(reconcile_mod, "_notion_patch_page", fake_notion_patch_page)
+    monkeypatch.setattr(reconcile_mod, "_allocate_foreign_fee_lines", lambda **kwargs: 0)
+    monkeypatch.setattr(reconcile_mod, "_backfill_unmatched_statement_lines", lambda **kwargs: 0)
+
+    summary = reconcile_mod.reconcile_statement(
+        statement_id="union-2026-03-20260312-203035",
+        period="2026-03",
+        payment_methods=["聯邦綠卡"],
+        bank="聯邦",
+    )
+
+    assert rows[0]["properties"]["對帳狀態"]["select"]["name"] == "matched"
+    assert rows[0]["properties"]["對應帳目"]["relation"][0]["id"] == "ledger-income-1"
+    assert summary.matched == 1
