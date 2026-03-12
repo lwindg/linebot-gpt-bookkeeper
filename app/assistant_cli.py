@@ -549,6 +549,19 @@ def _backfill_missing_statement_dates(lines: list[TaishinStatementLine]) -> list
     return out
 
 
+def _drop_statement_lines_without_dates(lines: list[TaishinStatementLine]) -> tuple[list[TaishinStatementLine], int]:
+    kept: list[TaishinStatementLine] = []
+    dropped = 0
+    for ln in (lines or []):
+        trans = (ln.trans_date or "").strip()
+        post = (ln.post_date or "").strip()
+        if not trans and not post:
+            dropped += 1
+            continue
+        kept.append(ln)
+    return kept, dropped
+
+
 def _extract_amount_from_desc_yuan(desc: str) -> float | None:
     values = re.findall(r"([0-9][0-9,]*)\s*元", desc or "")
     if not values:
@@ -1020,7 +1033,19 @@ def cmd_cc_import(args: argparse.Namespace) -> int:
             )
             return 1
 
+        lines, dropped_no_date_count = _drop_statement_lines_without_dates(lines)
         lines = _backfill_missing_statement_dates(lines)
+        if not lines:
+            _print_json(
+                {
+                    "status": "error",
+                    "error": {
+                        "message": "no statement lines with valid date",
+                        "reason": "missing_statement_date",
+                    },
+                }
+            )
+            return 1
         card_aliases = lock_service.get_card_aliases(bank)
         lines = _normalize_statement_line_payment_methods(
             lines,
@@ -1087,6 +1112,7 @@ def cmd_cc_import(args: argparse.Namespace) -> int:
                     "statement_id": statement_id,
                     "statement_page_id": statement_page_id,
                     "created_count": len(created_ids),
+                    "dropped_no_date_count": dropped_no_date_count,
                     "warning": warning,
                     "auto_bookkeeping": auto_bookkeeping,
                 },

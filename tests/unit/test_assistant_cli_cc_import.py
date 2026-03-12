@@ -284,6 +284,102 @@ def test_cc_import_backfills_missing_post_date_from_trans_date(monkeypatch, tmp_
     assert captured["lines"][0].post_date == "02/01"
 
 
+def test_cc_import_drops_lines_without_dates(monkeypatch, tmp_path: Path) -> None:
+    user_id = "u-test-drop-no-date"
+    _FakeLockService.alias_store.clear()
+    _FakeLockService.store[user_id] = {
+        "bank": "聯邦",
+        "period": "2026-03",
+        "statement_id": "union-2026-03-mock",
+        "payment_methods": ["聯邦綠卡"],
+        "uploaded_images": 0,
+    }
+    outputs: list[dict] = []
+
+    monkeypatch.setattr(assistant_cli, "LockService", _FakeLockService)
+    monkeypatch.setattr(assistant_cli, "_print_json", lambda payload: outputs.append(payload))
+    monkeypatch.setattr(assistant_cli, "get_bank_config", lambda _bank: object())
+    monkeypatch.setattr(assistant_cli, "ensure_cc_statement_page", lambda **_kwargs: "statement-page-1")
+    monkeypatch.setattr(assistant_cli, "detect_statement_date_anomaly", lambda *_args, **_kwargs: None)
+    captured: dict = {}
+
+    def _fake_create(**kwargs):
+        captured["lines"] = kwargs.get("lines") or []
+        return ["line-1"]
+
+    monkeypatch.setattr(assistant_cli, "notion_create_cc_statement_lines", _fake_create)
+
+    lines_json_path = tmp_path / "lines.json"
+    lines_json_path.write_text(
+        (
+            '[{"card_hint":"聯邦綠卡","trans_date":null,"post_date":null,'
+            '"description":"無日期雜訊","twd_amount":111,"currency":"TWD","is_fee":false},'
+            '{"card_hint":"聯邦綠卡","trans_date":"03/06","post_date":"03/06",'
+            '"description":"有效明細","twd_amount":199,"currency":"TWD","is_fee":false}]'
+        ),
+        encoding="utf-8",
+    )
+
+    rc = assistant_cli.cmd_cc_import(
+        Namespace(
+            user_id=user_id,
+            image_path=None,
+            message_id=None,
+            no_llm=True,
+            lines_json=None,
+            lines_json_path=str(lines_json_path),
+        )
+    )
+
+    assert rc == 0
+    assert outputs[-1]["status"] == "ok"
+    assert outputs[-1]["result"]["created_count"] == 1
+    assert outputs[-1]["result"]["dropped_no_date_count"] == 1
+    assert len(captured["lines"]) == 1
+    assert captured["lines"][0].description == "有效明細"
+
+
+def test_cc_import_errors_when_all_lines_missing_dates(monkeypatch, tmp_path: Path) -> None:
+    user_id = "u-test-all-no-date"
+    _FakeLockService.alias_store.clear()
+    _FakeLockService.store[user_id] = {
+        "bank": "聯邦",
+        "period": "2026-03",
+        "statement_id": "union-2026-03-mock",
+        "payment_methods": ["聯邦綠卡"],
+        "uploaded_images": 0,
+    }
+    outputs: list[dict] = []
+
+    monkeypatch.setattr(assistant_cli, "LockService", _FakeLockService)
+    monkeypatch.setattr(assistant_cli, "_print_json", lambda payload: outputs.append(payload))
+    monkeypatch.setattr(assistant_cli, "get_bank_config", lambda _bank: object())
+
+    lines_json_path = tmp_path / "lines.json"
+    lines_json_path.write_text(
+        (
+            '[{"card_hint":"聯邦綠卡","trans_date":null,"post_date":null,'
+            '"description":"無日期1","twd_amount":111,"currency":"TWD","is_fee":false}]'
+        ),
+        encoding="utf-8",
+    )
+
+    rc = assistant_cli.cmd_cc_import(
+        Namespace(
+            user_id=user_id,
+            image_path=None,
+            message_id=None,
+            no_llm=True,
+            lines_json=None,
+            lines_json_path=str(lines_json_path),
+        )
+    )
+
+    assert rc == 1
+    assert outputs[-1]["status"] == "error"
+    assert outputs[-1]["error"]["reason"] == "missing_statement_date"
+
+
 def test_cc_import_sinopac_includes_auto_bookkeeping_result(monkeypatch, tmp_path: Path) -> None:
     user_id = "u-test-sinopac-auto"
     _FakeLockService.alias_store.clear()
