@@ -145,6 +145,37 @@ Rules:
 - If not a SinoPac statement detail screenshot, return status=not_statement with empty lines.
 """
 
+UNION_STATEMENT_VISION_PROMPT = """
+You are a strict parser for Union Bank credit card statement detail screenshots.
+
+Return ONLY JSON object:
+{
+  "status": "ok" | "not_statement" | "error",
+  "lines": [
+    {
+      "card_hint": "聯邦綠卡",
+      "trans_date": "MM/DD or YYYY-MM-DD",
+      "post_date": "MM/DD or YYYY-MM-DD",
+      "description": "string",
+      "twd_amount": number,
+      "fx_date": "MM/DD or YYYY-MM-DD or null",
+      "country": "TW | US | ... | null",
+      "currency": "USD|JPY|...|null",
+      "foreign_amount": number|null,
+      "is_fee": boolean,
+      "fee_reference_amount": number|null
+    }
+  ]
+}
+
+Rules:
+- Keep only detail rows with valid amounts.
+- Header rows / subtotals / previous balance rows should be excluded.
+- If this is not a Union statement detail screenshot, return status=not_statement.
+- If card_hint is missing, default to "聯邦綠卡".
+- "國外交易服務費"/"手續費" rows must set is_fee=true.
+"""
+
 
 def build_statement_raw_text(statement_month: str, line: TaishinStatementLine) -> str:
     trans = _normalize_statement_date(statement_month, line.trans_date) if line.trans_date else None
@@ -1221,6 +1252,96 @@ def extract_sinopac_statement_lines(
                 country=raw.get("country"),
                 currency=raw.get("currency"),
                 foreign_amount=_parse_float(raw.get("foreign_amount")),
+                is_fee=bool(raw.get("is_fee")) or ("國外交易服務費" in desc) or ("手續費" in desc),
+                fee_reference_amount=_parse_float(raw.get("fee_reference_amount")),
+            )
+        )
+
+    if not lines:
+        raise StatementVisionError("not_statement: no parseable statement rows found")
+
+    return lines
+
+
+def extract_union_statement_lines(
+    image_data: bytes,
+    openai_client: Optional[OpenAI] = None,
+    enable_compression: bool = True,
+    *,
+    statement_month: Optional[str] = None,
+) -> list[TaishinStatementLine]:
+    """Extract Union statement lines using JSON-mode vision parser."""
+
+    if openai_client is None:
+        openai_client = OpenAI(api_key=OPENAI_API_KEY)
+
+    if enable_compression:
+        image_data = compress_image(image_data)
+
+    base64_image = encode_image_base64(image_data)
+
+    response = openai_client.chat.completions.create(
+        model=GPT_VISION_MODEL,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": UNION_STATEMENT_VISION_PROMPT},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
+                    },
+                ],
+            }
+        ],
+        max_tokens=3000,
+        response_format={"type": "json_object"},
+    )
+
+    text = response.choices[0].message.content
+    if not text:
+        raise StatementVisionError("Empty vision response")
+
+    raw_json = text.strip()
+    if "```" in raw_json:
+        raw_json = raw_json.replace("```json", "").replace("```", "").strip()
+    if "{" in raw_json and "}" in raw_json:
+        raw_json = raw_json[raw_json.find("{") : raw_json.rfind("}") + 1]
+
+    data = json.loads(raw_json)
+    status = (data.get("status") or "").strip().lower()
+    if status in ("not_statement", "error"):
+        raise StatementVisionError(f"{status}: no parseable statement rows found")
+
+    lines: list[TaishinStatementLine] = []
+    for raw in data.get("lines", []):
+        twd = _parse_float(raw.get("twd_amount"))
+        if twd is None:
+            continue
+
+        desc = (raw.get("description") or "").strip()
+        if not desc:
+            continue
+
+        fx_date = raw.get("fx_date") or raw.get("exchange_date")
+        trans_date = raw.get("trans_date")
+        post_date = raw.get("post_date")
+        currency = raw.get("currency")
+        foreign_amount = _parse_float(raw.get("foreign_amount"))
+        if currency and foreign_amount is not None and not fx_date:
+            fx_date = post_date or trans_date
+
+        lines.append(
+            TaishinStatementLine(
+                card_hint=((raw.get("card_hint") or "").strip() or "聯邦綠卡"),
+                trans_date=trans_date,
+                post_date=post_date,
+                description=desc,
+                twd_amount=twd,
+                fx_date=fx_date,
+                country=raw.get("country"),
+                currency=currency,
+                foreign_amount=foreign_amount,
                 is_fee=bool(raw.get("is_fee")) or ("國外交易服務費" in desc) or ("手續費" in desc),
                 fee_reference_amount=_parse_float(raw.get("fee_reference_amount")),
             )

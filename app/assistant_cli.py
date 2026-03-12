@@ -39,6 +39,7 @@ from app.services.statement_image_handler import (
     extract_huanan_statement_lines,
     extract_fubon_statement_lines,
     extract_sinopac_statement_lines,
+    extract_union_statement_lines,
     extract_taishin_statement_text,
     build_ocr_preview,
     append_statement_note,
@@ -387,6 +388,8 @@ def _normalize_bank_name(value: str) -> str:
         return "富邦"
     if raw in ("永豐", "永豐銀行", "SinoPac", "sinopac", "SINOPAC"):
         return "永豐"
+    if raw in ("聯邦", "聯邦銀行", "Union", "UNION", "union"):
+        return "聯邦"
     return raw
 
 
@@ -861,7 +864,7 @@ def cmd_cc_lock(args: argparse.Namespace) -> int:
                 "error": {
                     "message": "unsupported bank",
                     "reason": "unsupported_bank",
-                    "supported_banks": ["台新", "華南", "富邦", "永豐"],
+                    "supported_banks": ["台新", "華南", "富邦", "永豐", "聯邦"],
                 },
             }
         )
@@ -1000,6 +1003,8 @@ def cmd_cc_import(args: argparse.Namespace) -> int:
                 lines = extract_fubon_statement_lines(image_data, statement_month=period)
             elif bank == "永豐":
                 lines = extract_sinopac_statement_lines(image_data, statement_month=period)
+            elif bank == "聯邦":
+                lines = extract_union_statement_lines(image_data, statement_month=period)
             else:
                 _print_json({"status": "error", "error": {"message": "unsupported bank", "reason": "unsupported_bank"}})
                 return 1

@@ -58,3 +58,15 @@ banks:
             - "DAWHO"
             - "大戶"
         payment_method: "大戶信用卡"
+
+  union:
+    reconcile:
+      payment_methods_default:
+        - 聯邦綠卡
+
+    statement_section_map:
+      - match:
+          contains_any:
+            - "聯邦綠卡"
+            - "綠卡"
+        payment_method: "聯邦綠卡"
