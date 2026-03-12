@@ -156,6 +156,18 @@ def _eq_amount(a: float, b: float) -> bool:
     return round(a, 2) == round(b, 2)
 
 
+def _implied_fx_rate(twd: float | None, foreign_amount: float | None) -> Optional[float]:
+    if twd is None or foreign_amount is None:
+        return None
+    try:
+        fa = float(foreign_amount)
+        if fa == 0:
+            return None
+        return round(float(twd) / fa, 2)
+    except Exception:
+        return None
+
+
 def _foreign_amount_tolerance(currency: str) -> float:
     cur = (currency or "").upper().strip()
     # Common integer currencies
@@ -594,12 +606,7 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
 
         stmt_currency = _select_name(props.get("幣別") or {})
         stmt_foreign = _number(props.get("外幣金額") or {})
-        implied_rate = None
-        if stmt_currency and stmt_foreign and stmt_foreign != 0:
-            try:
-                implied_rate = float(twd) / float(stmt_foreign)
-            except Exception:
-                implied_rate = None
+        implied_rate = _implied_fx_rate(twd, stmt_foreign)
 
         # Collect ledger candidates in date window (by payment method allowlist)
         candidate_ledgers: dict[str, dict[str, Any]] = {}
@@ -746,6 +753,7 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
                 {
                     "對應帳單明細": {"relation": [{"id": pid}]},
                     "對應帳單": {"relation": [{"id": statement_page_id}]},
+                    **({"匯率": {"number": implied_rate}} if implied_rate is not None else {}),
                 },
             )
             consumed_ledger_ids.add(ledger_id)
@@ -784,6 +792,7 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
                 {
                     "對應帳單明細": {"relation": [{"id": pid}]},
                     "對應帳單": {"relation": [{"id": statement_page_id}]},
+                    **({"匯率": {"number": implied_rate}} if implied_rate is not None else {}),
                 },
             )
             consumed_ledger_ids.add(ledger_id)
@@ -824,6 +833,7 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
                     {
                         "對應帳單明細": {"relation": [{"id": pid}]},
                         "對應帳單": {"relation": [{"id": statement_page_id}]},
+                        **({"匯率": {"number": implied_rate}} if implied_rate is not None else {}),
                     },
                 )
                 consumed_ledger_ids.add(ledger_id)
@@ -850,6 +860,7 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
                     {
                         "對應帳單明細": {"relation": [{"id": pid}]},
                         "對應帳單": {"relation": [{"id": statement_page_id}]},
+                        **({"匯率": {"number": implied_rate}} if implied_rate is not None else {}),
                     },
                 )
                 consumed_ledger_ids.add(ledger_id)
@@ -875,6 +886,7 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
                     {
                         "對應帳單明細": {"relation": [{"id": pid}]},
                         "對應帳單": {"relation": [{"id": statement_page_id}]},
+                        **({"匯率": {"number": implied_rate}} if implied_rate is not None else {}),
                     },
                 )
                 consumed_ledger_ids.add(ledger_id)

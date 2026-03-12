@@ -362,3 +362,67 @@ def test_reconcile_statement_fee_fallback_matches_by_tag_when_currency_missing(m
     assert fee_status == "matched"
     assert ledger_pages["ledger-apple-1"]["properties"]["手續費"]["number"] == 5
     assert summary.unmatched == 0
+
+
+def test_reconcile_statement_writes_implied_fx_rate_on_foreign_match(monkeypatch) -> None:
+    rows = [
+        {
+            "id": "stmt-foreign-1",
+            "properties": {
+                "付款方式": {"select": {"name": "大戶信用卡"}},
+                "消費日": {"date": {"start": "2026-02-03"}},
+                "新臺幣金額": {"number": 663},
+                "幣別": {"select": {"name": "USD"}},
+                "外幣金額": {"number": 21},
+                "消費明細": {"rich_text": [{"plain_text": "OPENAI *CHATGPT SUBSCR"}]},
+                "是否手續費": {"checkbox": False},
+                "對帳狀態": {"select": {"name": "unmatched"}},
+            },
+        }
+    ]
+    ledgers = [
+        {
+            "id": "ledger-usd-1",
+            "properties": {
+                "原幣別": {"select": {"name": "USD"}},
+                "原幣金額": {"number": 21},
+                "匯率": {"number": 30.0},
+            },
+        }
+    ]
+    patched_ledger: dict = {}
+
+    def fake_ensure_statement_page(*, statement_id: str, period: str, bank: str = "台新") -> str:
+        return "statement-page-1"
+
+    def fake_fetch_statement_lines(statement_id: str):  # noqa: ARG001
+        return rows
+
+    def fake_fetch_ledger_candidates(*, payment_method: str, day):  # noqa: ARG001
+        return ledgers
+
+    def fake_notion_patch_page(page_id: str, properties):
+        if page_id == "ledger-usd-1":
+            patched_ledger.update(properties)
+            return
+        if page_id == "stmt-foreign-1" and "對帳狀態" in properties:
+            rows[0]["properties"]["對帳狀態"] = properties["對帳狀態"]
+
+    monkeypatch.setattr(reconcile_mod, "NOTION_TOKEN", "test-token")
+    monkeypatch.setattr(reconcile_mod, "_ensure_statement_page", fake_ensure_statement_page)
+    monkeypatch.setattr(reconcile_mod, "_fetch_statement_lines", fake_fetch_statement_lines)
+    monkeypatch.setattr(reconcile_mod, "_fetch_ledger_candidates", fake_fetch_ledger_candidates)
+    monkeypatch.setattr(reconcile_mod, "_notion_patch_page", fake_notion_patch_page)
+    monkeypatch.setattr(reconcile_mod, "_allocate_foreign_fee_lines", lambda **kwargs: 0)
+    monkeypatch.setattr(reconcile_mod, "_backfill_unmatched_statement_lines", lambda **kwargs: 0)
+
+    summary = reconcile_mod.reconcile_statement(
+        statement_id="sinopac-2026-02-20260311-103852",
+        period="2026-02",
+        payment_methods=["大戶信用卡"],
+        bank="永豐",
+    )
+
+    assert rows[0]["properties"]["對帳狀態"]["select"]["name"] == "matched"
+    assert patched_ledger["匯率"]["number"] == 31.57
+    assert summary.matched == 1

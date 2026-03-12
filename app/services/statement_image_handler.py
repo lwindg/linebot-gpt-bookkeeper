@@ -151,6 +151,13 @@ def build_statement_raw_text(statement_month: str, line: TaishinStatementLine) -
     post = _normalize_statement_date(statement_month, line.post_date) if line.post_date else None
     fx = _normalize_statement_date(statement_month, line.fx_date) if line.fx_date else None
 
+    implied_rate = None
+    try:
+        if line.foreign_amount is not None and float(line.foreign_amount) != 0:
+            implied_rate = round(float(line.twd_amount) / float(line.foreign_amount), 2)
+    except Exception:
+        implied_rate = None
+
     parts = [
         f"card_hint={line.card_hint or ''}",
         f"trans_date={trans or ''}",
@@ -158,6 +165,7 @@ def build_statement_raw_text(statement_month: str, line: TaishinStatementLine) -
         f"twd_amount={line.twd_amount}",
         f"currency={line.currency or ''}",
         f"foreign_amount={line.foreign_amount if line.foreign_amount is not None else ''}",
+        f"implied_rate={implied_rate if implied_rate is not None else ''}",
         f"fx_date={fx or ''}",
         f"country={line.country or ''}",
         f"is_fee={line.is_fee}",
