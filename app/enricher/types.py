@@ -45,6 +45,9 @@ class EnrichedTransaction:
     # === 帳戶資訊（現金流用）===
     accounts_from: Optional[str] = None
     accounts_to: Optional[str] = None
+    transfer_in_amount: Optional[float] = None
+    transfer_in_currency: Optional[str] = None
+    transfer_fx_rate: Optional[float] = None
 
 
 @dataclass

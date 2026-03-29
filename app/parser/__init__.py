@@ -36,6 +36,9 @@ class Transaction:
     date: Optional[str] = None             # 日期
     time: Optional[str] = None             # 時間 (Task 5)
     accounts: dict = field(default_factory=lambda: {"from": None, "to": None})
+    transfer_in_amount: Optional[float] = None   # 轉入金額（換匯型轉帳）
+    transfer_in_currency: Optional[str] = None   # 轉入幣別（換匯型轉帳）
+    transfer_fx_rate: Optional[float] = None     # 來源/轉入 匯率
     notes_raw: str = ""                    # 原文中的額外描述
 
 
@@ -70,6 +73,9 @@ class AuthoritativeEnvelope:
                     "counterparty": tx.counterparty,
                     "date": tx.date,
                     "accounts": tx.accounts,
+                    "transfer_in_amount": tx.transfer_in_amount,
+                    "transfer_in_currency": tx.transfer_in_currency,
+                    "transfer_fx_rate": tx.transfer_fx_rate,
                     "notes_raw": tx.notes_raw,
                 }
                 for tx in self.transactions
@@ -97,7 +103,11 @@ def parse(message: str, *, context_date: Optional[datetime] = None) -> Authorita
     from app.parser.extract_date import extract_date
     from app.parser.extract_time import extract_time, clean_time_text
     from app.parser.extract_advance import extract_advance_status
-    from app.parser.extract_cashflow import detect_cashflow_intent, extract_transfer_accounts
+    from app.parser.extract_cashflow import (
+        detect_cashflow_intent,
+        extract_transfer_accounts,
+        extract_exchange_transfer_details,
+    )
     from app.parser.split_items import split_items
     from app.parser.build_envelope import build_envelope
     
@@ -158,9 +168,26 @@ def parse(message: str, *, context_date: Optional[datetime] = None) -> Authorita
         
         # 建立交易（現金流補上帳戶資訊）
         accounts = {"from": None, "to": None}
+        transfer_in_amount = None
+        transfer_in_currency = None
+        transfer_fx_rate = None
         if tx_type in (TransactionType.TRANSFER, TransactionType.CARD_PAYMENT):
             source_account, target_account = extract_transfer_accounts(item_text)
             accounts = {"from": source_account, "to": target_account}
+            if tx_type == TransactionType.TRANSFER:
+                src_amt, src_cur, tgt_amt, tgt_cur = extract_exchange_transfer_details(
+                    item_text,
+                    target_account=target_account,
+                )
+                if src_amt is not None and tgt_amt is not None:
+                    amount = src_amt
+                    currency = src_cur or currency
+                    transfer_in_amount = tgt_amt
+                    transfer_in_currency = tgt_cur
+                    if source_account and target_account:
+                        cleaned_item = f"{source_account} 換 {target_account}"
+                    if tgt_amt != 0:
+                        transfer_fx_rate = src_amt / tgt_amt
 
         # 建立交易
         tx = Transaction(
@@ -174,6 +201,9 @@ def parse(message: str, *, context_date: Optional[datetime] = None) -> Authorita
             date=date_str,
             time=time_str,
             accounts=accounts,
+            transfer_in_amount=transfer_in_amount,
+            transfer_in_currency=transfer_in_currency,
+            transfer_fx_rate=transfer_fx_rate,
         )
         transactions.append(tx)
 
