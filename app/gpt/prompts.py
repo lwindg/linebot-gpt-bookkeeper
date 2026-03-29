@@ -56,6 +56,8 @@ PAYMENT_METHODS = """## 付款方式對照表
 | 日幣現金、日圓現金、円現金 | `日圓現金` |
 | Suica、西瓜卡 | `Suica` |
 | 台新日圓、Richart-日圓 | `台新 Richart-日圓` |
+| MAX、MaiCoin、Maicoin | `MAX` |
+| 比特幣、Bitcoin、BTC、XBT | `比特幣` |
 | na、n/a、未提供 | `N/A` |
 
 例：輸入「灰狗」也必須輸出 `FlyGo 信用卡`，不可輸出「灰狗卡」。

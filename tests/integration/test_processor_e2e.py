@@ -103,6 +103,26 @@ class TestEndToEndIntegration:
         assert entry2.付款方式 == "現金"
         assert entry2.交易類型 == "收入"
 
+    def test_e2e_cashflow_crypto_exchange_transfer(self, mock_parser_context):
+        """Transfer with two amounts should keep outgoing and incoming amounts separately."""
+        result = process_with_parser("MAX 4294.712 換比特幣 0.002", skip_gpt=True)
+
+        assert result.intent == "cashflow_intents"
+        assert len(result.entries) == 2
+
+        outgoing = result.entries[0]
+        assert outgoing.交易類型 == "轉帳"
+        assert outgoing.付款方式 == "MAX"
+        assert outgoing.原幣別 == "TWD"
+        assert outgoing.原幣金額 == 4294.712
+
+        incoming = result.entries[1]
+        assert incoming.交易類型 == "收入"
+        assert incoming.付款方式 == "比特幣"
+        assert incoming.原幣別 == "BTC"
+        assert incoming.原幣金額 == 0.002
+        assert incoming.匯率 == 2147356.0
+
     def test_e2e_error_handling(self, mock_parser_context):
         """Test error handling for invalid input (no amount)."""
         result = process_with_parser("你好", skip_gpt=True)

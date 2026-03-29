@@ -226,14 +226,22 @@ def enriched_to_multi_result(
         if tx.type == TransactionType.TRANSFER:
             incoming_account = getattr(tx, "accounts_to", None)
             if incoming_account:
+                incoming_amount = getattr(tx, "transfer_in_amount", None) or entry.原幣金額
+                incoming_currency = getattr(tx, "transfer_in_currency", None) or entry.原幣別
+                incoming_fx = getattr(tx, "transfer_fx_rate", None)
+                if incoming_fx is None:
+                    if incoming_amount and incoming_currency != entry.原幣別:
+                        incoming_fx = entry.原幣金額 / incoming_amount
+                    else:
+                        incoming_fx = entry.匯率
                 incoming_entry = BookkeepingEntry(
                     intent="bookkeeping",
                     日期=entry.日期,
                     時間=entry.時間,
                     品項=entry.品項,
-                    原幣別=entry.原幣別,
-                    原幣金額=entry.原幣金額,
-                    匯率=entry.匯率,
+                    原幣別=incoming_currency,
+                    原幣金額=incoming_amount,
+                    匯率=incoming_fx,
                     明細說明=entry.明細說明,
                     付款方式=incoming_account,
                     分類=entry.分類,

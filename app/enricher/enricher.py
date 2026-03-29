@@ -124,6 +124,9 @@ def _merge_enrichment(
         time=tx.time,
         accounts_from=tx.accounts.get("from") if tx.accounts else None,
         accounts_to=tx.accounts.get("to") if tx.accounts else None,
+        transfer_in_amount=tx.transfer_in_amount,
+        transfer_in_currency=tx.transfer_in_currency,
+        transfer_fx_rate=tx.transfer_fx_rate,
         fx_rate=1.0,
         # AI Enrichment 欄位
         分類=category,

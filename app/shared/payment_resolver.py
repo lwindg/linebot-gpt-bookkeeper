@@ -87,6 +87,12 @@ _PAYMENT_ALIASES_LEGACY: dict[str, str] = {
     "日幣現金": "日圓現金",
     "日圓現金": "日圓現金",
     "円現金": "日圓現金",
+    "max": "MAX",
+    "maicoin": "MAX",
+    "比特幣": "比特幣",
+    "bitcoin": "比特幣",
+    "btc": "比特幣",
+    "xbt": "比特幣",
     "na": "N/A",
     "n/a": "N/A",
 }
@@ -165,6 +171,12 @@ _DETECT_ALIASES_LEGACY: tuple[tuple[str, str], ...] = (
     ("日圓現金", "日圓現金"),
     ("日幣現金", "日圓現金"),
     ("円現金", "日圓現金"),
+    ("maicoin", "MAX"),
+    ("max", "MAX"),
+    ("bitcoin", "比特幣"),
+    ("btc", "比特幣"),
+    ("xbt", "比特幣"),
+    ("比特幣", "比特幣"),
     ("現金", "現金"),
 )
 
