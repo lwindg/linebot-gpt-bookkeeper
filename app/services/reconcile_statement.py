@@ -156,6 +156,25 @@ def _eq_amount(a: float, b: float) -> bool:
     return round(a, 2) == round(b, 2)
 
 
+def _is_cashback_or_rebate_desc(desc: str) -> bool:
+    s = (desc or "").strip()
+    if not s:
+        return False
+    return any(k in s for k in ("回饋", "返現", "返利", "折抵"))
+
+
+def _implied_fx_rate(twd: float | None, foreign_amount: float | None) -> Optional[float]:
+    if twd is None or foreign_amount is None:
+        return None
+    try:
+        fa = float(foreign_amount)
+        if fa == 0:
+            return None
+        return round(float(twd) / fa, 2)
+    except Exception:
+        return None
+
+
 def _foreign_amount_tolerance(currency: str) -> float:
     cur = (currency or "").upper().strip()
     # Common integer currencies
@@ -274,6 +293,13 @@ def _is_payment_ack_line(desc: str) -> bool:
     return any(k in t for k in keywords)
 
 
+def _should_ignore_negative_transfer(*, amount_twd: float | None, desc: str) -> bool:
+    if amount_twd is None or amount_twd >= 0:
+        return False
+    normalized = (desc or "").replace(" ", "").lower()
+    return "轉帳" in normalized
+
+
 def _merge_relation_ids(prop: dict[str, Any], add_ids: list[str]) -> list[str]:
     existing = [x.get("id") for x in ((prop or {}).get("relation") or []) if isinstance(x, dict) and x.get("id")]
     merged = sorted(set(existing + [x for x in add_ids if x]))
@@ -288,6 +314,64 @@ def _allocate_foreign_fee_lines(*, statement_id: str, statement_page_id: str) ->
 
     fee_rows: list[dict[str, Any]] = []
     purchase_by_day: dict[date, list[dict[str, Any]]] = defaultdict(list)
+    purchase_rows_any: list[dict[str, Any]] = []
+
+    def _merchant_tag(desc: str) -> str:
+        t = (desc or "").strip()
+        if not t:
+            return ""
+        token = t.split()[0].strip().upper()
+        return token
+
+    def _allocate_fee_to_purchase(*, fee_row_id: str, fee_amount: float, purchase: dict[str, Any]) -> bool:
+        nonlocal allocated
+        ledger_ids = purchase.get("ledger_ids") or []
+        if not ledger_ids:
+            return False
+
+        # Split fee by original amount ratio.
+        ledger_rows: list[tuple[str, float, dict[str, Any]]] = []
+        total_weight = 0.0
+        for lid in ledger_ids:
+            lp = _notion_get_page(lid).get("properties") or {}
+            amt = abs(float(_number(lp.get("原幣金額") or {}) or 0))
+            ledger_rows.append((lid, amt, lp))
+            total_weight += amt
+
+        if not ledger_rows:
+            return False
+
+        running = 0.0
+        for j, (lid, weight, lp) in enumerate(ledger_rows):
+            if j < len(ledger_rows) - 1:
+                ratio = (weight / total_weight) if total_weight > 0 else (1.0 / len(ledger_rows))
+                share = round(float(fee_amount) * ratio, 2)
+                running += share
+            else:
+                share = round(float(fee_amount) - running, 2)
+
+            current_fee = float(_number(lp.get("手續費") or {}) or 0)
+            merged_line_ids = _merge_relation_ids(lp.get("對應帳單明細") or {}, [fee_row_id])
+
+            _notion_patch_page(
+                lid,
+                {
+                    "手續費": {"number": round(current_fee + share, 2)},
+                    "對應帳單明細": {"relation": [{"id": x} for x in merged_line_ids]},
+                    "對應帳單": {"relation": [{"id": statement_page_id}]},
+                },
+            )
+
+        _notion_patch_page(
+            fee_row_id,
+            {
+                "所屬帳單": {"relation": [{"id": statement_page_id}]},
+                "對應帳目": {"relation": [{"id": x} for x in ledger_ids]},
+                "對帳狀態": {"select": {"name": "matched"}},
+            },
+        )
+        allocated += 1
+        return True
 
     for row in rows:
         props = row.get("properties") or {}
@@ -297,9 +381,11 @@ def _allocate_foreign_fee_lines(*, statement_id: str, statement_page_id: str) ->
         twd = _number(props.get("新臺幣金額") or {})
         ccy = _select_name(props.get("幣別") or {})
         rel = [x.get("id") for x in ((props.get("對應帳目") or {}).get("relation") or []) if x.get("id")]
+        desc = _line_desc(props)
+        tag = _merchant_tag(desc)
 
         if is_fee and status == "unmatched" and day and twd is not None:
-            fee_rows.append({"id": row["id"], "day": day, "fee": float(twd)})
+            fee_rows.append({"id": row["id"], "day": day, "fee": float(twd), "tag": tag})
             continue
 
         if (
@@ -316,9 +402,32 @@ def _allocate_foreign_fee_lines(*, statement_id: str, statement_page_id: str) ->
                 "line_id": row["id"],
                 "twd": float(twd),
                 "ledger_ids": rel,
+                "tag": tag,
             })
+            purchase_rows_any.append(
+                {
+                    "line_id": row["id"],
+                    "day": day,
+                    "twd": float(twd),
+                    "ledger_ids": rel,
+                    "tag": tag,
+                }
+            )
+            continue
+
+        if (not is_fee) and status == "matched" and day and twd is not None and float(twd) > 0 and rel:
+            purchase_rows_any.append(
+                {
+                    "line_id": row["id"],
+                    "day": day,
+                    "twd": float(twd),
+                    "ledger_ids": rel,
+                    "tag": tag,
+                }
+            )
 
     allocated = 0
+    allocated_fee_line_ids: set[str] = set()
 
     fee_by_day: dict[date, list[dict[str, Any]]] = defaultdict(list)
     for f in fee_rows:
@@ -359,50 +468,28 @@ def _allocate_foreign_fee_lines(*, statement_id: str, statement_page_id: str) ->
 
             _, idx, target = best
             used_purchase_idx.add(idx)
-            ledger_ids = target["ledger_ids"]
+            if _allocate_fee_to_purchase(fee_row_id=f["id"], fee_amount=float(f["fee"]), purchase=target):
+                allocated_fee_line_ids.add(str(f["id"]))
 
-            # Split fee by original amount ratio.
-            ledger_rows: list[tuple[str, float, dict[str, Any]]] = []
-            total_weight = 0.0
-            for lid in ledger_ids:
-                lp = _notion_get_page(lid).get("properties") or {}
-                amt = abs(float(_number(lp.get("原幣金額") or {}) or 0))
-                ledger_rows.append((lid, amt, lp))
-                total_weight += amt
-
-            if not ledger_rows:
-                continue
-
-            running = 0.0
-            for j, (lid, weight, lp) in enumerate(ledger_rows):
-                if j < len(ledger_rows) - 1:
-                    ratio = (weight / total_weight) if total_weight > 0 else (1.0 / len(ledger_rows))
-                    share = round(float(f["fee"]) * ratio, 2)
-                    running += share
-                else:
-                    share = round(float(f["fee"]) - running, 2)
-
-                current_fee = float(_number(lp.get("手續費") or {}) or 0)
-                merged_line_ids = _merge_relation_ids(lp.get("對應帳單明細") or {}, [f["id"]])
-
-                _notion_patch_page(
-                    lid,
-                    {
-                        "手續費": {"number": round(current_fee + share, 2)},
-                        "對應帳單明細": {"relation": [{"id": x} for x in merged_line_ids]},
-                        "對應帳單": {"relation": [{"id": statement_page_id}]},
-                    },
-                )
-
-            _notion_patch_page(
-                f["id"],
-                {
-                    "所屬帳單": {"relation": [{"id": statement_page_id}]},
-                    "對應帳目": {"relation": [{"id": x} for x in ledger_ids]},
-                    "對帳狀態": {"select": {"name": "matched"}},
-                },
-            )
-            allocated += 1
+    # Fallback allocation when statement currency is missing:
+    # match fee lines by merchant tag + nearest day on already matched purchases.
+    for f in fee_rows:
+        if str(f["id"]) in allocated_fee_line_ids:
+            continue
+        candidates = [
+            p
+            for p in purchase_rows_any
+            if p.get("tag")
+            and f.get("tag")
+            and p["tag"] == f["tag"]
+            and abs((p["day"] - f["day"]).days) <= 3
+        ]
+        if not candidates:
+            continue
+        candidates.sort(key=lambda p: (abs((p["day"] - f["day"]).days), abs((p["twd"] * 0.015) - float(f["fee"]))))
+        target = candidates[0]
+        if _allocate_fee_to_purchase(fee_row_id=f["id"], fee_amount=float(f["fee"]), purchase=target):
+            allocated_fee_line_ids.add(str(f["id"]))
 
     return allocated
 
@@ -436,11 +523,11 @@ def _summarize_statuses(statement_id: str) -> tuple[int, int, int, int]:
             ambiguous += 1
     return len(rows), matched, ambiguous, unmatched
 
-def reconcile_statement(*, statement_id: str, period: str, payment_methods: list[str]) -> ReconcileSummary:
+def reconcile_statement(*, statement_id: str, period: str, payment_methods: list[str], bank: str = "台新") -> ReconcileSummary:
     if not NOTION_TOKEN:
         raise RuntimeError("NOTION_TOKEN not configured")
 
-    statement_page_id = _ensure_statement_page(statement_id=statement_id, period=period, bank="台新")
+    statement_page_id = _ensure_statement_page(statement_id=statement_id, period=period, bank=bank)
 
     lines = _fetch_statement_lines(statement_id)
     matched = 0
@@ -452,6 +539,17 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
     for row in lines:
         pid = row["id"]
         props = row.get("properties") or {}
+        existing_status = _select_name(props.get("對帳狀態") or {})
+
+        # Preserve manually ignored lines across reruns.
+        if existing_status == "ignored":
+            _notion_patch_page(
+                pid,
+                {
+                    "所屬帳單": {"relation": [{"id": statement_page_id}]},
+                },
+            )
+            continue
 
         desc = _line_desc(props)
         if _is_payment_ack_line(desc):
@@ -467,6 +565,34 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
         # Fee lines are processed in post-pass (_allocate_foreign_fee_lines)
         is_fee = bool((props.get("是否手續費") or {}).get("checkbox"))
         if is_fee:
+            continue
+
+        # If statement line already has explicit linked ledger relations,
+        # keep them as authoritative and skip amount/date matching.
+        prelinked_ledger_ids = [x.get("id") for x in ((props.get("對應帳目") or {}).get("relation") or []) if isinstance(x, dict) and x.get("id")]
+        if prelinked_ledger_ids:
+            _notion_patch_page(
+                pid,
+                {
+                    "所屬帳單": {"relation": [{"id": statement_page_id}]},
+                    "對應帳目": {"relation": [{"id": x} for x in sorted(set(prelinked_ledger_ids))]},
+                    "對帳狀態": {"select": {"name": "matched"}},
+                },
+            )
+            for ledger_id in sorted(set(prelinked_ledger_ids)):
+                led_page = _notion_get_page(ledger_id)
+                lp = led_page.get("properties") or {}
+                line_rel = _merge_relation_ids(lp.get("對應帳單明細") or {}, [pid])
+                stmt_rel = _merge_relation_ids(lp.get("對應帳單") or {}, [statement_page_id])
+                _notion_patch_page(
+                    ledger_id,
+                    {
+                        "對應帳單明細": {"relation": [{"id": x} for x in line_rel]},
+                        "對應帳單": {"relation": [{"id": x} for x in stmt_rel]},
+                    },
+                )
+                consumed_ledger_ids.add(ledger_id)
+            matched += 1
             continue
 
         pay = _select_name(props.get("付款方式") or {})
@@ -487,12 +613,7 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
 
         stmt_currency = _select_name(props.get("幣別") or {})
         stmt_foreign = _number(props.get("外幣金額") or {})
-        implied_rate = None
-        if stmt_currency and stmt_foreign and stmt_foreign != 0:
-            try:
-                implied_rate = float(twd) / float(stmt_foreign)
-            except Exception:
-                implied_rate = None
+        implied_rate = _implied_fx_rate(twd, stmt_foreign)
 
         # Collect ledger candidates in date window (by payment method allowlist)
         candidate_ledgers: dict[str, dict[str, Any]] = {}
@@ -550,7 +671,17 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
 
             if bid:
                 batch_groups[bid].append(lid)
-            if _eq_amount(float(amt), float(twd)):
+            # Special-case cashback/rebate: statement may be negative while ledger
+            # is recorded as income positive. Allow abs-amount matching only for
+            # explicit rebate-like descriptions and income entries.
+            txn_type = _select_name(lp.get("交易類型") or {})
+            cashback_income_sign_flip = (
+                float(twd) < 0
+                and _is_cashback_or_rebate_desc(desc)
+                and txn_type == "收入"
+                and _eq_amount(abs(float(amt)), abs(float(twd)))
+            )
+            if _eq_amount(float(amt), float(twd)) or cashback_income_sign_flip:
                 exact_single_ids.append(lid)
 
         # Evaluate batch matches
@@ -609,7 +740,7 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
                 pid,
                 {
                     "所屬帳單": {"relation": [{"id": statement_page_id}]},
-                    "對帳狀態": {"select": {"name": "unmatched"}},
+                    "對帳狀態": {"select": {"name": "proposed"}},
                 },
             )
             continue
@@ -639,6 +770,7 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
                 {
                     "對應帳單明細": {"relation": [{"id": pid}]},
                     "對應帳單": {"relation": [{"id": statement_page_id}]},
+                    **({"匯率": {"number": implied_rate}} if implied_rate is not None else {}),
                 },
             )
             consumed_ledger_ids.add(ledger_id)
@@ -650,7 +782,7 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
                 pid,
                 {
                     "所屬帳單": {"relation": [{"id": statement_page_id}]},
-                    "對帳狀態": {"select": {"name": "unmatched"}},
+                    "對帳狀態": {"select": {"name": "proposed"}},
                 },
             )
 
@@ -677,6 +809,7 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
                 {
                     "對應帳單明細": {"relation": [{"id": pid}]},
                     "對應帳單": {"relation": [{"id": statement_page_id}]},
+                    **({"匯率": {"number": implied_rate}} if implied_rate is not None else {}),
                 },
             )
             consumed_ledger_ids.add(ledger_id)
@@ -694,7 +827,7 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
                 pid,
                 {
                     "所屬帳單": {"relation": [{"id": statement_page_id}]},
-                    "對帳狀態": {"select": {"name": "unmatched"}},
+                    "對帳狀態": {"select": {"name": "proposed"}},
                 },
             )
 
@@ -717,6 +850,7 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
                     {
                         "對應帳單明細": {"relation": [{"id": pid}]},
                         "對應帳單": {"relation": [{"id": statement_page_id}]},
+                        **({"匯率": {"number": implied_rate}} if implied_rate is not None else {}),
                     },
                 )
                 consumed_ledger_ids.add(ledger_id)
@@ -743,6 +877,7 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
                     {
                         "對應帳單明細": {"relation": [{"id": pid}]},
                         "對應帳單": {"relation": [{"id": statement_page_id}]},
+                        **({"匯率": {"number": implied_rate}} if implied_rate is not None else {}),
                     },
                 )
                 consumed_ledger_ids.add(ledger_id)
@@ -768,6 +903,7 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
                     {
                         "對應帳單明細": {"relation": [{"id": pid}]},
                         "對應帳單": {"relation": [{"id": statement_page_id}]},
+                        **({"匯率": {"number": implied_rate}} if implied_rate is not None else {}),
                     },
                 )
                 consumed_ledger_ids.add(ledger_id)
@@ -779,10 +915,19 @@ def reconcile_statement(*, statement_id: str, period: str, payment_methods: list
                     pid,
                     {
                         "所屬帳單": {"relation": [{"id": statement_page_id}]},
-                        "對帳狀態": {"select": {"name": "unmatched"}},
+                        "對帳狀態": {"select": {"name": "proposed"}},
                     },
                 )
             else:
+                if _should_ignore_negative_transfer(amount_twd=twd, desc=desc):
+                    _notion_patch_page(
+                        pid,
+                        {
+                            "所屬帳單": {"relation": [{"id": statement_page_id}]},
+                            "對帳狀態": {"select": {"name": "ignored"}},
+                        },
+                    )
+                    continue
                 _notion_patch_page(
                     pid,
                     {

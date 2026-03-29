@@ -7,6 +7,7 @@ This spec introduces a new **OpenClaw direct-chat** bookkeeping entrypoint that 
 - **LINE bot path remains unchanged** (Vercel + existing OpenAI inference + Notion write path).
 - When the user chats directly with OpenClaw and sends `/bk ...`, OpenClaw triggers a local CLI (via `uv`) to parse, classify (rules-first), and write to Notion.
 - LLM inference is used **only as a fallback** when deterministic rules cannot resolve the required fields.
+- For OpenClaw entrypoints, fallback inference is owned by the **current channel AI** (not by repo-internal OpenAI calls).
 - **Single source of truth for writes:** Notion writes must go through the repo code path (CLI) to prevent schema drift.
 
 ## Goals
@@ -27,21 +28,26 @@ This spec introduces a new **OpenClaw direct-chat** bookkeeping entrypoint that 
 ### Command trigger
 - OpenClaw direct-chat uses **explicit commands only**.
   - Primary: `/bk <text>`
-  - Optional later: `/bk-receipt`, `/cc-import`, `/cc-run`
+  - Credit card flow: `/cc_start`, `/cc_reconcile`, `/cc_unlock`, `/cc_reapply_auto`
+  - Optional later: `/bk-receipt`
 
 ### Policy
 - **1B (direct write)**: For `/bk`, do not require a pre-"OK" confirmation step.
 - **2A (rules-first)**: Use deterministic parsing and rules/lexicons first.
-- **Fallback inference**: If required fields cannot be resolved deterministically, OpenClaw performs inference and then re-invokes CLI for applying the result.
+- **Fallback inference ownership**:
+  - OpenClaw entrypoints (`/bk`, `/cc_start` image extraction, `needs_llm` completion): current channel AI performs inference.
+  - Repo CLI must provide deterministic output + `needs_llm` draft/apply contracts.
+  - Do not silently fall back to repo-internal OpenAI for OpenClaw-driven flows.
 
 ### Single write path
 - CLI uses existing repo Notion write logic (e.g., `NotionService` / `send_to_webhook()` when `USE_NOTION_API=true`).
 - OpenClaw never writes to Notion directly for `/bk` to avoid dual mappings.
 
 ### User identity
-- Use the user's LINE `user_id` when invoking CLI to reuse existing KV lock keys.
-- For the initial implementation, use:
-  - `Uf20daa11f764b7d19e69db3d49ba9f2e`
+- Use channel-native `user_id` when invoking CLI to reuse existing KV lock keys.
+  - Discord/Telegram OpenClaw flows: use platform numeric/string ID (e.g., Discord `861581891336273940`).
+  - LINE bot flow: use LINE `U...` user_id.
+- Do not mix identities across channels.
 
 ## Functional Requirements
 
@@ -64,6 +70,11 @@ This spec introduces a new **OpenClaw direct-chat** bookkeeping entrypoint that 
 ### FR-5: Undo
 - Because `/bk` writes without a pre-confirm, provide an undo mechanism.
 - Prefer archiving pages rather than hard delete.
+
+### FR-6: Credit-card OpenClaw flow ownership
+- `/cc_start` must support: lock + image -> `lines.json` extraction by current channel AI + `cc import --no-llm`.
+- `/cc_reapply_auto` must support re-running auto-bookkeeping without recreating statement lines.
+- For OpenClaw-driven `/cc` paths, OCR/inference owner is current channel AI; repo path performs deterministic import/reconcile/write.
 
 ## Data Contract (JSON)
 
@@ -114,4 +125,4 @@ This spec introduces a new **OpenClaw direct-chat** bookkeeping entrypoint that 
 
 1) Undo behavior: archive vs hard delete (recommend archive).
 2) Transaction id strategy: reuse existing generator vs add prefix `openclaw-...` for traceability.
-3) Receipt & reconciliation CLI commands scope and timing.
+3) Cross-channel prompt drift control: how to enforce latest skill instructions across long-lived sessions.

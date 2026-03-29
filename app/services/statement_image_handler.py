@@ -92,10 +92,103 @@ Rules:
 """
 
 
+FUBON_STATEMENT_VISION_PROMPT = """
+Extract Fubon Costco credit card statement rows from this screenshot.
+
+Return JSON object with:
+- status: success | not_statement | partial
+- lines: array of rows
+
+Each row object fields:
+- card_hint: string (use "富邦 Costco")
+- trans_date: string (ROC like 115/02/10, or MM/DD, or YYYY-MM-DD)
+- post_date: string (ROC like 115/02/10, or MM/DD, or YYYY-MM-DD)
+- description: string
+- twd_amount: number (charge positive, refund/credit negative; payment/transfer is typically negative)
+- fx_date: string|null
+- country: string|null
+- currency: string|null (e.g. TWD)
+- foreign_amount: number|null
+- is_fee: boolean
+- fee_reference_amount: number|null
+
+Rules:
+- Ignore headers, totals, due amount summaries, and card number lines (e.g. 末4碼).
+- Keep only actual statement line items.
+- If not a Fubon statement detail screenshot, return status=not_statement with empty lines.
+"""
+
+
+SINOPAC_STATEMENT_VISION_PROMPT = """
+Extract SinoPac credit card statement rows from this screenshot.
+
+Return JSON object with:
+- status: success | not_statement | partial
+- lines: array of rows
+
+Each row object fields:
+- card_hint: string (prefer last4 digits if present, e.g. "8006")
+- trans_date: string (MM/DD or YYYY-MM-DD or ROC date token)
+- post_date: string (MM/DD or YYYY-MM-DD or ROC date token)
+- description: string
+- twd_amount: number (charge positive, payment/credit negative, rebate may be 0)
+- fx_date: string|null
+- country: string|null
+- currency: string|null
+- foreign_amount: number|null
+- is_fee: boolean
+- fee_reference_amount: number|null
+
+Rules:
+- Ignore headers/totals/APR/installment summary rows.
+- Keep only actual statement line items.
+- If not a SinoPac statement detail screenshot, return status=not_statement with empty lines.
+"""
+
+UNION_STATEMENT_VISION_PROMPT = """
+You are a strict parser for Union Bank credit card statement detail screenshots.
+
+Return ONLY JSON object:
+{
+  "status": "ok" | "not_statement" | "error",
+  "lines": [
+    {
+      "card_hint": "聯邦綠卡",
+      "trans_date": "MM/DD or YYYY-MM-DD",
+      "post_date": "MM/DD or YYYY-MM-DD",
+      "description": "string",
+      "twd_amount": number,
+      "fx_date": "MM/DD or YYYY-MM-DD or null",
+      "country": "TW | US | ... | null",
+      "currency": "USD|JPY|...|null",
+      "foreign_amount": number|null,
+      "is_fee": boolean,
+      "fee_reference_amount": number|null
+    }
+  ]
+}
+
+Rules:
+- Keep only detail rows with valid amounts.
+- Header rows / subtotals / previous balance rows should be excluded.
+- If this is not a Union statement detail screenshot, return status=not_statement.
+- If card_hint is missing, default to "聯邦綠卡".
+- "國外交易服務費"/"手續費" rows must set is_fee=true.
+- Cashback/rebate rows (e.g. "刷卡現金回饋") must be kept; negative amounts are valid.
+"""
+
+
 def build_statement_raw_text(statement_month: str, line: TaishinStatementLine) -> str:
     trans = _normalize_statement_date(statement_month, line.trans_date) if line.trans_date else None
     post = _normalize_statement_date(statement_month, line.post_date) if line.post_date else None
     fx = _normalize_statement_date(statement_month, line.fx_date) if line.fx_date else None
+
+    implied_rate = None
+    try:
+        if line.foreign_amount is not None and float(line.foreign_amount) != 0:
+            implied_rate = round(float(line.twd_amount) / float(line.foreign_amount), 2)
+    except Exception:
+        implied_rate = None
 
     parts = [
         f"card_hint={line.card_hint or ''}",
@@ -104,6 +197,7 @@ def build_statement_raw_text(statement_month: str, line: TaishinStatementLine) -
         f"twd_amount={line.twd_amount}",
         f"currency={line.currency or ''}",
         f"foreign_amount={line.foreign_amount if line.foreign_amount is not None else ''}",
+        f"implied_rate={implied_rate if implied_rate is not None else ''}",
         f"fx_date={fx or ''}",
         f"country={line.country or ''}",
         f"is_fee={line.is_fee}",
@@ -564,6 +658,16 @@ def _is_dateish_token(tok: str) -> bool:
     return bool(re.fullmatch(r"\d{2,4}[/-]\d{1,2}(?:[/-]\d{1,2})?", t) or re.fullmatch(r"\d{4,8}", t))
 
 
+def _split_currency_amount_token(tok: str) -> tuple[Optional[str], Optional[float]]:
+    t = (tok or "").strip()
+    m = re.fullmatch(r"([A-Z]{3})(-?\d+(?:,\d{3})*(?:\.\d+)?)", t)
+    if not m:
+        return None, None
+    ccy = m.group(1)
+    amt = _parse_amount(m.group(2))
+    return ccy, amt
+
+
 def parse_huanan_statement_ocr_text(text: str) -> list[TaishinStatementLine]:
     """Parse Huanan statement rows from OCR text with deterministic column rules."""
 
@@ -639,6 +743,319 @@ def parse_huanan_statement_ocr_text(text: str) -> list[TaishinStatementLine]:
                 fee_reference_amount=None,
             )
         )
+
+    return lines
+
+
+def parse_sinopac_statement_ocr_text(text: str) -> list[TaishinStatementLine]:
+    """Parse SinoPac statement rows from OCR text with deterministic column rules."""
+
+    lines: list[TaishinStatementLine] = []
+
+    skip_contains = (
+        "消費日",
+        "入帳起息日",
+        "卡號末四碼",
+        "帳單說明",
+        "臺幣金額",
+        "外幣折算日",
+        "外幣金額",
+        "總費用年百分率",
+        "分期未到期金額",
+    )
+
+    for raw_line in (text or "").splitlines():
+        s = (raw_line or "").strip()
+        if not s:
+            continue
+        if any(k in s for k in skip_contains):
+            continue
+        if s.startswith("---"):
+            continue
+
+        parts = s.split()
+        if len(parts) < 4:
+            continue
+        if not (_is_dateish_token(parts[0]) and _is_dateish_token(parts[1])):
+            continue
+
+        trans_date = parts[0]
+        post_date = parts[1]
+        rest = parts[2:]
+
+        card_last4 = None
+        if rest and re.fullmatch(r"\d{4}", rest[0]):
+            card_last4 = rest[0]
+            rest = rest[1:]
+
+        if not rest:
+            continue
+
+        twd_amount = None
+        twd_idx = None
+        for i in range(len(rest) - 1, -1, -1):
+            if _token_is_amount(rest[i]):
+                twd_amount = _parse_amount(rest[i])
+                twd_idx = i
+                break
+        if twd_amount is None or twd_idx is None:
+            continue
+
+        desc_tokens = rest[:twd_idx]
+        description = " ".join(desc_tokens).strip()
+        if not description:
+            continue
+
+        fx_date = None
+        country = None
+        currency = None
+        foreign_amount = None
+
+        tail = rest[twd_idx + 1 :]
+        if tail:
+            if len(tail) >= 2 and _is_dateish_token(tail[0]):
+                fx_date = tail[0]
+                ccy, famt = _split_currency_amount_token(tail[1])
+                if ccy and famt is not None:
+                    currency = ccy
+                    foreign_amount = famt
+                elif len(tail) >= 3 and re.fullmatch(r"[A-Z]{3}", tail[1]) and _token_is_amount(tail[2]):
+                    currency = tail[1]
+                    foreign_amount = _parse_amount(tail[2])
+            elif len(tail) >= 1:
+                ccy, famt = _split_currency_amount_token(tail[0])
+                if ccy and famt is not None:
+                    currency = ccy
+                    foreign_amount = famt
+                elif len(tail) >= 2 and re.fullmatch(r"[A-Z]{3}", tail[0]) and _token_is_amount(tail[1]):
+                    currency = tail[0]
+                    foreign_amount = _parse_amount(tail[1])
+
+        is_fee = "國外交易服務費" in description or "手續費" in description
+
+        lines.append(
+            TaishinStatementLine(
+                card_hint=card_last4,
+                trans_date=trans_date,
+                post_date=post_date,
+                description=description,
+                twd_amount=float(twd_amount),
+                fx_date=fx_date,
+                country=country,
+                currency=currency,
+                foreign_amount=foreign_amount,
+                is_fee=is_fee,
+                fee_reference_amount=None,
+            )
+        )
+
+    return lines
+
+
+def parse_fubon_statement_ocr_text(text: str) -> list[TaishinStatementLine]:
+    """Parse Fubon Costco statement rows from OCR text.
+
+    Typical columns (screenshot OCR):
+      <trans_date> <description...> <post_date> <currency> ... <twd_amount>
+
+    Notes:
+    - Date tokens are often ROC with slashes (e.g. 115/02/10).
+    - We treat TWD amount as the last numeric token on the line.
+    - Currency is usually 'TWD' in the middle.
+    - We skip non-transaction lines like totals and card headers.
+    """
+
+    lines: list[TaishinStatementLine] = []
+
+    skip_contains = (
+        "前期應繳",
+        "本期應繳",
+        "應繳總額",
+        "最低應繳",
+        "末4碼",
+        "末四碼",
+    )
+
+    for raw_line in (text or "").splitlines():
+        s = (raw_line or "").strip()
+        if not s:
+            continue
+        if any(k in s for k in skip_contains):
+            continue
+        # Card header lines commonly include brand + last-4 markers.
+        if ("末4碼" in s or "末四碼" in s) and ("MASTER" in s.upper() or "VISA" in s.upper()):
+            continue
+        if s.startswith("交易日") or s.startswith("---"):
+            continue
+
+        parts = s.split()
+        if len(parts) < 4:
+            continue
+
+        # Find first two date-ish tokens anywhere in the line
+        date_idxs = [i for i, tok in enumerate(parts) if _is_dateish_token(tok)]
+        if len(date_idxs) < 2:
+            continue
+
+        i0, i1 = date_idxs[0], date_idxs[1]
+        if i0 != 0:
+            # If the first token isn't a date, this is likely not a statement row.
+            continue
+
+        trans_date = parts[i0]
+        post_date = parts[i1]
+
+        # Amount: last numeric token
+        twd_amount = None
+        twd_idx = None
+        for i in range(len(parts) - 1, -1, -1):
+            if _token_is_amount(parts[i]):
+                twd_amount = _parse_amount(parts[i])
+                twd_idx = i
+                break
+        if twd_amount is None or twd_idx is None:
+            continue
+
+        # Payment/transfer lines in Fubon statements often show as negative numbers.
+        # For reconcile matching (ledger 繳卡費 is typically recorded as a positive expense),
+        # normalize these to positive.
+        if twd_amount < 0 and any(k in s for k in ("轉帳", "繳款", "扣繳", "自動扣繳", "扣款", "繳費")):
+            twd_amount = abs(float(twd_amount))
+
+        # Currency: first 3-letter uppercase token after post_date (typically TWD)
+        currency = None
+        for tok in parts[i1 + 1 : twd_idx]:
+            if re.fullmatch(r"[A-Z]{3}", tok):
+                currency = tok
+                break
+
+        # Description: between trans_date and post_date
+        desc_tokens = parts[i0 + 1 : i1]
+        description = " ".join(desc_tokens).strip() or "(statement line)"
+
+        is_fee = "國外交易服務費" in description or "手續費" in description
+
+        lines.append(
+            TaishinStatementLine(
+                card_hint="富邦 Costco",
+                trans_date=trans_date,
+                post_date=post_date,
+                description=description,
+                twd_amount=float(twd_amount),
+                fx_date=None,
+                country=None,
+                currency=currency,
+                foreign_amount=None,
+                is_fee=is_fee,
+                fee_reference_amount=None,
+            )
+        )
+
+    return lines
+
+
+
+def extract_fubon_statement_lines(
+    image_data: bytes,
+    openai_client: Optional[OpenAI] = None,
+    enable_compression: bool = True,
+    *,
+    statement_month: Optional[str] = None,
+) -> list[TaishinStatementLine]:
+    """Extract Fubon Costco statement lines.
+
+    Priority:
+    1) OCR text + deterministic parser
+    2) JSON-mode vision fallback
+    """
+
+    if openai_client is None:
+        openai_client = OpenAI(api_key=OPENAI_API_KEY)
+
+    ocr_text = extract_taishin_statement_text(
+        image_data,
+        openai_client=openai_client,
+        enable_compression=enable_compression,
+    )
+    parsed = parse_fubon_statement_ocr_text(ocr_text)
+    if parsed:
+        return parsed
+
+    # Fallback: JSON-mode extraction
+    if enable_compression:
+        image_data = compress_image(image_data)
+
+    base64_image = encode_image_base64(image_data)
+
+    response = openai_client.chat.completions.create(
+        model=GPT_VISION_MODEL,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": FUBON_STATEMENT_VISION_PROMPT},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
+                    },
+                ],
+            }
+        ],
+        max_tokens=3000,
+        response_format={"type": "json_object"},
+    )
+
+    text = response.choices[0].message.content
+    if not text:
+        raise StatementVisionError("Empty vision response")
+
+    raw_json = text.strip()
+    if "```" in raw_json:
+        raw_json = raw_json.replace("```json", "").replace("```", "").strip()
+    if "{" in raw_json and "}" in raw_json:
+        raw_json = raw_json[raw_json.find("{") : raw_json.rfind("}") + 1]
+
+    data = json.loads(raw_json)
+    status = (data.get("status") or "").strip().lower()
+    if status in ("not_statement", "error"):
+        raise StatementVisionError(f"{status}: no parseable statement rows found")
+
+    lines: list[TaishinStatementLine] = []
+    for raw in data.get("lines", []):
+        twd = _parse_float(raw.get("twd_amount"))
+        if twd is None:
+            continue
+        desc = (raw.get("description") or "").strip()
+        if not desc:
+            continue
+
+        # Normalize payment/transfer negatives to positive to match ledger 繳卡費.
+        if twd < 0 and any(k in desc for k in ("轉帳", "繳款", "扣繳", "自動扣繳", "扣款", "繳費")):
+            twd = abs(float(twd))
+
+        currency = raw.get("currency")
+        if not currency:
+            # Fubon detail usually includes TWD column
+            currency = "TWD"
+
+        lines.append(
+            TaishinStatementLine(
+                card_hint="富邦 Costco",
+                trans_date=raw.get("trans_date"),
+                post_date=raw.get("post_date"),
+                description=desc,
+                twd_amount=twd,
+                fx_date=raw.get("fx_date"),
+                country=raw.get("country"),
+                currency=currency,
+                foreign_amount=_parse_float(raw.get("foreign_amount")),
+                is_fee=bool(raw.get("is_fee")) or ("手續費" in desc),
+                fee_reference_amount=_parse_float(raw.get("fee_reference_amount")),
+            )
+        )
+
+    if not lines:
+        raise StatementVisionError("not_statement: no parseable statement rows found")
 
     return lines
 
@@ -752,6 +1169,257 @@ def extract_huanan_statement_lines(
     return lines
 
 
+def extract_sinopac_statement_lines(
+    image_data: bytes,
+    openai_client: Optional[OpenAI] = None,
+    enable_compression: bool = True,
+    *,
+    statement_month: Optional[str] = None,
+) -> list[TaishinStatementLine]:
+    """Extract SinoPac statement lines.
+
+    Priority:
+    1) OCR text + deterministic parser
+    2) JSON-mode vision fallback
+    """
+
+    if openai_client is None:
+        openai_client = OpenAI(api_key=OPENAI_API_KEY)
+
+    ocr_text = extract_taishin_statement_text(
+        image_data,
+        openai_client=openai_client,
+        enable_compression=enable_compression,
+    )
+    parsed = parse_sinopac_statement_ocr_text(ocr_text)
+    if parsed:
+        return parsed
+
+    if enable_compression:
+        image_data = compress_image(image_data)
+
+    base64_image = encode_image_base64(image_data)
+
+    response = openai_client.chat.completions.create(
+        model=GPT_VISION_MODEL,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": SINOPAC_STATEMENT_VISION_PROMPT},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
+                    },
+                ],
+            }
+        ],
+        max_tokens=3000,
+        response_format={"type": "json_object"},
+    )
+
+    text = response.choices[0].message.content
+    if not text:
+        raise StatementVisionError("Empty vision response")
+
+    raw_json = text.strip()
+    if "```" in raw_json:
+        raw_json = raw_json.replace("```json", "").replace("```", "").strip()
+    if "{" in raw_json and "}" in raw_json:
+        raw_json = raw_json[raw_json.find("{") : raw_json.rfind("}") + 1]
+
+    data = json.loads(raw_json)
+    status = (data.get("status") or "").strip().lower()
+    if status in ("not_statement", "error"):
+        raise StatementVisionError(f"{status}: no parseable statement rows found")
+
+    lines: list[TaishinStatementLine] = []
+    for raw in data.get("lines", []):
+        twd = _parse_float(raw.get("twd_amount"))
+        if twd is None:
+            continue
+        desc = (raw.get("description") or "").strip()
+        if not desc:
+            continue
+
+        lines.append(
+            TaishinStatementLine(
+                card_hint=((raw.get("card_hint") or "").strip() or None),
+                trans_date=raw.get("trans_date"),
+                post_date=raw.get("post_date"),
+                description=desc,
+                twd_amount=twd,
+                fx_date=raw.get("fx_date") or raw.get("exchange_date"),
+                country=raw.get("country"),
+                currency=raw.get("currency"),
+                foreign_amount=_parse_float(raw.get("foreign_amount")),
+                is_fee=bool(raw.get("is_fee")) or ("國外交易服務費" in desc) or ("手續費" in desc),
+                fee_reference_amount=_parse_float(raw.get("fee_reference_amount")),
+            )
+        )
+
+    if not lines:
+        raise StatementVisionError("not_statement: no parseable statement rows found")
+
+    return lines
+
+
+def parse_union_statement_ocr_text(ocr_text: str) -> list[TaishinStatementLine]:
+    """Best-effort deterministic parser for Union statement OCR text."""
+
+    lines: list[TaishinStatementLine] = []
+    for raw in (ocr_text or "").splitlines():
+        s = (raw or "").strip()
+        if not s:
+            continue
+        if "上期金額" in s or "上期付款金額已收到" in s:
+            continue
+
+        m = re.match(
+            r"^\s*(\d{2}/\d{2})\s+(\d{2}/\d{2})\s+(.+?)\s+(?:(TW|TWD|USD|JPY|HKD|SGD|GBP|AUD)\s+)?([+\-−–]?\d[\d,]*)\s*$",
+            s,
+            flags=re.IGNORECASE,
+        )
+        if not m:
+            continue
+
+        trans_date = m.group(1)
+        post_date = m.group(2)
+        desc = (m.group(3) or "").strip()
+        ccy_token = (m.group(4) or "").upper()
+        currency = None
+        if ccy_token:
+            if ccy_token in ("TW", "TWD", "NTD"):
+                currency = "TWD"
+            else:
+                currency = ccy_token
+        amt_token = (m.group(5) or "").replace(",", "").replace("−", "-").replace("–", "-")
+        twd = _parse_float(amt_token)
+        if twd is None:
+            continue
+
+        lines.append(
+            TaishinStatementLine(
+                card_hint="聯邦綠卡",
+                trans_date=trans_date,
+                post_date=post_date,
+                description=desc,
+                twd_amount=twd,
+                fx_date=None,
+                country=None,
+                currency=currency or "TWD",
+                foreign_amount=None,
+                is_fee=("手續費" in desc or "國外交易服務費" in desc),
+                fee_reference_amount=None,
+            )
+        )
+
+    return lines
+
+
+def extract_union_statement_lines(
+    image_data: bytes,
+    openai_client: Optional[OpenAI] = None,
+    enable_compression: bool = True,
+    *,
+    statement_month: Optional[str] = None,
+) -> list[TaishinStatementLine]:
+    """Extract Union statement lines using JSON-mode vision parser."""
+
+    if openai_client is None:
+        openai_client = OpenAI(api_key=OPENAI_API_KEY)
+
+    ocr_text = extract_taishin_statement_text(
+        image_data,
+        openai_client=openai_client,
+        enable_compression=enable_compression,
+    )
+    parsed = parse_union_statement_ocr_text(ocr_text)
+    if parsed:
+        return parsed
+
+    if enable_compression:
+        image_data = compress_image(image_data)
+
+    base64_image = encode_image_base64(image_data)
+
+    response = openai_client.chat.completions.create(
+        model=GPT_VISION_MODEL,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": UNION_STATEMENT_VISION_PROMPT},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
+                    },
+                ],
+            }
+        ],
+        max_tokens=3000,
+        response_format={"type": "json_object"},
+    )
+
+    text = response.choices[0].message.content
+    if not text:
+        raise StatementVisionError("Empty vision response")
+
+    raw_json = text.strip()
+    if "```" in raw_json:
+        raw_json = raw_json.replace("```json", "").replace("```", "").strip()
+    if "{" in raw_json and "}" in raw_json:
+        raw_json = raw_json[raw_json.find("{") : raw_json.rfind("}") + 1]
+
+    data = json.loads(raw_json)
+    status = (data.get("status") or "").strip().lower()
+    if status in ("not_statement", "error"):
+        raise StatementVisionError(f"{status}: no parseable statement rows found")
+
+    lines: list[TaishinStatementLine] = []
+    for raw in data.get("lines", []):
+        twd = _parse_float(raw.get("twd_amount"))
+        if twd is None:
+            continue
+
+        desc = (raw.get("description") or "").strip()
+        if not desc:
+            continue
+
+        fx_date = raw.get("fx_date") or raw.get("exchange_date")
+        trans_date = raw.get("trans_date")
+        post_date = raw.get("post_date")
+        currency = raw.get("currency")
+        if isinstance(currency, str):
+            c = currency.strip().upper()
+            if c in ("TW", "TWD", "NTD"):
+                currency = "TWD"
+        foreign_amount = _parse_float(raw.get("foreign_amount"))
+        if currency and foreign_amount is not None and not fx_date:
+            fx_date = post_date or trans_date
+
+        lines.append(
+            TaishinStatementLine(
+                card_hint=((raw.get("card_hint") or "").strip() or "聯邦綠卡"),
+                trans_date=trans_date,
+                post_date=post_date,
+                description=desc,
+                twd_amount=twd,
+                fx_date=fx_date,
+                country=raw.get("country"),
+                currency=currency or "TWD",
+                foreign_amount=foreign_amount,
+                is_fee=bool(raw.get("is_fee")) or ("國外交易服務費" in desc) or ("手續費" in desc),
+                fee_reference_amount=_parse_float(raw.get("fee_reference_amount")),
+            )
+        )
+
+    if not lines:
+        raise StatementVisionError("not_statement: no parseable statement rows found")
+
+    return lines
+
+
 def _normalize_statement_date(statement_month: str, mmdd_or_iso: Optional[str]) -> Optional[str]:
     """Normalize statement date.
 
@@ -844,7 +1512,7 @@ def _normalize_statement_date(statement_month: str, mmdd_or_iso: Optional[str]) 
                 mm = int(s[:2])
                 dd = int(s[2:4])
                 y, m = [int(x) for x in statement_month.split("-", 1)]
-                year = y + (1 if mm < m else 0)
+                year = y - (1 if mm > m else 0)
                 return f"{year:04d}-{mm:02d}-{dd:02d}"
             except Exception:
                 return None
@@ -859,7 +1527,7 @@ def _normalize_statement_date(statement_month: str, mmdd_or_iso: Optional[str]) 
         mm = int(mm_s)
         dd = int(dd_s)
         y, m = [int(x) for x in statement_month.split("-", 1)]
-        year = y + (1 if mm < m else 0)
+        year = y - (1 if mm > m else 0)
         return f"{year:04d}-{mm:02d}-{dd:02d}"
     except Exception:
         return None

@@ -27,28 +27,37 @@ import yaml
 
 from app.gpt.types import BookkeepingEntry
 from app.processor import process_with_parser
+from app.pipeline.normalize import build_batch_id, assign_transaction_ids
 from app.services.webhook_sender import send_multiple_webhooks, send_to_webhook
 from app.services.kv_store import KVStore
 from app.services.notion_service import NotionService
 from app.services.lock_service import LockService
 from app.services.statement_image_handler import (
     StatementVisionError,
+    TaishinStatementLine,
     extract_taishin_statement_lines,
     extract_huanan_statement_lines,
+    extract_fubon_statement_lines,
+    extract_sinopac_statement_lines,
+    extract_union_statement_lines,
     extract_taishin_statement_text,
     build_ocr_preview,
     append_statement_note,
     ensure_cc_statement_page,
     notion_create_cc_statement_lines,
     detect_statement_date_anomaly,
+    _normalize_statement_date,
 )
 from app.services.reconcile_statement import reconcile_statement, format_reconcile_summary
+from app.services.reconcile_statement import _notion_query, _notion_get_page, _notion_patch_page
 from app.shared.credit_card_config import get_bank_config
 from app.shared.category_resolver import resolve_category_input
+from app.config import NOTION_CC_STATEMENT_LINES_DB_ID, NOTION_DATABASE_ID
 
 
 _NEEDS_LLM_CATEGORIES = {None, "", "未分類", "N/A"}
 _ASSISTANT_LAST_CREATED_KEY = "assistant_last_created:{user_id}"
+_CC_AUTO_POST_KEY = "cc:auto:{statement_id}:{line_id}:{rule}"
 
 
 def _load_classifications_yaml() -> dict:
@@ -375,11 +384,485 @@ def _normalize_bank_name(value: str) -> str:
         return "台新"
     if raw in ("華南", "華南銀行", "huanan", "Huanan", "HUANAN"):
         return "華南"
+    if raw in ("富邦", "台北富邦", "Fubon", "fubon"):
+        return "富邦"
+    if raw in ("永豐", "永豐銀行", "SinoPac", "sinopac", "SINOPAC"):
+        return "永豐"
+    if raw in ("聯邦", "聯邦銀行", "Union", "UNION", "union"):
+        return "聯邦"
     return raw
 
 
 def _bank_supported(bank: str) -> bool:
     return get_bank_config(bank) is not None
+
+
+def _statement_lines_from_json_payload(raw: str) -> list[TaishinStatementLine]:
+    data = json.loads(raw)
+    if not isinstance(data, list):
+        raise ValueError("lines_json must be a JSON array")
+
+    lines: list[TaishinStatementLine] = []
+    for idx, item in enumerate(data, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(f"line[{idx}] must be an object")
+
+        desc = (item.get("description") or "").strip()
+        if not desc:
+            raise ValueError(f"line[{idx}] missing description")
+
+        try:
+            twd_amount = float(item.get("twd_amount"))
+        except Exception as e:  # pragma: no cover - defensive parse error branch
+            raise ValueError(f"line[{idx}] invalid twd_amount") from e
+
+        lines.append(
+            TaishinStatementLine(
+                card_hint=item.get("card_hint"),
+                trans_date=item.get("trans_date"),
+                post_date=item.get("post_date"),
+                description=desc,
+                twd_amount=twd_amount,
+                fx_date=item.get("fx_date"),
+                country=item.get("country"),
+                currency=item.get("currency"),
+                foreign_amount=(float(item["foreign_amount"]) if item.get("foreign_amount") is not None else None),
+                is_fee=bool(item.get("is_fee")),
+                fee_reference_amount=(
+                    float(item["fee_reference_amount"]) if item.get("fee_reference_amount") is not None else None
+                ),
+            )
+        )
+
+    if not lines:
+        raise ValueError("lines_json is empty")
+
+    return lines
+
+
+def _normalize_statement_line_payment_methods(
+    lines: list[TaishinStatementLine],
+    *,
+    allowed_payment_methods: list[str],
+    card_aliases: dict[str, str] | None = None,
+) -> list[TaishinStatementLine]:
+    if not lines:
+        return lines
+    aliases = {
+        str(k).strip(): str(v).strip()
+        for k, v in (card_aliases or {}).items()
+        if str(k).strip() and str(v).strip()
+    }
+
+    def _mapped_hint(raw_hint: str | None) -> str | None:
+        if raw_hint is None:
+            return None
+        h = str(raw_hint).strip()
+        if not h:
+            return None
+        return aliases.get(h, h)
+
+    allowed = [m for m in (allowed_payment_methods or []) if isinstance(m, str) and m.strip()]
+    if not allowed:
+        return [
+            TaishinStatementLine(
+                card_hint=_mapped_hint(ln.card_hint),
+                trans_date=ln.trans_date,
+                post_date=ln.post_date,
+                description=ln.description,
+                twd_amount=ln.twd_amount,
+                fx_date=ln.fx_date,
+                country=ln.country,
+                currency=ln.currency,
+                foreign_amount=ln.foreign_amount,
+                is_fee=ln.is_fee,
+                fee_reference_amount=ln.fee_reference_amount,
+            )
+            for ln in lines
+        ]
+
+    # When reconcile lock has exactly one payment method, force all imported lines
+    # to that method if model output is missing/noisy (e.g. last-4 digits like 8905).
+    if len(allowed) == 1:
+        target = allowed[0]
+        return [
+            TaishinStatementLine(
+                card_hint=(mh if mh in allowed else target),
+                trans_date=ln.trans_date,
+                post_date=ln.post_date,
+                description=ln.description,
+                twd_amount=ln.twd_amount,
+                fx_date=ln.fx_date,
+                country=ln.country,
+                currency=ln.currency,
+                foreign_amount=ln.foreign_amount,
+                is_fee=ln.is_fee,
+                fee_reference_amount=ln.fee_reference_amount,
+            )
+            for ln in lines
+            for mh in [_mapped_hint(ln.card_hint)]
+        ]
+
+    return [
+        TaishinStatementLine(
+            card_hint=(mh if mh in allowed else None),
+            trans_date=ln.trans_date,
+            post_date=ln.post_date,
+            description=ln.description,
+            twd_amount=ln.twd_amount,
+            fx_date=ln.fx_date,
+            country=ln.country,
+            currency=ln.currency,
+            foreign_amount=ln.foreign_amount,
+            is_fee=ln.is_fee,
+            fee_reference_amount=ln.fee_reference_amount,
+        )
+        for ln in lines
+        for mh in [_mapped_hint(ln.card_hint)]
+    ]
+
+
+def _backfill_missing_statement_dates(lines: list[TaishinStatementLine]) -> list[TaishinStatementLine]:
+    out: list[TaishinStatementLine] = []
+    for ln in (lines or []):
+        trans = (ln.trans_date or "").strip() or None
+        post = (ln.post_date or "").strip() or None
+        if trans and not post:
+            post = trans
+        if post and not trans:
+            trans = post
+        out.append(
+            TaishinStatementLine(
+                card_hint=ln.card_hint,
+                trans_date=trans,
+                post_date=post,
+                description=ln.description,
+                twd_amount=ln.twd_amount,
+                fx_date=ln.fx_date,
+                country=ln.country,
+                currency=ln.currency,
+                foreign_amount=ln.foreign_amount,
+                is_fee=ln.is_fee,
+                fee_reference_amount=ln.fee_reference_amount,
+            )
+        )
+    return out
+
+
+def _drop_statement_lines_without_dates(lines: list[TaishinStatementLine]) -> tuple[list[TaishinStatementLine], int]:
+    kept: list[TaishinStatementLine] = []
+    dropped = 0
+    for ln in (lines or []):
+        trans = (ln.trans_date or "").strip()
+        post = (ln.post_date or "").strip()
+        if not trans and not post:
+            dropped += 1
+            continue
+        kept.append(ln)
+    return kept, dropped
+
+
+def _extract_amount_from_desc_yuan(desc: str) -> float | None:
+    values = re.findall(r"([0-9][0-9,]*)\s*元", desc or "")
+    if not values:
+        return None
+    try:
+        return float(values[-1].replace(",", ""))
+    except Exception:
+        return None
+
+
+def _execute_bk_text(
+    *,
+    user_id: str,
+    text: str,
+    tx_date: str | None = None,
+    single_suffix: int | None = None,
+) -> tuple[bool, list[str], str | None]:
+    result = process_with_parser(text, skip_gpt=True, user_id=user_id)
+    if result.intent == "error":
+        return False, [], result.error_message
+
+    entries = list(result.entries or [])
+    if not entries:
+        return False, [], "no_entries"
+    if any(_is_needs_llm_entry(e) for e in entries):
+        return False, [], "needs_llm"
+    if tx_date:
+        for e in entries:
+            e.日期 = tx_date
+        batch_id = build_batch_id(tx_date, item=(entries[0].品項 if entries else None), use_current_time=False)
+        assign_transaction_ids(entries, batch_id)
+        if len(entries) == 1 and single_suffix is not None:
+            entries[0].交易ID = f"{batch_id}-{int(single_suffix):02d}"
+
+    ok = True
+    if len(entries) == 1:
+        ok = send_to_webhook(entries[0], user_id=user_id)
+    else:
+        _success, failure = send_multiple_webhooks(entries, user_id=user_id)
+        ok = failure == 0
+
+    transaction_ids = [e.交易ID for e in entries if e.交易ID]
+    return ok, transaction_ids, (None if ok else "webhook_failed")
+
+
+def _apply_sinopac_autobookkeeping(
+    *,
+    user_id: str,
+    statement_id: str,
+    statement_month: str,
+    lines: list[TaishinStatementLine],
+    line_page_ids: list[str],
+    statement_page_id: str | None = None,
+    force: bool = False,
+) -> dict[str, Any]:
+    kv = KVStore()
+    created = 0
+    skipped = 0
+    failed: list[dict[str, str]] = []
+
+    for idx, ln in enumerate(lines):
+        if idx >= len(line_page_ids):
+            break
+        line_id = line_page_ids[idx]
+        desc = (ln.description or "").strip()
+        if not desc:
+            continue
+
+        rule = None
+        text = None
+        if "大戶消費回饋入帳戶" in desc:
+            amt = _extract_amount_from_desc_yuan(desc)
+            if amt is None or amt <= 0:
+                skipped += 1
+                continue
+            rule = "rebate_income"
+            text = f"收入 {int(amt) if float(amt).is_integer() else amt} 回饋金 大戶網銀"
+        elif "永豐自扣已入帳" in desc:
+            amt = abs(float(ln.twd_amount or 0))
+            if amt <= 0:
+                skipped += 1
+                continue
+            rule = "autodebit_card_payment"
+            text = f"大戶網銀繳卡費到大戶信用卡 {int(amt) if float(amt).is_integer() else amt}"
+        else:
+            continue
+
+        dedupe_key = _CC_AUTO_POST_KEY.format(statement_id=statement_id, line_id=line_id, rule=rule)
+        if (not force) and kv.get(dedupe_key):
+            skipped += 1
+            continue
+
+        tx_date = _normalize_statement_date(statement_month, ln.trans_date) if ln.trans_date else None
+        ok, tx_ids, err = _execute_bk_text(
+            user_id=user_id,
+            text=str(text),
+            tx_date=tx_date,
+            single_suffix=idx + 1,
+        )
+        if not ok:
+            failed.append({"line_id": line_id, "rule": str(rule), "error": str(err or "unknown")})
+            continue
+
+        ledger_page_ids = _fetch_ledger_page_ids_by_transaction_ids(tx_ids)
+        if ledger_page_ids and statement_page_id:
+            _link_statement_line_to_ledger(
+                line_page_id=line_id,
+                ledger_page_ids=ledger_page_ids,
+                statement_page_id=statement_page_id,
+            )
+
+        kv.set(
+            dedupe_key,
+            {
+                "line_id": line_id,
+                "rule": rule,
+                "transaction_ids": tx_ids,
+                "ledger_page_ids": ledger_page_ids,
+            },
+            ttl=86400 * 30,
+        )
+        created += 1
+
+    return {"created": created, "skipped": skipped, "failed": failed}
+
+
+def _relation_ids(prop: dict[str, Any]) -> list[str]:
+    rel = (prop or {}).get("relation") or []
+    out: list[str] = []
+    for r in rel:
+        if isinstance(r, dict):
+            pid = r.get("id")
+            if pid:
+                out.append(str(pid))
+    return out
+
+
+def _merge_relation_ids(prop: dict[str, Any], add_ids: list[str]) -> list[str]:
+    merged = sorted(set(_relation_ids(prop) + [x for x in add_ids if x]))
+    return merged
+
+
+def _fetch_ledger_page_ids_by_transaction_ids(transaction_ids: list[str]) -> list[str]:
+    if not NOTION_DATABASE_ID:
+        return []
+    out: list[str] = []
+    for tid in transaction_ids:
+        if not tid:
+            continue
+        data = _notion_query(
+            NOTION_DATABASE_ID,
+            {"page_size": 20, "filter": {"property": "交易ID", "rich_text": {"equals": tid}}},
+        )
+        for r in data.get("results") or []:
+            pid = r.get("id")
+            if pid:
+                out.append(str(pid))
+    return sorted(set(out))
+
+
+def _link_statement_line_to_ledger(*, line_page_id: str, ledger_page_ids: list[str], statement_page_id: str) -> None:
+    if not line_page_id or not ledger_page_ids:
+        return
+
+    line_page = _notion_get_page(line_page_id)
+    lprops = (line_page or {}).get("properties") or {}
+    line_target_rel = _merge_relation_ids(lprops.get("對應帳目") or {}, ledger_page_ids)
+    patch_line: dict[str, Any] = {
+        "對帳狀態": {"select": {"name": "matched"}},
+        "對應帳目": {"relation": [{"id": x} for x in line_target_rel]},
+    }
+    if statement_page_id:
+        patch_line["所屬帳單"] = {"relation": [{"id": statement_page_id}]}
+    _notion_patch_page(line_page_id, patch_line)
+
+    for ledger_id in ledger_page_ids:
+        led_page = _notion_get_page(ledger_id)
+        props = (led_page or {}).get("properties") or {}
+        line_rel = _merge_relation_ids(props.get("對應帳單明細") or {}, [line_page_id])
+        stmt_rel = _merge_relation_ids(props.get("對應帳單") or {}, [statement_page_id])
+        _notion_patch_page(
+            ledger_id,
+            {
+                "對應帳單明細": {"relation": [{"id": x} for x in line_rel]},
+                "對應帳單": {"relation": [{"id": x} for x in stmt_rel]},
+            },
+        )
+
+
+def _date_start(prop: dict[str, Any]) -> str | None:
+    d = (prop or {}).get("date")
+    if not isinstance(d, dict):
+        return None
+    v = d.get("start")
+    if not isinstance(v, str) or not v.strip():
+        return None
+    return v[:10]
+
+
+def _number_value(prop: dict[str, Any]) -> float | None:
+    n = (prop or {}).get("number")
+    try:
+        return float(n) if n is not None else None
+    except Exception:
+        return None
+
+
+def _select_name(prop: dict[str, Any]) -> str | None:
+    s = (prop or {}).get("select")
+    if not isinstance(s, dict):
+        return None
+    name = s.get("name")
+    return str(name).strip() if name else None
+
+
+def _rt_plain(prop: dict[str, Any]) -> str:
+    rt = (prop or {}).get("rich_text") or []
+    if not rt or not isinstance(rt, list):
+        return ""
+    t0 = rt[0] if isinstance(rt[0], dict) else {}
+    plain = t0.get("plain_text")
+    if isinstance(plain, str) and plain.strip():
+        return plain.strip()
+    txt = t0.get("text")
+    if isinstance(txt, dict):
+        c = txt.get("content")
+        if isinstance(c, str):
+            return c.strip()
+    return ""
+
+
+def _title_plain(prop: dict[str, Any]) -> str:
+    arr = (prop or {}).get("title") or []
+    if not arr or not isinstance(arr, list):
+        return ""
+    t0 = arr[0] if isinstance(arr[0], dict) else {}
+    plain = t0.get("plain_text")
+    if isinstance(plain, str) and plain.strip():
+        return plain.strip()
+    txt = t0.get("text")
+    if isinstance(txt, dict):
+        c = txt.get("content")
+        if isinstance(c, str):
+            return c.strip()
+    return ""
+
+
+def _fetch_statement_lines_for_autobookkeeping(statement_id: str) -> tuple[list[TaishinStatementLine], list[str]]:
+    if not NOTION_CC_STATEMENT_LINES_DB_ID:
+        raise RuntimeError("NOTION_CC_STATEMENT_LINES_DB_ID not configured")
+
+    rows: list[dict[str, Any]] = []
+    cursor = None
+    while True:
+        payload: dict[str, Any] = {
+            "page_size": 100,
+            "filter": {"property": "帳單ID", "rich_text": {"equals": statement_id}},
+        }
+        if cursor:
+            payload["start_cursor"] = cursor
+        data = _notion_query(NOTION_CC_STATEMENT_LINES_DB_ID, payload)
+        rows.extend(data.get("results") or [])
+        if not data.get("has_more"):
+            break
+        cursor = data.get("next_cursor")
+
+    lines: list[TaishinStatementLine] = []
+    line_ids: list[str] = []
+    for row in rows:
+        pid = row.get("id")
+        props = row.get("properties") or {}
+        if not pid or not isinstance(props, dict):
+            continue
+        desc = _rt_plain(props.get("消費明細") or {}) or _title_plain(props.get("Name") or {})
+        twd = _number_value(props.get("新臺幣金額") or {}) or 0.0
+        trans = _date_start(props.get("消費日") or {})
+        post = _date_start(props.get("入帳起息日") or {})
+        fx = _date_start(props.get("外幣折算日") or {})
+        country = _select_name(props.get("消費地") or {})
+        currency = _select_name(props.get("幣別") or {}) or "TWD"
+        foreign_amount = _number_value(props.get("外幣金額") or {})
+        is_fee = bool((props.get("是否手續費") or {}).get("checkbox") is True)
+        fee_ref = _number_value(props.get("手續費參考金額") or {})
+
+        lines.append(
+            TaishinStatementLine(
+                card_hint=_select_name(props.get("付款方式") or {}),
+                trans_date=trans,
+                post_date=post,
+                description=desc,
+                twd_amount=twd,
+                fx_date=fx,
+                country=country,
+                currency=currency,
+                foreign_amount=foreign_amount,
+                is_fee=is_fee,
+                fee_reference_amount=fee_ref,
+            )
+        )
+        line_ids.append(str(pid))
+    return lines, line_ids
 
 
 def cmd_cc_lock(args: argparse.Namespace) -> int:
@@ -394,7 +877,7 @@ def cmd_cc_lock(args: argparse.Namespace) -> int:
                 "error": {
                     "message": "unsupported bank",
                     "reason": "unsupported_bank",
-                    "supported_banks": ["台新", "華南"],
+                    "supported_banks": ["台新", "華南", "富邦", "永豐", "聯邦"],
                 },
             }
         )
@@ -420,42 +903,169 @@ def cmd_cc_unlock(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_cc_set_card_alias(args: argparse.Namespace) -> int:
+    user_id = args.user_id
+    bank = _normalize_bank_name(args.bank)
+    last4 = (args.last4 or "").strip()
+    payment_method = (args.payment_method or "").strip()
+    if not bank or not last4 or not payment_method:
+        _print_json(
+            {
+                "status": "error",
+                "error": {"message": "bank, last4, payment_method are required", "reason": "invalid_input"},
+            }
+        )
+        return 1
+
+    try:
+        lock_service = LockService(user_id)
+        lock_service.set_card_alias(bank=bank, last4=last4, payment_method=payment_method)
+        _print_json(
+            {
+                "status": "ok",
+                "result": {"bank": bank, "last4": last4, "payment_method": payment_method, "aliases": lock_service.get_card_aliases(bank)},
+            }
+        )
+        return 0
+    except ValueError as e:
+        _print_json({"status": "error", "error": {"message": str(e), "reason": "invalid_input"}})
+        return 1
+    except Exception as e:
+        _print_json({"status": "error", "error": {"message": str(e), "reason": "unexpected"}})
+        return 1
+
+
+def cmd_cc_list_card_alias(args: argparse.Namespace) -> int:
+    user_id = args.user_id
+    bank = _normalize_bank_name(args.bank)
+    aliases = LockService(user_id).get_card_aliases(bank)
+    _print_json({"status": "ok", "result": {"bank": bank, "aliases": aliases}})
+    return 0
+
+
+def cmd_cc_del_card_alias(args: argparse.Namespace) -> int:
+    user_id = args.user_id
+    bank = _normalize_bank_name(args.bank)
+    last4 = (args.last4 or "").strip()
+    if not bank or not last4:
+        _print_json({"status": "error", "error": {"message": "bank and last4 are required", "reason": "invalid_input"}})
+        return 1
+    lock_service = LockService(user_id)
+    lock_service.remove_card_alias(bank=bank, last4=last4)
+    _print_json({"status": "ok", "result": {"bank": bank, "last4": last4, "aliases": lock_service.get_card_aliases(bank)}})
+    return 0
+
+
 def cmd_cc_import(args: argparse.Namespace) -> int:
     user_id = args.user_id
     image_path = args.image_path
     message_id = args.message_id
+    no_llm = bool(args.no_llm)
+    lines_json = args.lines_json
+    lines_json_path = args.lines_json_path
 
     lock_service = LockService(user_id)
     lock_val = lock_service.get_reconcile_lock() or {}
     bank = _normalize_bank_name(lock_val.get("bank") or "")
     period = lock_val.get("period")
     statement_id = lock_val.get("statement_id")
+    methods = lock_val.get("payment_methods") or []
 
     if not period or not statement_id or not _bank_supported(bank):
         _print_json({"status": "error", "error": {"message": "reconcile lock not set", "reason": "missing_lock"}})
         return 1
 
     try:
-        with open(image_path, "rb") as f:
-            image_data = f.read()
+        lines: list[TaishinStatementLine]
+        image_data: bytes | None = None
 
-        if bank == "台新":
-            lines = extract_taishin_statement_lines(image_data, statement_month=period)
-        elif bank == "華南":
-            lines = extract_huanan_statement_lines(image_data, statement_month=period)
+        if lines_json or lines_json_path:
+            if lines_json and lines_json_path:
+                _print_json(
+                    {
+                        "status": "error",
+                        "error": {"message": "provide only one of lines-json and lines-json-path", "reason": "invalid_input"},
+                    }
+                )
+                return 1
+            raw = lines_json
+            if lines_json_path:
+                raw = Path(str(lines_json_path)).read_text(encoding="utf-8")
+            lines = _statement_lines_from_json_payload(str(raw or ""))
+        elif image_path:
+            if no_llm:
+                _print_json(
+                    {
+                        "status": "error",
+                        "error": {
+                            "message": "no_llm mode requires lines-json or lines-json-path",
+                            "reason": "missing_structured_lines",
+                        },
+                    }
+                )
+                return 1
+
+            with open(image_path, "rb") as f:
+                image_data = f.read()
+
+            if bank == "台新":
+                lines = extract_taishin_statement_lines(image_data, statement_month=period)
+            elif bank == "華南":
+                lines = extract_huanan_statement_lines(image_data, statement_month=period)
+            elif bank == "富邦":
+                lines = extract_fubon_statement_lines(image_data, statement_month=period)
+            elif bank == "永豐":
+                lines = extract_sinopac_statement_lines(image_data, statement_month=period)
+            elif bank == "聯邦":
+                lines = extract_union_statement_lines(image_data, statement_month=period)
+            else:
+                _print_json({"status": "error", "error": {"message": "unsupported bank", "reason": "unsupported_bank"}})
+                return 1
         else:
-            _print_json({"status": "error", "error": {"message": "unsupported bank", "reason": "unsupported_bank"}})
+            _print_json(
+                {
+                    "status": "error",
+                    "error": {
+                        "message": "missing input: provide image-path or structured lines",
+                        "reason": "missing_input",
+                    },
+                }
+            )
             return 1
+
+        lines, dropped_no_date_count = _drop_statement_lines_without_dates(lines)
+        lines = _backfill_missing_statement_dates(lines)
+        if not lines:
+            _print_json(
+                {
+                    "status": "error",
+                    "error": {
+                        "message": "no statement lines with valid date",
+                        "reason": "missing_statement_date",
+                    },
+                }
+            )
+            return 1
+        card_aliases = lock_service.get_card_aliases(bank)
+        lines = _normalize_statement_line_payment_methods(
+            lines,
+            allowed_payment_methods=list(methods),
+            card_aliases=card_aliases,
+        )
 
         statement_page_id = ensure_cc_statement_page(
             statement_id=statement_id,
             period=period,
             bank=bank,
-            source_note=f"assistant_cli image_path={image_path}" + (f" message_id={message_id}" if message_id else ""),
+            source_note=(
+                f"assistant_cli image_path={image_path}" + (f" message_id={message_id}" if message_id else "")
+                if image_path
+                else "assistant_cli lines_json import"
+            ),
         )
 
         # OCR preview for audit (Taishin parser only)
-        if bank == "台新":
+        if bank == "台新" and image_data is not None:
             try:
                 ocr_text = extract_taishin_statement_text(image_data, enable_compression=False)
                 preview = build_ocr_preview(ocr_text)
@@ -471,6 +1081,16 @@ def cmd_cc_import(args: argparse.Namespace) -> int:
         )
 
         warning = detect_statement_date_anomaly(period, lines)
+        auto_bookkeeping = None
+        if bank == "永豐":
+            auto_bookkeeping = _apply_sinopac_autobookkeeping(
+                user_id=user_id,
+                statement_id=statement_id,
+                statement_month=period,
+                lines=lines,
+                line_page_ids=created_ids,
+                statement_page_id=statement_page_id,
+            )
 
         # increment uploaded count (best-effort)
         try:
@@ -492,7 +1112,9 @@ def cmd_cc_import(args: argparse.Namespace) -> int:
                     "statement_id": statement_id,
                     "statement_page_id": statement_page_id,
                     "created_count": len(created_ids),
+                    "dropped_no_date_count": dropped_no_date_count,
                     "warning": warning,
+                    "auto_bookkeeping": auto_bookkeeping,
                 },
             }
         )
@@ -521,9 +1143,60 @@ def cmd_cc_run(args: argparse.Namespace) -> int:
 
     try:
         payment_methods = lock_val.get("payment_methods") or []
-        summary = reconcile_statement(statement_id=statement_id, period=period, payment_methods=payment_methods)
+        summary = reconcile_statement(
+            statement_id=statement_id,
+            period=period,
+            payment_methods=payment_methods,
+            bank=bank,
+        )
         text = format_reconcile_summary(summary)
         _print_json({"status": "ok", "result": summary.__dict__, "summary_text": text})
+        return 0
+    except Exception as e:
+        _print_json({"status": "error", "error": {"message": str(e), "reason": "unexpected"}})
+        return 1
+
+
+def cmd_cc_reapply_auto(args: argparse.Namespace) -> int:
+    user_id = args.user_id
+    force = bool(getattr(args, "force", False))
+
+    lock_val = LockService(user_id).get_reconcile_lock() or {}
+    bank = lock_val.get("bank")
+    period = lock_val.get("period")
+    statement_id = lock_val.get("statement_id")
+    if not period or not statement_id or not _bank_supported(bank):
+        _print_json({"status": "error", "error": {"message": "reconcile lock not set", "reason": "missing_lock"}})
+        return 1
+    if bank != "永豐":
+        _print_json({"status": "error", "error": {"message": f"bank not supported: {bank}", "reason": "bank_unsupported"}})
+        return 1
+
+    try:
+        lines, line_ids = _fetch_statement_lines_for_autobookkeeping(statement_id)
+        statement_page_id = ensure_cc_statement_page(statement_id=statement_id, period=period, bank=bank)
+        result = _apply_sinopac_autobookkeeping(
+            user_id=user_id,
+            statement_id=statement_id,
+            statement_month=period,
+            lines=lines,
+            line_page_ids=line_ids,
+            statement_page_id=statement_page_id,
+            force=force,
+        )
+        _print_json(
+            {
+                "status": "ok",
+                "result": {
+                    "statement_id": statement_id,
+                    "period": period,
+                    "bank": bank,
+                    "line_count": len(lines),
+                    "force": force,
+                    "auto_bookkeeping": result,
+                },
+            }
+        )
         return 0
     except Exception as e:
         _print_json({"status": "error", "error": {"message": str(e), "reason": "unexpected"}})
@@ -568,15 +1241,41 @@ def build_parser() -> argparse.ArgumentParser:
     cc_unlock.add_argument("--user-id", required=True)
     cc_unlock.set_defaults(func=cmd_cc_unlock)
 
+    cc_set_card_alias = cc_sub.add_parser("set-card-alias", help="Set per-bank card last4 -> payment method alias")
+    cc_set_card_alias.add_argument("--user-id", required=True)
+    cc_set_card_alias.add_argument("--bank", required=True)
+    cc_set_card_alias.add_argument("--last4", required=True, help="Card last4 or card_hint token")
+    cc_set_card_alias.add_argument("--payment-method", required=True)
+    cc_set_card_alias.set_defaults(func=cmd_cc_set_card_alias)
+
+    cc_list_card_alias = cc_sub.add_parser("list-card-alias", help="List per-bank card aliases")
+    cc_list_card_alias.add_argument("--user-id", required=True)
+    cc_list_card_alias.add_argument("--bank", required=True)
+    cc_list_card_alias.set_defaults(func=cmd_cc_list_card_alias)
+
+    cc_del_card_alias = cc_sub.add_parser("del-card-alias", help="Delete per-bank card alias by last4")
+    cc_del_card_alias.add_argument("--user-id", required=True)
+    cc_del_card_alias.add_argument("--bank", required=True)
+    cc_del_card_alias.add_argument("--last4", required=True)
+    cc_del_card_alias.set_defaults(func=cmd_cc_del_card_alias)
+
     cc_import = cc_sub.add_parser("import", help="Import statement image for current locked bank")
     cc_import.add_argument("--user-id", required=True)
-    cc_import.add_argument("--image-path", required=True)
+    cc_import.add_argument("--image-path", required=False)
+    cc_import.add_argument("--lines-json", required=False, help="Structured statement lines JSON array")
+    cc_import.add_argument("--lines-json-path", required=False, help="Path to structured statement lines JSON file")
+    cc_import.add_argument("--no-llm", action="store_true", help="Do not call OpenAI; requires structured lines input")
     cc_import.add_argument("--message-id", required=False)
     cc_import.set_defaults(func=cmd_cc_import)
 
     cc_run = cc_sub.add_parser("run", help="Run reconcile for current statement")
     cc_run.add_argument("--user-id", required=True)
     cc_run.set_defaults(func=cmd_cc_run)
+
+    cc_reapply_auto = cc_sub.add_parser("reapply-auto", help="Re-run SinoPac auto-bookkeeping without re-importing statement lines")
+    cc_reapply_auto.add_argument("--user-id", required=True)
+    cc_reapply_auto.add_argument("--force", action="store_true", help="Ignore dedupe key and run again")
+    cc_reapply_auto.set_defaults(func=cmd_cc_reapply_auto)
 
     return parser
 
